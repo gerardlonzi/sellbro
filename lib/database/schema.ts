@@ -1,0 +1,76 @@
+import { appSchema, tableSchema } from "@nozbe/watermelondb";
+
+export const schema = appSchema({
+  version: 1,
+  tables: [
+    tableSchema({
+      name: "produits",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "categorie_nom", type: "string", isOptional: true },
+        { name: "nom", type: "string" },
+        { name: "prix_vente", type: "number" },
+        { name: "prix_achat", type: "number", isOptional: true },
+        { name: "quantite_stock", type: "number" },
+        { name: "seuil_alerte", type: "number" },
+        { name: "champs_supplementaires", type: "string" }, // jsonb → stocké en string JSON localement
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "ventes",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "produit_id", type: "string", isOptional: true },
+        { name: "produit_nom", type: "string", isOptional: true }, // pour affichage offline sans jointure
+        { name: "quantite", type: "number" },
+        { name: "prix_unitaire", type: "number" },
+        { name: "client_nom", type: "string", isOptional: true },
+        { name: "client_telephone", type: "string", isOptional: true },
+        { name: "mode_paiement", type: "string", isOptional: true },
+        { name: "source", type: "string" },
+        { name: "audio_url", type: "string", isOptional: true },
+        { name: "image_facture_url", type: "string", isOptional: true },
+        { name: "donnees_supplementaires", type: "string" },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "achats",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "fournisseur_nom", type: "string", isOptional: true },
+        { name: "description", type: "string", isOptional: true },
+        { name: "montant", type: "number" },
+        { name: "source", type: "string" },
+        { name: "facture_image_url", type: "string", isOptional: true },
+        { name: "donnees_supplementaires", type: "string" },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "creances_dettes",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "type", type: "string" },
+        { name: "personne_nom", type: "string" },
+        { name: "telephone", type: "string", isOptional: true },
+        { name: "montant_initial", type: "number" },
+        { name: "montant_restant", type: "number" },
+        { name: "date_echeance", type: "string", isOptional: true },
+        { name: "statut", type: "string" },
+        { name: "note", type: "string", isOptional: true },
+        { name: "produit_concerne", type: "string", isOptional: true },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+  ],
+});

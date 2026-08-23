@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Sellbro",
+    "slug": "Sellbro",
+    "scheme": "Sellbro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.eyetech.sellbro"
+    },
+    "android": {
+      "package": "com.eyetech.sellbro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/splash-logo.png",
+            "backgroundColor": "#121212"
+          },
+          "imageWidth": 160
+        }
+      ],
+      "expo-audio"
+    ]
+  }
+}
