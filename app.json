@@ -1,19 +1,22 @@
 {
   "expo": {
     "name": "Sellbro",
-    "slug": "Sellbro",
-    "scheme": "Sellbro",
+    "slug": "sellbro",
+    "scheme": "sellbro",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
+
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.eyetech.sellbro"
     },
+
     "android": {
       "package": "com.eyetech.sellbro"
     },
+
     "plugins": [
       "expo-router",
       [

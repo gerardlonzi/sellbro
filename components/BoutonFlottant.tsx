@@ -14,6 +14,7 @@ export function BoutonFlottant({ onPress, icone = "plus" }: { onPress: () => voi
 const styles = StyleSheet.create({
   bouton: {
     position: "absolute", bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28,
+    zIndex: 50,
     alignItems: "center", justifyContent: "center", elevation: 4,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4,
   },

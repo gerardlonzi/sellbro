@@ -1,0 +1,11 @@
+diff --git a/native/android-jsi/src/main/cpp/CMakeLists.txt b/native/android-jsi/src/main/cpp/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/native/android-jsi/src/main/cpp/CMakeLists.txt
++++ b/native/android-jsi/src/main/cpp/CMakeLists.txt
+@@ -84,6 +84,7 @@ add_library(watermelondb-jsi SHARED
+ 
+ target_link_libraries(watermelondb-jsi
+                       # link with these libraries:
++                      c++_shared
+                       android
+                       log)

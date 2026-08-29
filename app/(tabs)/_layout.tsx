@@ -5,9 +5,9 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 const ICONES: Record<string, keyof typeof Feather.glyphMap> = {
   accueil: "home",
   stock: "package",
-  dashboard: "bar-chart-2",
   clients: "users",
-  reglages: "settings",
+  ventes: "shopping-bag",
+  dashboard: "bar-chart-2",
 };
 
 export default function TabsLayout() {
@@ -25,9 +25,9 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="accueil" options={{ title: "Accueil" }} />
       <Tabs.Screen name="stock" options={{ title: "Stock" }} />
-      <Tabs.Screen name="dashboard" options={{ title: "Dashboard" }} />
       <Tabs.Screen name="clients" options={{ title: "Clients" }} />
-      <Tabs.Screen name="reglages" options={{ title: "Réglages" }} />
+      <Tabs.Screen name="ventes" options={{ title: "Ventes" }} />
+      <Tabs.Screen name="dashboard" options={{ title: "Dashboard" }} />
     </Tabs>
   );
 }

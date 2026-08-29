@@ -19,6 +19,7 @@ export default function OnboardingBoutique() {
   const enLigne = useConnexion();
   const [verificationEnCours, setVerificationEnCours] = useState(false);
   const { pays } = usePays();
+const [telephone, setTelephone] = useState("");
 
   const [email, setEmail] = useState("");
 
@@ -27,6 +28,7 @@ export default function OnboardingBoutique() {
   }
   
   async function continuer() {
+
     if (!enLigne) {
       Alert.alert("", t("erreur_connexion_requise", langue));
       return;
@@ -47,7 +49,12 @@ export default function OnboardingBoutique() {
   
     await AsyncStorage.setItem("boutika_email", email);
     await AsyncStorage.setItem("boutika_nom_boutique", nomBoutique);
-  
+    await AsyncStorage.setItem("boutika_langue", langue);
+await AsyncStorage.setItem("boutika_devise", devise.code);
+
+    if (telephone.trim()) {
+      await AsyncStorage.setItem("boutika_telephone", `${pays.indicatif}${telephone.replace(/\s/g, "")}`);
+    }  
     const { error } = await supabase.auth.signInWithOtp({ email });
     setVerificationEnCours(false);
   
@@ -94,6 +101,23 @@ export default function OnboardingBoutique() {
   autoCapitalize="none"
   style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]}
 />
+<Text style={[styles.label, { color: colors.textSecondary, fontWeight: "500", fontSize: 14 }]}>
+  {t("label_telephone_boutique", langue)}
+</Text>
+<View style={styles.ligneNumero}>
+  <Pressable onPress={() => router.push("/pays")} style={[styles.indicatif, { borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 4 }]}>
+    <Text style={{ fontSize: 14 }}>{pays.drapeau} {pays.indicatif}</Text>
+    <Feather name="chevron-down" size={12} color={colors.textMuted} />
+  </Pressable>
+  <TextInput
+    value={telephone}
+    onChangeText={setTelephone}
+    placeholder={t("placeholder_telephone", langue)}
+    placeholderTextColor={colors.textMuted}
+    keyboardType="phone-pad"
+    style={[styles.inputNumero, { borderColor: colors.border, color: colors.textPrimary }]}
+  />
+</View>
 
       <Text style={[styles.label, { color: colors.textSecondary, fontWeight: "500", fontSize: 14 }]}>
         {t("label_langue", langue)}
@@ -140,10 +164,10 @@ export default function OnboardingBoutique() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, paddingTop: 60 },
   label: { fontSize: 12, marginBottom: 8, marginTop: 18 },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   ligneNumero: { flexDirection: "row", gap: 8 },
-  indicatif: { justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderRadius: 8 },
-  inputNumero: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
+indicatif: { justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderRadius: 8 },
+inputNumero: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
+  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   ligneChoix: { flexDirection: "row", gap: 8 },
   choix: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
   bouton: { paddingVertical: 14, borderRadius: 8, alignItems: "center" },

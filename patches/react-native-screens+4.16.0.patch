@@ -1,0 +1,40 @@
+diff --git a/android/CMakeLists.txt b/android/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/android/CMakeLists.txt
++++ b/android/CMakeLists.txt
+@@ -43,6 +43,7 @@ if(${RNS_NEW_ARCH_ENABLED})
+     
+     if(ReactAndroid_VERSION_MINOR GREATER_EQUAL 76)
+         target_link_libraries(rnscreens
++            c++_shared
+             ReactAndroid::reactnative
+             ReactAndroid::jsi
+             fbjni::fbjni
+@@ -74,6 +75,7 @@ if(${RNS_NEW_ARCH_ENABLED})
+     endif()
+ else()
+     target_link_libraries(rnscreens
++        c++_shared
+         ReactAndroid::jsi
+         android
+     )
+diff --git a/android/src/main/jni/CMakeLists.txt b/android/src/main/jni/CMakeLists.txt
+index 3333333..4444444 100644
+--- a/android/src/main/jni/CMakeLists.txt
++++ b/android/src/main/jni/CMakeLists.txt
+@@ -42,6 +42,7 @@ target_include_directories(
+ if(ReactAndroid_VERSION_MINOR GREATER_EQUAL 76)
+   target_link_libraries(
+     ${LIB_TARGET_NAME}
++    c++_shared
+     ReactAndroid::reactnative
+     ReactAndroid::jsi
+     fbjni::fbjni
+@@ -49,6 +50,7 @@ if(ReactAndroid_VERSION_MINOR GREATER_EQUAL 76)
+ else()
+   target_link_libraries(
+     ${LIB_TARGET_NAME}
++    c++_shared
+     fbjni
+     folly_runtime
+     glog

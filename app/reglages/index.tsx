@@ -5,11 +5,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
-import { definirPlanTest } from "@/lib/plan/planTest";
-import { Carte } from "@/components/UI";
 import { useAbonnement } from "@/lib/plan/useAbonnement";
-
-// ...
+import { definirPlanTest } from "@/lib/plan/planTest";
+import { Carte, EnteteEcran } from "@/components/UI";
 
 export default function Reglages() {
   const { colors, mode, setMode } = useTheme();
@@ -17,12 +15,9 @@ export default function Reglages() {
   const { planId, plan } = usePlanActuel();
   const { expire } = useAbonnement();
 
-
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary, marginBottom: 16 }}>
-        {t("reglages_titre", langue)}
-      </Text>
+      <EnteteEcran titre={t("reglages_titre", langue)} onRetour={() => router.back()} />
 
       <Carte style={{ marginBottom: 12 }}>
         <View style={styles.ligneAbonnement}>
@@ -44,23 +39,14 @@ export default function Reglages() {
             </Pressable>
           ) : null}
         </View>
-        {expire && (
-          <Text style={{ color: colors.danger, fontSize: 11, marginTop: 8 }}>{t("reglages_abonnement_expire", langue)}</Text>
-        )}
       </Carte>
 
       <SectionTitre titre={t("reglages_apparence", langue)} />
       <Carte style={{ marginBottom: 16 }}>
         <View style={styles.ligneOptions}>
           {(["clair", "sombre", "auto"] as const).map((m) => (
-            <Pressable
-              key={m}
-              onPress={() => setMode(m)}
-              style={[styles.optionMode, { borderColor: mode === m ? colors.accent : colors.border, borderWidth: mode === m ? 2 : 1 }]}
-            >
-              <Text style={{ color: mode === m ? colors.accent : colors.textPrimary, fontSize: 12 }}>
-                {t(`reglages_theme_${m}` as any, langue)}
-              </Text>
+            <Pressable key={m} onPress={() => setMode(m)} style={[styles.optionMode, { borderColor: mode === m ? colors.accent : colors.border, borderWidth: mode === m ? 2 : 1 }]}>
+              <Text style={{ color: mode === m ? colors.accent : colors.textPrimary, fontSize: 12 }}>{t(`reglages_theme_${m}` as any, langue)}</Text>
             </Pressable>
           ))}
         </View>
@@ -70,36 +56,41 @@ export default function Reglages() {
       <Carte style={{ marginBottom: 16 }}>
         <LigneReglage icone="home" label={t("reglages_info_boutique", langue)} onPress={() => router.push("/reglages/boutique")} />
         <LigneReglage icone="tag" label={t("reglages_categories", langue)} onPress={() => router.push("/reglages/categories")} />
-        <LigneReglage icone="users" label="Employés" onPress={() => router.push("/reglages/employes")} dernier />
+        <LigneReglage icone="users" label={t("employes_titre", langue)} onPress={() => router.push("/reglages/employes")} dernier />
       </Carte>
 
       <SectionTitre titre={t("reglages_section_general", langue)} />
       <Carte style={{ marginBottom: 16 }}>
         <LigneReglage icone="globe" label={t("reglages_langue_devise", langue)} onPress={() => router.push("/reglages/langue-devise")} />
         <LigneReglage icone="bell" label={t("reglages_notifications", langue)} onPress={() => router.push("/reglages/notifications")} />
+        <LigneReglage icone="truck" label="Achats fournisseurs" onPress={() => router.push("/achats")} />
         <LigneReglage icone="file-text" label="Export comptable" onPress={() => router.push("/export")} />
         <LigneReglage icone="headphones" label={t("reglages_contact", langue)} onPress={() => router.push("/contact")} dernier />
       </Carte>
 
       {__DEV__ && (
         <>
-          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 16, marginBottom: 8 }}>🧪 TEST — Forcer un plan</Text>
-          <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 6, marginBottom: 8 }}>🧪 TEST — Forcer un plan</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
             {(["gratuit", "starter", "premium"] as const).map((p) => (
               <Pressable
                 key={p}
                 onPress={() => definirPlanTest(p)}
-                style={{
-                  flex: 1, paddingVertical: 8, borderRadius: 8,
-                  borderWidth: planId === p ? 2 : 1,
-                  borderColor: planId === p ? colors.accent : colors.border,
-                  alignItems: "center",
-                }}
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: planId === p ? 2 : 1, borderColor: planId === p ? colors.accent : colors.border, alignItems: "center" }}
               >
                 <Text style={{ fontSize: 11, color: planId === p ? colors.accent : colors.textPrimary }}>{p}</Text>
               </Pressable>
             ))}
           </View>
+          <Pressable
+            onPress={async () => {
+              await AsyncStorage.multiRemove(["onboarding_termine", "plan_actuel", "plan_choisi_en_attente"]);
+              router.replace("/");
+            }}
+            style={{ padding: 12, borderRadius: 8, backgroundColor: colors.dangerBg }}
+          >
+            <Text style={{ color: colors.danger, fontSize: 12, textAlign: "center" }}>🧪 {t("reglages_test_reinitialiser", langue)}</Text>
+          </Pressable>
         </>
       )}
     </ScrollView>
