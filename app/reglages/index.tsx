@@ -63,8 +63,10 @@ export default function Reglages() {
       <Carte style={{ marginBottom: 16 }}>
         <LigneReglage icone="globe" label={t("reglages_langue_devise", langue)} onPress={() => router.push("/reglages/langue-devise")} />
         <LigneReglage icone="bell" label={t("reglages_notifications", langue)} onPress={() => router.push("/reglages/notifications")} />
-        <LigneReglage icone="truck" label="Achats fournisseurs" onPress={() => router.push("/achats")} />
+        <LigneReglage icone="truck" label={t("fournisseurs_titre", langue)} onPress={() => router.push("/fournisseurs")} />
+        <LigneReglage icone="credit-card" label={t("depenses_titre", langue)} onPress={() => router.push("/depenses")} />      
         <LigneReglage icone="file-text" label="Export comptable" onPress={() => router.push("/export")} />
+        <LigneReglage icone="file-text" label={t("factures_titre", langue)} onPress={() => router.push("/factures")} />
         <LigneReglage icone="headphones" label={t("reglages_contact", langue)} onPress={() => router.push("/contact")} dernier />
       </Carte>
 

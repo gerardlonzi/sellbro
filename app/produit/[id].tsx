@@ -80,6 +80,9 @@ export default function DetailProduit() {
         <Pressable onPress={sauvegarder}>
           <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "500" }}>{t("produit_sauver", langue)}</Text>
         </Pressable>
+        <Pressable onPress={() => router.push(`/produit/mouvements/${id}`)} style={{ marginLeft: 12 }}>
+  <Feather name="clock" size={18} color={colors.textSecondary} />
+</Pressable>
       </View>
 
       <Champ label={t("produit_nom_label", langue)} valeur={nom} onChange={setNom} colors={colors} />

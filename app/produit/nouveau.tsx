@@ -101,6 +101,7 @@ export default function NouveauProduit() {
         p.synchronise = false;
       });
     });
+    console.log("Produit sauvegardé");
   
     router.back();
   }
