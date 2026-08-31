@@ -27,7 +27,7 @@ export function SelecteurPeriode({ periode, onChange, plan }: { periode: Periode
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.conteneur}
-        contentContainerStyle={{ alignItems: "center" }}
+        contentContainerStyle={{ alignItems: "center",justifyContent: "space-between",width: "100%" }}
       >
         {PERIODES.map((p) => {
           const actif = periode === p.id;
@@ -55,7 +55,7 @@ export function SelecteurPeriode({ periode, onChange, plan }: { periode: Periode
 }
 
 const styles = StyleSheet.create({
-  conteneur: { maxHeight: 34, marginBottom: 12 },
-  puce: { position: "relative", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, marginRight: 8 },
+  conteneur: { maxHeight: 34, marginBottom: 12},
+  puce: { position: "relative", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   badgeEtoile: { position: "absolute", top: -5, right: -5, width: 14, height: 14, borderRadius: 7, alignItems: "center", justifyContent: "center" },
 });

@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet, ViewStyle } from "react-native";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { Feather } from "@expo/vector-icons";
 
 export function Carte({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   const { colors } = useTheme();
@@ -64,7 +65,9 @@ export function EnteteEcran({ titre, onRetour }: { titre: string; onRetour?: () 
     <View style={styles.entete}>
       {onRetour && (
         <Pressable onPress={onRetour} style={{ marginRight: 10 }}>
-          <Text style={{ fontSize: 18, color: colors.textSecondary }}>←</Text>
+          <Text style={{ fontSize: 18, color: colors.textSecondary }}>
+            <Feather name="arrow-left" size={20} color={colors.textSecondary} />
+          </Text>
         </Pressable>
       )}
       <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{titre}</Text>

@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
+import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 
 type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number };
 type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number };
@@ -102,6 +103,20 @@ export default function NouvelleVente() {
         });
       }
     });
+    
+    // Déduit le stock APRÈS l'écriture des ventes (transaction séparée,
+    // car enregistrerMouvementStock a sa propre database.write).
+    for (const ligne of panier) {
+      if (ligne.produitId) {
+        await enregistrerMouvementStock({
+          userId: user.id,
+          produitId: ligne.produitId,
+          type: "vente",
+          quantite: -ligne.quantite,
+          raison: "Vente",
+        });
+      }
+    }
 
     setChargement(false);
     router.back();
