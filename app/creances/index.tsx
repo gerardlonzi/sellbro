@@ -11,6 +11,8 @@ import { PanneauFiltre } from "@/components/PanneauFiltre";
 import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
 import { dansPlageMontant } from "@/lib/filtres/appliquerFiltres";
 import { MenuContextuel } from "@/components/MenuContextuel";
+import { BoutonFlottant } from "@/components/BoutonFlottant";
+
 
 
 type CreanceDette = {
@@ -81,8 +83,14 @@ export default function CreancesDettes() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
-      <EnteteEcran titre={t("creances_titre", langue)} onRetour={() => router.back()} />
+    <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50, height: "100%" }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <EnteteEcran titre={t("creances_titre", langue)} onRetour={() => router.back()} />
+        <Pressable onPress={() => setPanneauOuvert(true)} style={[styles.boutonFiltreIcone]}>
+          <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
+        </Pressable>
+
+      </View>
 
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
         <View style={[styles.onglets, { backgroundColor: colors.surface, flex: 1 }]}>
@@ -93,9 +101,6 @@ export default function CreancesDettes() {
             <Text style={{ fontSize: 12, color: colors.textPrimary, fontWeight: onglet === "dette" ? "500" : "400" }}>{t("creances_tu_dois", langue)}</Text>
           </Pressable>
         </View>
-        <Pressable onPress={() => setPanneauOuvert(true)} style={[styles.boutonFiltreIcone, { borderColor: filtreActif ? colors.accent : colors.border, borderWidth: filtreActif ? 1.5 : 1 }]}>
-          <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
-        </Pressable>
       </View>
 
       {chargement ? (
@@ -142,7 +147,7 @@ export default function CreancesDettes() {
         </ScrollView>
       )}
 
-      <BoutonPrimaire texte={`+ ${t("creances_ajouter", langue)}`} onPress={() => router.push({ pathname: "/creances/nouvelle", params: { type: onglet } })} />
+      <BoutonFlottant onPress={() => router.push("/creances/nouvelle")} />
 
       <PanneauFiltre
         visible={panneauOuvert}
