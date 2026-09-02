@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from "@nozbe/watermelondb";
 
 export const schema = appSchema({
-  version: 1,
+  version: 3,
   tables: [
     tableSchema({
       name: "produits",
@@ -72,5 +72,75 @@ export const schema = appSchema({
         { name: "synchronise", type: "boolean" },
       ],
     }),
+    tableSchema({
+      name: "fournisseurs",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "nom", type: "string" },
+        { name: "telephone", type: "string", isOptional: true },
+        { name: "adresse", type: "string", isOptional: true },
+        { name: "total_achats", type: "number" },
+        { name: "montant_du", type: "number" },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "depenses",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "categorie", type: "string" },
+        { name: "description", type: "string", isOptional: true },
+        { name: "montant", type: "number" },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "mouvements_stock",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "produit_id", type: "string" },
+        { name: "type", type: "string" },
+        { name: "quantite", type: "number" },
+        { name: "stock_avant", type: "number" },
+        { name: "stock_apres", type: "number" },
+        { name: "raison", type: "string", isOptional: true },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "factures",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "numero", type: "string" },
+        { name: "client_nom", type: "string", isOptional: true },
+        { name: "client_telephone", type: "string", isOptional: true },
+        { name: "sous_total", type: "number" },
+        { name: "remise", type: "number" },
+        { name: "total", type: "number" },
+        { name: "statut", type: "string" },
+        { name: "montant_paye", type: "number" },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "facture_lignes",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "facture_id", type: "string" },
+        { name: "vente_id", type: "string", isOptional: true },
+        { name: "produit_nom", type: "string" },
+        { name: "quantite", type: "number" },
+        { name: "prix_unitaire", type: "number" },
+      ],
+    }),
   ],
 });
+
