@@ -7,6 +7,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { EnteteEcran } from "@/components/UI";
+import { obtenirUserId } from "@/lib/auth/userCache";
 
 export default function NouveauFournisseur() {
   const { colors } = useTheme();
@@ -21,12 +22,11 @@ export default function NouveauFournisseur() {
       return;
     }
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+    const userId = await obtenirUserId();
+    if (!userId) return;
     await database.write(async () => {
       await database.get("fournisseurs").create((f: any) => {
-        f.userId = user.id;
+        f.userId = userId;
         f.nom = nom.trim();
         f.telephone = telephone.trim() || null;
         f.totalAchats = 0;

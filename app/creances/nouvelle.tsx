@@ -7,6 +7,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { EnteteEcran } from "@/components/UI";
+import { obtenirUserId } from "@/lib/auth/userCache";
 
 const CHAMPS_SUGGERES = [
   { cle: "note", labelCle: "nouvelle_creance_champ_note" },
@@ -37,8 +38,8 @@ export default function NouvelleCreance() {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await obtenirUserId();
+    if (!userId) return;
 
     setChargement(true);
 
@@ -48,7 +49,7 @@ export default function NouvelleCreance() {
       const { count } = await supabase
         .from("creances_dettes")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .neq("statut", "payee");
 
       if (count !== null && count >= plan.quotaCreances) {
@@ -59,7 +60,7 @@ export default function NouvelleCreance() {
     }
 
     await supabase.from("creances_dettes").insert({
-      user_id: user.id,
+      user_id: userId,
       type,
       personne_nom: personne.trim(),
       telephone: telephone.trim() || null,
