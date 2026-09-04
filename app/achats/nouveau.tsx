@@ -8,6 +8,7 @@ import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { EnteteEcran } from "@/components/UI";
+import { obtenirUserId } from "@/lib/auth/userCache";
 
 type Produit = { id: string; nom: string };
 
@@ -24,9 +25,9 @@ export default function NouvelAchat() {
   const [produits, setProduits] = useState<Produit[]>([]);
 
   async function ouvrirSelecteur() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const resultats = await database.get("produits").query(Q.where("user_id", user.id)).fetch();
+    const userId = await obtenirUserId();
+    if (!userId) return;
+        const resultats = await database.get("produits").query(Q.where("user_id", userId)).fetch();
     setProduits((resultats as any[]).map((p) => ({ id: p.id, nom: p.nom })));
     setSelecteurOuvert(true);
   }

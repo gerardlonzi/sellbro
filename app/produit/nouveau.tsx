@@ -10,6 +10,7 @@ import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { ecouterSelectionCategorie } from "@/lib/categories/relaisSelection"
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
+import { obtenirUserId } from "@/lib/auth/userCache";
 
 
 
@@ -75,11 +76,11 @@ export default function NouveauProduit() {
       Alert.alert(t("produit_erreur_titre", langue), t("produit_erreur_texte", langue));
       return;
     }
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-  
+    const userId = await obtenirUserId();
+    if (!userId) return;
+
     if (plan?.quotaProduits) {
-      const nb = await database.get("produits").query(Q.where("user_id", user.id)).fetchCount();
+      const nb = await database.get("produits").query(Q.where("user_id", userId)).fetchCount();
       if (nb >= plan.quotaProduits) { router.push("/premium"); return; }
     }
   
@@ -90,7 +91,7 @@ export default function NouveauProduit() {
   
     await database.write(async () => {
       await database.get("produits").create((p: any) => {
-        p.userId = user.id;
+        p.userId = userId;
         p.nom = nom;
         p.categorieNom = categorie || null;
         p.prixVente = Number(prixVente);
