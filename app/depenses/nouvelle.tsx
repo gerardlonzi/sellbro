@@ -7,6 +7,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { EnteteEcran } from "@/components/UI";
+import { obtenirUserId } from "@/lib/auth/userCache";
 
 const CATEGORIES = ["loyer", "electricite", "transport", "salaire", "internet", "autre"];
 
@@ -24,12 +25,11 @@ export default function NouvelleDepense() {
       return;
     }
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+    const userId = await obtenirUserId();
+    if (!userId) return;
     await database.write(async () => {
       await database.get("depenses").create((d: any) => {
-        d.userId = user.id;
+        d.userId = userId;
         d.categorie = categorie;
         d.description = description.trim() || null;
         d.montant = Number(montant);
