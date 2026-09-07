@@ -9,6 +9,7 @@ import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
+import { obtenirUserId } from "@/lib/auth/userCache";
 
 type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number };
 type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number };
@@ -28,9 +29,9 @@ export default function NouvelleVente() {
   const [clients, setClients] = useState<Client[]>([]);
 
   async function ouvrirSelecteurProduit() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const resultats = await database.get("produits").query(Q.where("user_id", user.id)).fetch();
+    const userId = await obtenirUserId();
+    if (!userId) return;
+    const resultats = await database.get("produits").query(Q.where("user_id", userId)).fetch();
     setProduits((resultats as any[]).map((p) => ({ id: p.id, nom: p.nom, prixVente: p.prixVente, quantiteStock: p.quantiteStock })));
     setSelecteurProduitOuvert(true);
   }
