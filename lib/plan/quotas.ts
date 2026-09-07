@@ -17,6 +17,9 @@ export type Plan = {
   sauvegardeCloud: boolean;
   multiEmployes: boolean;
   supportPrioritaire: boolean;
+  factures: boolean;
+fournisseurs: boolean;
+depenses: boolean;
 };
 
 // Valeurs de secours si la lecture Supabase échoue (hors ligne, erreur
@@ -27,18 +30,21 @@ const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
     quotaVocal: 4, quotaScan: 4, quotaProduits: 30, quotaCreances: 15,
     historiqueJours: 7, rapportsMax: "semaine",
     exportComptable: false, sauvegardeCloud: false, multiEmployes: false, supportPrioritaire: false,
+    factures: false, fournisseurs: false, depenses: false
   },
   starter: {
     id: "starter", nom: "Starter", actif: true, prix: 1500,
     quotaVocal: 150, quotaScan: 350, quotaProduits: null, quotaCreances: null,
     historiqueJours: null, rapportsMax: "annee",
     exportComptable: true, sauvegardeCloud: true, multiEmployes: false, supportPrioritaire: false,
+    factures: true, fournisseurs: true, depenses: true,
   },
   premium: {
     id: "premium", nom: "Premium", actif: true, prix: 2000,
     quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
     historiqueJours: null, rapportsMax: "annee",
     exportComptable: true, sauvegardeCloud: true, multiEmployes: true, supportPrioritaire: true,
+    factures: true, fournisseurs: true, depenses: true,
   },
 };
 
@@ -71,6 +77,9 @@ export async function chargerPlans(): Promise<Record<PlanId, Plan>> {
       sauvegardeCloud: ligne.sauvegarde_cloud,
       multiEmployes: ligne.multi_employes,
       supportPrioritaire: ligne.support_prioritaire,
+      factures: ligne.factures_actif,
+      fournisseurs: ligne.fournisseurs_actif,
+      depenses: ligne.depenses_actif,
     };
   }
 

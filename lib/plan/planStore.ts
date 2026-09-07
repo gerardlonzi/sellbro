@@ -1,7 +1,13 @@
 import { Plan, PlanId, chargerPlans } from "./quotas";
-import { lireOverrideTest } from "./planTest";
 import { supabase } from "@/lib/supabase/client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+export const CLE_OVERRIDE = "plan_test_override";
+
+export async function lireOverrideTest(): Promise<string | null> {
+  if (!__DEV__) return null;
+  return AsyncStorage.getItem(CLE_OVERRIDE);
+}
 
 type Etat = { planId: PlanId; plan: Plan | undefined; pret: boolean };
 
