@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
 import { obtenirIdentifiantAppareil } from "@/lib/trial/deviceTrial";
 
-const MAX_COMPTES_PAR_APPAREIL = 3; // au-delà, on bloque (usage familial/partagé raisonnable)
+const MAX_COMPTES_PAR_APPAREIL = 5; // au-delà, on bloque (usage familial/partagé raisonnable)
 
 export async function verifierLimiteAppareil(): Promise<boolean> {
   const identifiant = await obtenirIdentifiantAppareil();

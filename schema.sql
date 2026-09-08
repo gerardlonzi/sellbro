@@ -10,6 +10,10 @@ create table profiles (
   email text unique,
   telephone text,
   telephone_verifie boolean not null default false,
+  -- Statut de vérification de l'email : false tant que l'utilisateur n'a pas
+  -- saisi le code reçu par email. Permet de détecter au redémarrage qu'une
+  -- vérification est en attente et de rediriger de force vers l'écran du code.
+  is_verified boolean not null default false,
   nom_boutique text,
   secteur text,
   langue text not null default 'fr',
@@ -283,6 +287,118 @@ create table employes (
 );
 
 -- ------------------------------------------------------------
+-- 16. FOURNISSEURS
+-- ------------------------------------------------------------
+create table fournisseurs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  nom text not null,
+  telephone text,
+  adresse text,
+  total_achats integer not null default 0,
+  montant_du integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index idx_fournisseurs_user on fournisseurs(user_id);
+
+-- Relie les achats existants à un fournisseur réel (au lieu du simple texte libre)
+alter table achats add column fournisseur_id uuid references fournisseurs(id) on delete set null;
+
+-- ------------------------------------------------------------
+-- 17. DETTES FOURNISSEURS — même logique que creances_dettes,
+--     mais on réutilise directement creances_dettes avec type='dette'
+--     et on ajoute juste le lien vers le fournisseur.
+-- ------------------------------------------------------------
+alter table creances_dettes add column fournisseur_id uuid references fournisseurs(id) on delete set null;
+
+-- ------------------------------------------------------------
+-- 18. DÉPENSES
+-- ------------------------------------------------------------
+create table depenses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  categorie text not null, -- 'loyer' | 'electricite' | 'transport' | 'salaire' | 'internet' | 'emballage' | 'maintenance' | 'marketing' | 'autre'
+  description text,
+  montant integer not null,
+  donnees_supplementaires jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index idx_depenses_user_date on depenses(user_id, created_at desc);
+
+-- ------------------------------------------------------------
+-- 19. FACTURES — générées depuis une ou plusieurs ventes
+-- ------------------------------------------------------------
+create table factures (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  numero text not null, -- ex: INV-000124, généré côté app
+  client_nom text,
+  client_telephone text,
+  sous_total integer not null,
+  remise integer not null default 0,
+  total integer not null,
+  statut text not null default 'brouillon', -- 'brouillon' | 'en_attente' | 'payee' | 'partiellement_payee' | 'en_retard' | 'annulee'
+  montant_paye integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (user_id, numero)
+);
+create index idx_factures_user on factures(user_id);
+
+create table facture_lignes (
+  id uuid primary key default gen_random_uuid(),
+  facture_id uuid not null references factures(id) on delete cascade,
+  vente_id uuid references ventes(id) on delete set null,
+  produit_nom text not null,
+  quantite integer not null,
+  prix_unitaire integer not null
+);
+
+-- ------------------------------------------------------------
+-- 20. MOUVEMENTS DE STOCK — historique complet, jamais juste
+--     "stock = 25" sans traçabilité
+-- ------------------------------------------------------------
+create table mouvements_stock (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  produit_id uuid not null references produits(id) on delete cascade,
+  type text not null, -- 'achat' | 'vente' | 'retour' | 'casse' | 'ajustement' | 'transfert' | 'peremption'
+  quantite integer not null, -- positif = entrée, négatif = sortie
+  stock_avant integer not null,
+  stock_apres integer not null,
+  raison text,
+  reference_id uuid, -- id de la vente/achat à l'origine du mouvement, si applicable
+  created_at timestamptz not null default now()
+);
+create index idx_mouvements_produit on mouvements_stock(produit_id, created_at desc);
+
+-- ------------------------------------------------------------
+-- 21. RLS pour les nouvelles tables
+-- ------------------------------------------------------------
+alter table fournisseurs enable row level security;
+alter table depenses enable row level security;
+alter table factures enable row level security;
+alter table facture_lignes enable row level security;
+alter table mouvements_stock enable row level security;
+
+create policy "Chacun voit ses propres données" on fournisseurs
+  for all using (auth.uid() = user_id);
+create policy "Chacun voit ses propres données" on depenses
+  for all using (auth.uid() = user_id);
+create policy "Chacun voit ses propres données" on factures
+  for all using (auth.uid() = user_id);
+create policy "Chacun voit ses propres données" on facture_lignes
+  for all using (auth.uid() = (select user_id from factures where id = facture_id));
+create policy "Chacun voit ses propres données" on mouvements_stock
+  for all using (auth.uid() = user_id);
+
+
+  alter table plans add column factures_actif boolean not null default false;
+alter table plans add column fournisseurs_actif boolean not null default false;
+alter table plans add column depenses_actif boolean not null default false;
+
+update plans set factures_actif = true, fournisseurs_actif = true, depenses_actif = true where id in ('starter', 'premium');
+
+-- ------------------------------------------------------------
 -- 15. SÉCURITÉ (RLS — chacun ne voit que ses propres données)
 -- ------------------------------------------------------------
 alter table profiles enable row level security;
@@ -329,3 +445,62 @@ create policy "Lecture publique de la config" on app_config for select using (tr
 
 alter table promotions enable row level security;
 create policy "Lecture publique des promotions" on promotions for select using (true);
+
+-- ------------------------------------------------------------
+-- 22. EMAIL — vérification et changement d'email sans doublon
+-- ------------------------------------------------------------
+-- Migration pour les bases déjà déployées (sans risque si la colonne existe déjà).
+alter table profiles add column if not exists is_verified boolean not null default false;
+
+-- Le code OTP lui-même est généré, stocké (haché) et validé par Supabase Auth
+-- (signInWithOtp / verifyOtp). On ne le duplique PAS en clair dans profiles :
+-- c'est plus sûr. Ici, on suit uniquement le statut is_verified.
+
+-- Quand l'utilisateur change d'email AVANT vérification, signInWithOtp crée un
+-- nouvel utilisateur (nouvel email = nouvelle identité) et le trigger recrée un
+-- profil. Cette fonction supprime l'ANCIEN profil non vérifié pour éviter le
+-- doublon dans la table profiles.
+create or replace function public.supprimer_profil_non_verifie(p_email text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.profiles
+  where email = p_email
+    and is_verified = false;
+end;
+$$;
+
+-- Appelable depuis l'app (client anonyme ou connecté) pour le nettoyage.
+grant execute on function public.supprimer_profil_non_verifie(text) to anon, authenticated;
+
+-- Sauvegarde toutes les infos du profil dès l'inscription (avant vérification,
+-- donc sans session). Appelée depuis l'app via RPC, au moment où l'utilisateur
+-- clique sur "Continuer" dans le formulaire de configuration de la boutique.
+create or replace function public.sauvegarder_profil_inscription(
+  p_email text,
+  p_nom_boutique text,
+  p_telephone text,
+  p_langue text,
+  p_devise text,
+  p_pays_code text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles
+  set nom_boutique = p_nom_boutique,
+      telephone = p_telephone,
+      langue = p_langue,
+      devise = p_devise,
+      pays_code = p_pays_code
+  where email = p_email;
+end;
+$$;
+
+grant execute on function public.sauvegarder_profil_inscription(text, text, text, text, text, text) to anon, authenticated;

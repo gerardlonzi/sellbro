@@ -1,20 +1,21 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Modal, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t, Langue } from "@/lib/i18n";
-import { useCurrency, DEVISES } from "@/lib/currency/CurrencyProvider";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { useConnexion } from "@/lib/useConnexion";
-import { supabase } from "@/lib/supabase/client";
 import { usePays } from "@/lib/pays/PaysProvider";
 import { verifierLimiteAppareil, enregistrerInscriptionAppareil } from "@/lib/auth/limiteAppareil";
+import { envoyerCodeEmail } from "@/lib/auth/emailVerification";
+import { supabase } from "@/lib/supabase/client";
 
 export default function OnboardingBoutique() {
   const { colors } = useTheme();
   const { langue, changerLangue } = useLangue();
-  const { devise, setDevise } = useCurrency();
+  const { devise } = useCurrency();
   const [nomBoutique, setNomBoutique] = useState("");
   const enLigne = useConnexion();
   const [verificationEnCours, setVerificationEnCours] = useState(false);
@@ -50,19 +51,33 @@ const [telephone, setTelephone] = useState("");
     await AsyncStorage.setItem("boutika_email", email);
     await AsyncStorage.setItem("boutika_nom_boutique", nomBoutique);
     await AsyncStorage.setItem("boutika_langue", langue);
-await AsyncStorage.setItem("boutika_devise", devise.code);
+    await AsyncStorage.setItem("boutika_devise", devise.code);
+    await AsyncStorage.setItem("boutika_pays", pays.code);
 
     if (telephone.trim()) {
       await AsyncStorage.setItem("boutika_telephone", `${pays.indicatif}${telephone.replace(/\s/g, "")}`);
     }  
-    const { error } = await supabase.auth.signInWithOtp({ email });
+    // Crée immédiatement la ligne en base (is_verified=false via le trigger)
+    // et mémorise l'email en attente de vérification.
+    const { error } = await envoyerCodeEmail(email);
     setVerificationEnCours(false);
-  
+
     if (error) {
-      Alert.alert("", "Impossible d'envoyer le code, réessaie.");
+      Alert.alert("", error.message);
       return;
     }
-  
+
+    // Sauvegarde toutes les infos du profil dès l'inscription (pas encore de
+    // session → on passe par une fonction SQL security definer côté Supabase).
+    await supabase.rpc("sauvegarder_profil_inscription", {
+      p_email: email.trim().toLowerCase(),
+      p_nom_boutique: nomBoutique.trim() || null,
+      p_telephone: telephone.trim() ? `${pays.indicatif}${telephone.replace(/\s/g, "")}` : null,
+      p_langue: langue,
+      p_devise: devise.code,
+      p_pays_code: pays.code,
+    });
+
     await enregistrerInscriptionAppareil();
     router.push({ pathname: "/(auth)/verification-otp", params: { email } });
   }
@@ -153,9 +168,12 @@ await AsyncStorage.setItem("boutika_devise", devise.code);
     {verificationEnCours ? t("verification_numero_encours", langue) : t("continuer", langue)}
   </Text>
 </Pressable>
-<Pressable onPress={() => router.push("/accueil")} style={{ padding: 20, paddingTop: 50, zIndex: 2 }}>
-        <Feather name="arrow-left" size={22} color={colors.textSecondary} />
-    </Pressable>
+
+      <Pressable onPress={() => router.push("/(auth)/connexion")} style={{ marginTop: 16 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: "center" }}>
+          {t("deja_compte", langue)}
+        </Text>
+      </Pressable>
 
     </View>
   );

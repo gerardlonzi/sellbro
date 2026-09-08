@@ -2,24 +2,34 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
 import { router } from "expo-router";
-import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useLangue, t } from "@/lib/i18n";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { envoyerCodeEmail, verifierCodeEmail } from "@/lib/auth/emailVerification";
 
 export default function Connexion() {
   const { colors } = useTheme();
-  const [etape, setEtape] = useState<"numero" | "code">("numero");
-  const [numero, setNumero] = useState("");
+  const { langue } = useLangue();
+  const [etape, setEtape] = useState<"email" | "code">("email");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [chargement, setChargement] = useState(false);
 
+  function emailValide(valeur: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valeur);
+  }
+
   async function envoyerCode() {
+    if (!emailValide(email)) {
+      Alert.alert("", t("erreur_email_invalide", langue));
+      return;
+    }
     setChargement(true);
-    const telephoneComplet = `+237${numero.replace(/\s/g, "")}`;
-    const { error } = await supabase.auth.signInWithOtp({ phone: telephoneComplet });
+    const { error } = await envoyerCodeEmail(email.trim());
     setChargement(false);
 
     if (error) {
-      Alert.alert("Ça n'a pas marché", "Vérifie ton numéro et réessaie.");
+      Alert.alert("", t("erreur_connexion_requise", langue));
       return;
     }
     setEtape("code");
@@ -27,53 +37,49 @@ export default function Connexion() {
 
   async function verifierCode() {
     setChargement(true);
-    const telephoneComplet = `+237${numero.replace(/\s/g, "")}`;
-    const { error } = await supabase.auth.verifyOtp({
-      phone: telephoneComplet,
-      token: code,
-      type: "sms",
-    });
+    const { error } = await verifierCodeEmail(email.trim(), code);
     setChargement(false);
 
     if (error) {
-      Alert.alert("Code incorrect", "Vérifie le code reçu par SMS.");
+      Alert.alert("", t("otp_erreur", langue));
       return;
     }
+
+    await AsyncStorage.setItem("onboarding_termine", "true");
     router.replace("/(tabs)/accueil");
   }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.titre, { color: colors.textPrimary }]}>Se connecter</Text>
+      <Text style={[styles.titre, { color: colors.textPrimary }]}>{t("connexion_titre", langue)}</Text>
 
-      {etape === "numero" ? (
+      {etape === "email" ? (
         <>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
-            Numéro de téléphone
-          </Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>{t("label_email", langue)}</Text>
           <TextInput
             style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]}
-            placeholder="6XX XXX XXX"
-            keyboardType="phone-pad"
-            value={numero}
-            onChangeText={setNumero}
+            placeholder={t("placeholder_email", langue)}
+            placeholderTextColor={colors.textMuted}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
           />
           <Pressable
             onPress={envoyerCode}
             disabled={chargement}
-            style={[styles.bouton, { backgroundColor: colors.accent }]}
+            style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
           >
-            <Text style={styles.boutonTexte}>{chargement ? "..." : "Recevoir le code"}</Text>
+            <Text style={styles.boutonTexte}>{chargement ? "..." : t("connexion_recevoir_code", langue)}</Text>
           </Pressable>
         </>
       ) : (
         <>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
-            Code reçu par SMS
-          </Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>{t("connexion_code_recu", langue)}</Text>
           <TextInput
-            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]}
+            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, textAlign: "center", fontSize: 20, letterSpacing: 8 }]}
             placeholder="123456"
+            placeholderTextColor={colors.textMuted}
             keyboardType="number-pad"
             value={code}
             onChangeText={setCode}
@@ -81,12 +87,18 @@ export default function Connexion() {
           <Pressable
             onPress={verifierCode}
             disabled={chargement}
-            style={[styles.bouton, { backgroundColor: colors.accent }]}
+            style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
           >
-            <Text style={styles.boutonTexte}>{chargement ? "..." : "Confirmer"}</Text>
+            <Text style={styles.boutonTexte}>{chargement ? "..." : t("otp_confirmer", langue)}</Text>
           </Pressable>
         </>
       )}
+
+      <Pressable onPress={() => router.back()} style={{ marginTop: 16 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: "center" }}>
+          {t("connexion_pas_de_compte", langue)}
+        </Text>
+      </Pressable>
     </View>
   );
 }
