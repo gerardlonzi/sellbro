@@ -4,10 +4,11 @@ import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
-import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 const CATEGORIES = ["loyer", "electricite", "transport", "salaire", "internet", "autre"];
 
@@ -33,10 +34,13 @@ export default function NouvelleDepense() {
         d.categorie = categorie;
         d.description = description.trim() || null;
         d.montant = Number(montant);
+        d.creeLe = new Date();
         d.synchronise = false;
       });
     });
 
+    await synchroniserPourUtilisateurCourant();
+    await enregistrerActivite("depense", "ajout", "Nouvelle dépense");
     setChargement(false);
     router.back();
   }

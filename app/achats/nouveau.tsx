@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -9,6 +9,8 @@ import { Q } from "@nozbe/watermelondb";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 type Produit = { id: string; nom: string };
 
@@ -55,6 +57,7 @@ export default function NouvelAchat() {
         a.montant = Number(montant);
         a.source = "manuel";
         a.donneesSupplementairesJson = "{}";
+        a.creeLe = new Date();
         a.synchronise = false;
       });
     });
@@ -70,6 +73,8 @@ export default function NouvelAchat() {
       });
     }
 
+    await synchroniserPourUtilisateurCourant();
+    await enregistrerActivite("achat", "ajout", "Nouvel achat");
     setChargement(false);
     router.back();
   }

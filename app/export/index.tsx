@@ -1,14 +1,20 @@
-import { useState } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
-import { router } from "expo-router";
+import { useState, useCallback } from "react";
+import { View, Text, Pressable, StyleSheet, Share } from "react-native";
+import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { PeriodeId } from "@/lib/periode/periodes";
+import { PeriodeId, plageDates } from "@/lib/periode/periodes";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { EnteteEcran } from "@/components/UI";
+import { database } from "@/lib/database";
+import { Q } from "@nozbe/watermelondb";
+import { obtenirUserId } from "@/lib/auth/userCache";
+import { genererExportPdf, obtenirInfosBoutique } from "@/lib/export/genererPdf";
+
+type StatsExport = { ca: number; benefice: number; ventes: number; parPaiement: Record<string, number> };
 
 export default function Export() {
   const { colors } = useTheme();
@@ -17,9 +23,53 @@ export default function Export() {
   const { plan } = usePlanActuel();
   const [periode, setPeriode] = useState<PeriodeId>("mois");
   const [format, setFormat] = useState<"pdf" | "excel">("pdf");
+  const [stats, setStats] = useState<StatsExport>({ ca: 0, benefice: 0, ventes: 0, parPaiement: {} });
+  const [chargement, setChargement] = useState(false);
 
-  // L'export comptable est réservé à Starter/Premium (plan.exportComptable
-  // vient directement de la table `plans`, modifiable sans toucher au code).
+  useFocusEffect(
+    useCallback(() => {
+      calculerStats();
+    }, [periode])
+  );
+
+  async function calculerStats() {
+    const { debut } = plageDates(periode);
+    const userId = await obtenirUserId();
+    if (!userId) return;
+    const tousLesVentes = await database.get("ventes").query(Q.where("user_id", userId)).fetch();
+    const ventes = (tousLesVentes as any[]).filter((v) => v.creeLe >= debut);
+    const ca = ventes.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
+    const parPaiement: Record<string, number> = {};
+    for (const v of ventes) {
+      const mode = v.modePaiement ?? "—";
+      parPaiement[mode] = (parPaiement[mode] ?? 0) + v.quantite * v.prixUnitaire;
+    }
+    setStats({ ca, benefice: Math.round(ca * 0.3), ventes: ventes.length, parPaiement });
+  }
+
+  async function generer() {
+    setChargement(true);
+    const periodeLabel = t(`periode_${periode}` as any, langue) as string;
+
+    if (format === "pdf") {
+      await genererExportPdf(stats, periodeLabel);
+    } else {
+      const infos = await obtenirInfosBoutique();
+      const paiements = Object.entries(stats.parPaiement).map(([mode, montant]) => `${mode};${montant}`).join("\n");
+      const csv = [
+        `Boutique;${infos.nom}`,
+        `Période;${periodeLabel}`,
+        `Chiffre d'affaires;${stats.ca}`,
+        `Bénéfice estimé;${stats.benefice}`,
+        `Nombre de ventes;${stats.ventes}`,
+        `Mode;Montant`,
+        paiements,
+      ].join("\n");
+      await Share.share({ message: csv, title: "Export comptable CSV" });
+    }
+    setChargement(false);
+  }
+
   if (plan && !plan.exportComptable) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, padding: 16, paddingTop: 50 }}>
@@ -62,21 +112,24 @@ export default function Export() {
           style={[styles.choix, { borderColor: format === "excel" ? colors.accent : colors.border, borderWidth: format === "excel" ? 2 : 1 }]}
         >
           <Feather name="grid" size={14} color={format === "excel" ? colors.accent : colors.textPrimary} />
-          <Text style={{ color: format === "excel" ? colors.accent : colors.textPrimary, fontSize: 13 }}>Excel</Text>
+          <Text style={{ color: format === "excel" ? colors.accent : colors.textPrimary, fontSize: 13 }}>CSV</Text>
         </Pressable>
       </View>
 
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={{ fontSize: 12, fontWeight: "500", color: colors.textPrimary, marginBottom: 10 }}>Aperçu</Text>
-        {/* TODO : brancher les vraies données une fois les requêtes de stats centralisées */}
-        <Ligne label={t("dashboard_ca", langue)} valeur={formater(0)} colors={colors} />
-        <Ligne label={t("dashboard_benefice", langue)} valeur={formater(0)} colors={colors} />
-        <Ligne label={t("dashboard_ventes", langue)} valeur="0" colors={colors} dernier />
+        <Ligne label={t("dashboard_ca", langue)} valeur={formater(stats.ca)} colors={colors} />
+        <Ligne label={t("dashboard_benefice", langue)} valeur={formater(stats.benefice)} colors={colors} />
+        <Ligne label={t("dashboard_ventes", langue)} valeur={String(stats.ventes)} colors={colors} dernier />
       </View>
 
-      <Pressable style={[styles.boutonGenerer, { backgroundColor: colors.accent, marginTop: 20 }]} onPress={() => {}}>
+      <Pressable
+        style={[styles.boutonGenerer, { backgroundColor: colors.accent, marginTop: 20, opacity: chargement ? 0.6 : 1 }]}
+        onPress={generer}
+        disabled={chargement}
+      >
         <Feather name="share" size={15} color="#fff" />
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>Générer et partager</Text>
+        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : "Générer et partager"}</Text>
       </Pressable>
     </View>
   );

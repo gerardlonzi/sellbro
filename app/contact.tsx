@@ -1,6 +1,6 @@
 import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from "react-native";
 import { router } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { EnteteEcran } from "@/components/UI";
@@ -17,7 +17,7 @@ export default function Contact() {
       <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 18 }}>{t("contact_sous_titre", langue)}</Text>
 
       <Pressable onPress={() => Linking.openURL(`https://wa.me/${NUMERO_SUPPORT.replace("+", "")}`)} style={[styles.boutonContact, { backgroundColor: "#1D9E75" }]}>
-        <Feather name="message-circle" size={18} color="#fff" />
+        <MaterialCommunityIcons name="whatsapp" size={18} color="#fff" />
         <View>
           <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>{t("contact_whatsapp", langue)}</Text>
           <Text style={{ color: "#fff", fontSize: 11, opacity: 0.9 }}>{t("contact_whatsapp_desc", langue)}</Text>

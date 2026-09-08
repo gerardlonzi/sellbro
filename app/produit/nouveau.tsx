@@ -5,12 +5,13 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
-import { supabase } from "@/lib/supabase/client";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { ecouterSelectionCategorie } from "@/lib/categories/relaisSelection"
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 
 
@@ -49,10 +50,19 @@ export default function NouveauProduit() {
   const [poidsUnite, setPoidsUnite] = useState("kg");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const {plan} = usePlanActuel();
+  const { reference } = useLocalSearchParams<{ reference?: string }>();
 
   useEffect(() => {
     ecouterSelectionCategorie(setCategorie);
   }, []);
+
+  // Si on arrive d'un scan de code-barres, on pré-remplit la référence.
+  useEffect(() => {
+    if (reference) {
+      setChampsActifs((a) => (a.includes("reference") ? a : [...a, "reference"]));
+      setValeursTexte((v) => ({ ...v, reference }));
+    }
+  }, [reference]);
   function basculerChamp(cle: string) {
     setChampsActifs((actuels) => (actuels.includes(cle) ? actuels.filter((c) => c !== cle) : [...actuels, cle]));
   }
@@ -62,7 +72,7 @@ export default function NouveauProduit() {
     if (!permission.granted) return;
 
     const resultat = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 0.7,
       allowsEditing: true,
       aspect: [1, 1],
@@ -99,11 +109,14 @@ export default function NouveauProduit() {
         p.quantiteStock = Number(quantite) || 0;
         p.seuilAlerte = Number(seuilAlerte) || 5;
         p.champsSupplementairesJson = JSON.stringify(champsSupplementaires);
+        p.creeLe = new Date();
         p.synchronise = false;
       });
     });
     console.log("Produit sauvegardé");
-  
+
+    await synchroniserPourUtilisateurCourant();
+    await enregistrerActivite("produit", "ajout", `Produit ajouté : ${nom}`);
     router.back();
   }
   
@@ -149,7 +162,7 @@ export default function NouveauProduit() {
               key={cle}
               label={t(info.labelCle as any, langue)}
               valeur={valeursTexte[cle] ?? ""}
-              onChange={(v) => setValeursTexte((prev) => ({ ...prev, [cle]: v }))}
+              onChange={(v: string) => setValeursTexte((prev) => ({ ...prev, [cle]: v }))}
               placeholder=""
             />
           );

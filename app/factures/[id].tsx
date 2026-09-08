@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Share } from "react-native";
+import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -8,6 +8,7 @@ import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran, Badge } from "@/components/UI";
+import { genererFacturePdf } from "@/lib/export/genererPdf";
 
 export default function DetailFacture() {
   const { colors } = useTheme();
@@ -42,8 +43,7 @@ export default function DetailFacture() {
   }
 
   async function partager() {
-    const texte = `${t("facture_numero", langue)} ${facture.numero}\n${lignes.map((l) => `${l.produitNom} x${l.quantite} — ${(l.quantite * l.prixUnitaire).toLocaleString()} F`).join("\n")}\n\n${t("facture_total", langue)}: ${formater(facture.total)}`;
-    await Share.share({ message: texte });
+    await genererFacturePdf(facture, lignes);
   }
 
   if (chargement || !facture) {

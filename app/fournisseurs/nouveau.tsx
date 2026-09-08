@@ -4,10 +4,11 @@ import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
-import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 export default function NouveauFournisseur() {
   const { colors } = useTheme();
@@ -31,10 +32,13 @@ export default function NouveauFournisseur() {
         f.telephone = telephone.trim() || null;
         f.totalAchats = 0;
         f.montantDu = 0;
+        f.creeLe = new Date();
         f.synchronise = false;
       });
     });
 
+    await synchroniserPourUtilisateurCourant();
+    await enregistrerActivite("fournisseur", "ajout", `Fournisseur ajouté : ${nom}`);
     setChargement(false);
     router.back();
   }

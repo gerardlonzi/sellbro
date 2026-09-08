@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -10,6 +10,8 @@ import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number };
 type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number };
@@ -27,12 +29,14 @@ export default function NouvelleVente() {
   const [selecteurClientOuvert, setSelecteurClientOuvert] = useState(false);
   const [produits, setProduits] = useState<Produit[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [selectionProduits, setSelectionProduits] = useState<Set<string>>(new Set());
 
   async function ouvrirSelecteurProduit() {
     const userId = await obtenirUserId();
     if (!userId) return;
     const resultats = await database.get("produits").query(Q.where("user_id", userId)).fetch();
     setProduits((resultats as any[]).map((p) => ({ id: p.id, nom: p.nom, prixVente: p.prixVente, quantiteStock: p.quantiteStock })));
+    setSelectionProduits(new Set());
     setSelecteurProduitOuvert(true);
   }
 
@@ -44,6 +48,20 @@ export default function NouvelleVente() {
       }
       return [...actuel, { produitId: p.id, nom: p.nom, quantite: 1, prixUnitaire: p.prixVente }];
     });
+  }
+
+  function basculerSelectionProduit(id: string) {
+    setSelectionProduits((actuel) => {
+      const copie = new Set(actuel);
+      if (copie.has(id)) copie.delete(id);
+      else copie.add(id);
+      return copie;
+    });
+  }
+
+  function confirmerSelection() {
+    produits.filter((p) => selectionProduits.has(p.id)).forEach((p) => ajouterAuPanier(p));
+    setSelectionProduits(new Set());
     setSelecteurProduitOuvert(false);
   }
 
@@ -83,6 +101,11 @@ export default function NouvelleVente() {
       return;
     }
 
+    if (modePaiement === "credit" && !client.trim()) {
+      Alert.alert("", t("vente_credit_nom_requis", langue));
+      return;
+    }
+
     setChargement(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -100,7 +123,27 @@ export default function NouvelleVente() {
           v.modePaiement = modePaiement;
           v.source = "manuel";
           v.donneesSupplementairesJson = "{}";
+          v.creeLe = new Date();
           v.synchronise = false;
+        });
+      }
+
+      // Paiement à crédit → on crée la créance correspondante.
+      if (modePaiement === "credit") {
+        const totalVente = panier.reduce((s, l) => s + l.quantite * l.prixUnitaire, 0);
+        await database.get("creances_dettes").create((c: any) => {
+          c.userId = user.id;
+          c.type = "creance";
+          c.personneNom = client.trim();
+          c.telephone = clientTelephone.trim() || null;
+          c.montantInitial = totalVente;
+          c.montantRestant = totalVente;
+          c.dateEcheance = null;
+          c.statut = "en_cours";
+          c.note = null;
+          c.produitConcerne = null;
+          c.creeLe = new Date();
+          c.synchronise = false;
         });
       }
     });
@@ -119,6 +162,8 @@ export default function NouvelleVente() {
       }
     }
 
+    await synchroniserPourUtilisateurCourant();
+    await enregistrerActivite("vente", "ajout", "Nouvelle vente");
     setChargement(false);
     router.back();
   }
@@ -194,19 +239,36 @@ export default function NouvelleVente() {
 
       <Modal visible={selecteurProduitOuvert} transparent animationType="slide">
         <Pressable style={styles.fondModal} onPress={() => setSelecteurProduitOuvert(false)}>
-          <View style={[styles.feuille, { backgroundColor: colors.surface }]}>
+          <Pressable style={[styles.feuille, { backgroundColor: colors.surface }]} onPress={() => {}}>
             <ScrollView>
-              {produits.map((p) => (
-                <Pressable key={p.id} onPress={() => ajouterAuPanier(p)} style={[styles.ligneChoixModal, { borderBottomColor: colors.border }]}>
-                  <View>
-                    <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{p.nom}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 11 }}>{t("vente_en_stock_court", langue)} {p.quantiteStock}</Text>
-                  </View>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{p.prixVente.toLocaleString()} F</Text>
-                </Pressable>
-              ))}
+              {produits.map((p) => {
+                const selectionne = selectionProduits.has(p.id);
+                return (
+                  <Pressable key={p.id} onPress={() => basculerSelectionProduit(p.id)} style={[styles.ligneChoixModal, { borderBottomColor: colors.border }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                      <View style={[styles.checkbox, { borderColor: selectionne ? colors.accent : colors.border, backgroundColor: selectionne ? colors.accent : "transparent" }]}>
+                        {selectionne && <Feather name="check" size={12} color="#fff" />}
+                      </View>
+                      <View>
+                        <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{p.nom}</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>{t("vente_en_stock_court", langue)} {p.quantiteStock}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{p.prixVente.toLocaleString()} F</Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
-          </View>
+            <Pressable
+              onPress={confirmerSelection}
+              disabled={selectionProduits.size === 0}
+              style={[styles.boutonConfirmer, { backgroundColor: colors.accent, opacity: selectionProduits.size === 0 ? 0.5 : 1 }]}
+            >
+              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>
+                {t("vente_ajouter_produit", langue)}{selectionProduits.size > 0 ? ` (${selectionProduits.size})` : ""}
+              </Text>
+            </Pressable>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -242,5 +304,7 @@ const styles = StyleSheet.create({
   boutonSauver: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 10, marginTop: 10 },
   fondModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   feuille: { maxHeight: "60%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 },
-  ligneChoixModal: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1 },
+  ligneChoixModal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1 },
+  checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  boutonConfirmer: { paddingVertical: 13, borderRadius: 10, alignItems: "center", marginTop: 12 },
 });

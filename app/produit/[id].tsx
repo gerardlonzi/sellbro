@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Image } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
-import { supabase } from "@/lib/supabase/client";
+import { database } from "@/lib/database";
+import { Q } from "@nozbe/watermelondb";
 
 export default function DetailProduit() {
   const { colors } = useTheme();
@@ -16,6 +17,8 @@ export default function DetailProduit() {
   const [prixAchat, setPrixAchat] = useState("");
   const [quantite, setQuantite] = useState("");
   const [seuilAlerte, setSeuilAlerte] = useState("");
+  const [champsSupp, setChampsSupp] = useState<Record<string, string>>({});
+  const [stats, setStats] = useState({ nbVentes: 0, ca: 0, benefice: 0, topClients: [] as { nom: string; montant: number }[] });
 
   useEffect(() => {
     charger();
@@ -23,28 +26,42 @@ export default function DetailProduit() {
 
   async function charger() {
     setChargement(true);
-    const { data } = await supabase.from("produits").select("*").eq("id", id).single();
-    if (data) {
-      setNom(data.nom);
-      setPrixVente(String(data.prix_vente));
-      setPrixAchat(data.prix_achat ? String(data.prix_achat) : "");
-      setQuantite(String(data.quantite_stock));
-      setSeuilAlerte(String(data.seuil_alerte));
+    const p = (await database.get("produits").find(id)) as any;
+    if (p) {
+      setNom(p.nom);
+      setPrixVente(String(p.prixVente));
+      setPrixAchat(p.prixAchat != null ? String(p.prixAchat) : "");
+      setQuantite(String(p.quantiteStock));
+      setSeuilAlerte(String(p.seuilAlerte));
+      setChampsSupp(p.champsSupplementaires ?? {});
     }
+
+    // Stats de vente de ce produit.
+    const ventes = await database.get("ventes").query(Q.where("produit_id", id)).fetch();
+    const ventesList = ventes as any[];
+    const nbVentes = ventesList.reduce((s, v) => s + v.quantite, 0);
+    const ca = ventesList.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
+    const clientsMap: Record<string, number> = {};
+    for (const v of ventesList) {
+      if (v.clientNom) clientsMap[v.clientNom] = (clientsMap[v.clientNom] ?? 0) + v.quantite * v.prixUnitaire;
+    }
+    const topClients = Object.entries(clientsMap).map(([nom, montant]) => ({ nom, montant })).sort((a, b) => b.montant - a.montant).slice(0, 3);
+    setStats({ nbVentes, ca, benefice: Math.round(ca * 0.3), topClients });
+
     setChargement(false);
   }
 
   async function sauvegarder() {
-    await supabase
-      .from("produits")
-      .update({
-        nom,
-        prix_vente: Number(prixVente),
-        prix_achat: Number(prixAchat) || null,
-        quantite_stock: Number(quantite) || 0,
-        seuil_alerte: Number(seuilAlerte) || 5,
-      })
-      .eq("id", id);
+    const p = await database.get("produits").find(id);
+    await database.write(async () => {
+      await (p as any).update((x: any) => {
+        x.nom = nom;
+        x.prixVente = Number(prixVente);
+        x.prixAchat = Number(prixAchat) || null;
+        x.quantiteStock = Number(quantite) || 0;
+        x.seuilAlerte = Number(seuilAlerte) || 5;
+      });
+    });
     router.back();
   }
 
@@ -55,7 +72,8 @@ export default function DetailProduit() {
         text: t("categories_supprimer_confirmer", langue),
         style: "destructive",
         onPress: async () => {
-          await supabase.from("produits").delete().eq("id", id);
+          const p = await database.get("produits").find(id);
+          await database.write(async () => { await (p as any).destroyPermanently(); });
           router.back();
         },
       },
@@ -84,6 +102,76 @@ export default function DetailProduit() {
   <Feather name="clock" size={18} color={colors.textSecondary} />
 </Pressable>
       </View>
+
+      {/* Statistiques du produit */}
+      <View style={[styles.blocChamps, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>Statistiques</Text>
+        <View style={styles.ligneChamp}>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Ventes</Text>
+          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{stats.nbVentes}</Text>
+        </View>
+        <View style={styles.ligneChamp}>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Chiffre d'affaires</Text>
+          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{stats.ca.toLocaleString()} F</Text>
+        </View>
+        <View style={styles.ligneChamp}>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Bénéfice estimé</Text>
+          <Text style={{ color: colors.success, fontSize: 13, fontWeight: "500" }}>{stats.benefice.toLocaleString()} F</Text>
+        </View>
+        {stats.topClients.length > 0 && (
+          <View style={{ marginTop: 6 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>Meilleurs clients</Text>
+            {stats.topClients.map((c) => (
+              <View key={c.nom} style={styles.ligneChamp}>
+                <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{c.nom}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{c.montant.toLocaleString()} F</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {champsSupp.image_uri ? (
+        <Image source={{ uri: champsSupp.image_uri }} style={styles.imageProduit} />
+      ) : null}
+
+      {Object.keys(champsSupp).length > 0 && (
+        <View style={[styles.blocChamps, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {champsSupp.couleur ? (
+            <View style={styles.ligneChamp}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("produit_champ_couleur", langue)}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <View style={[styles.pastilleCouleur, { backgroundColor: champsSupp.couleur }]} />
+                <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{champsSupp.couleur}</Text>
+              </View>
+            </View>
+          ) : null}
+          {champsSupp.poids ? (
+            <View style={styles.ligneChamp}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("produit_champ_poids", langue)}</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{champsSupp.poids}</Text>
+            </View>
+          ) : null}
+          {champsSupp.remarque ? (
+            <View style={styles.ligneChamp}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("produit_champ_remarque", langue)}</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{champsSupp.remarque}</Text>
+            </View>
+          ) : null}
+          {champsSupp.description ? (
+            <View style={styles.ligneChamp}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("produit_champ_description", langue)}</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{champsSupp.description}</Text>
+            </View>
+          ) : null}
+          {champsSupp.reference ? (
+            <View style={styles.ligneChamp}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("produit_champ_reference", langue)}</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{champsSupp.reference}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
 
       <Champ label={t("produit_nom_label", langue)} valeur={nom} onChange={setNom} colors={colors} />
       <View style={styles.ligneDeux}>
@@ -122,4 +210,8 @@ const styles = StyleSheet.create({
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   ligneDeux: { flexDirection: "row", gap: 10 },
   boutonSupprimer: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 8 },
+  imageProduit: { width: "100%", height: 160, borderRadius: 12, marginBottom: 16 },
+  blocChamps: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
+  ligneChamp: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
+  pastilleCouleur: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: "#00000022" },
 });
