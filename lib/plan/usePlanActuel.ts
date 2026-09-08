@@ -7,7 +7,9 @@ export function usePlanActuel() {
   useEffect(() => {
     const desabonner = sAbonnerAuPlan(setEtat);
     if (!etatPlanActuel().pret) rafraichirPlan();
-    return desabonner;
+    return () => {
+      desabonner();
+    };
   }, []);
 
   return etat; // { planId, plan, pret }

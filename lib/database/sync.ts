@@ -1,6 +1,21 @@
 import { Q } from "@nozbe/watermelondb";
 import { database } from "./index";
 import { supabase } from "@/lib/supabase/client";
+import { etatPlanActuel, rafraichirPlan } from "@/lib/plan/planStore";
+
+// Seuls les abonnés (Starter/Premium) ont `sauvegarde_cloud = true` et voient
+// leurs données métier synchronisées vers Supabase. Les comptes Gratuit restent
+// en local (WatermelonDB) : on ne pousse ni ne tire leurs données métier.
+// (Les données d'identité dans `profiles` sont, elles, toujours côté Supabase
+// pour tous, car l'authentification par email l'exige.)
+async function peutSynchroniser(): Promise<boolean> {
+  let etat = etatPlanActuel();
+  if (!etat.pret) {
+    await rafraichirPlan();
+    etat = etatPlanActuel();
+  }
+  return etat.plan?.sauvegardeCloud === true;
+}
 
 // Envoie vers Supabase tout ce qui a été créé hors ligne et jamais synchronisé.
 export async function pousserDonneesLocales() {
@@ -31,7 +46,7 @@ export async function pousserDonneesLocales() {
   }
 }
 
-function construireDonneesEnvoi(nomTable: string, e: any) {
+function construireDonneesEnvoi(nomTable: string, e: any): any {
   if (nomTable === "produits") {
     return {
       user_id: e.userId, nom: e.nom, categorie_nom: e.categorieNom,
@@ -76,23 +91,23 @@ export async function tirerDonneesDistantes(userId: string) {
     await remplacerTable("produits", produits.data ?? [], (r) => ({
       remoteId: r.id, userId: r.user_id, categorieNom: r.categorie_nom, nom: r.nom,
       prixVente: r.prix_vente, prixAchat: r.prix_achat, quantiteStock: r.quantite_stock,
-      seuilAlerte: r.seuil_alerte, champsSupplementairesJson: JSON.stringify(r.champs_supplementaires ?? {}), synchronise: true,
+      seuilAlerte: r.seuil_alerte, champsSupplementairesJson: JSON.stringify(r.champs_supplementaires ?? {}), creeLe: new Date(r.created_at), synchronise: true,
     }));
     await remplacerTable("ventes", ventes.data ?? [], (r) => ({
       remoteId: r.id, userId: r.user_id, produitId: r.produit_id, produitNom: null,
       quantite: r.quantite, prixUnitaire: r.prix_unitaire, clientNom: r.client_nom, clientTelephone: r.client_telephone,
       modePaiement: r.mode_paiement, source: r.source, audioUrl: r.audio_url, imageFactureUrl: r.image_facture_url,
-      donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}), synchronise: true,
+      donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}), creeLe: new Date(r.created_at), synchronise: true,
     }));
     await remplacerTable("achats", achats.data ?? [], (r) => ({
       remoteId: r.id, userId: r.user_id, fournisseurNom: r.fournisseur_nom, description: r.description,
       montant: r.montant, source: r.source, factureImageUrl: r.facture_image_url,
-      donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}), synchronise: true,
+      donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}), creeLe: new Date(r.created_at), synchronise: true,
     }));
     await remplacerTable("creances_dettes", creances.data ?? [], (r) => ({
       remoteId: r.id, userId: r.user_id, type: r.type, personneNom: r.personne_nom, telephone: r.telephone,
       montantInitial: r.montant_initial, montantRestant: r.montant_restant, dateEcheance: r.date_echeance,
-      statut: r.statut, note: r.note, produitConcerne: r.produit_concerne, synchronise: true,
+      statut: r.statut, note: r.note, produitConcerne: r.produit_concerne, creeLe: new Date(r.created_at), synchronise: true,
     }));
   });
 }
@@ -108,6 +123,15 @@ async function remplacerTable(nomTable: string, lignesDistantes: any[], mapper: 
 }
 
 export async function synchroniserTout(userId: string) {
+  if (!(await peutSynchroniser())) return;
   await pousserDonneesLocales();
   await tirerDonneesDistantes(userId);
+}
+
+// Synchro complète pour l'utilisateur courant (récupère l'id depuis la session).
+// À appeler après chaque écriture pour que les lecteurs distants (dashboard,
+// clients, créances…) voient immédiatement les nouvelles données.
+export async function synchroniserPourUtilisateurCourant() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) await synchroniserTout(user.id);
 }

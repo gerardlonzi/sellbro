@@ -5,11 +5,11 @@ import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { supabase } from "@/lib/supabase/client";
+import { database } from "@/lib/database";
 import { EnteteEcran } from "@/components/UI";
 
 type Vente = {
-  id: string; quantite: number; prix_unitaire: number; client_nom: string | null;
+  id: string; quantite: number; prix_unitaire: number; produit_nom: string | null; client_nom: string | null;
   mode_paiement: string | null; source: string; audio_url: string | null; created_at: string;
 };
 
@@ -27,8 +27,12 @@ export default function DetailTransaction() {
 
   async function charger() {
     setChargement(true);
-    const { data } = await supabase.from("ventes").select("*").eq("id", id).single();
-    setVente(data);
+    const v = (await database.get("ventes").find(id)) as any;
+    setVente({
+      id: v.id, quantite: v.quantite, prix_unitaire: v.prixUnitaire, produit_nom: v.produitNom, client_nom: v.clientNom,
+      mode_paiement: v.modePaiement, source: v.source, audio_url: v.audioUrl,
+      created_at: v.creeLe ? v.creeLe.toISOString() : new Date().toISOString(),
+    });
     setChargement(false);
   }
 
@@ -39,7 +43,8 @@ export default function DetailTransaction() {
         text: t("categories_supprimer_confirmer", langue),
         style: "destructive",
         onPress: async () => {
-          await supabase.from("ventes").delete().eq("id", id);
+          const enreg = await database.get("ventes").find(id);
+          await database.write(async () => { await (enreg as any).destroyPermanently(); });
           router.back();
         },
       },
@@ -76,6 +81,7 @@ export default function DetailTransaction() {
       </View>
 
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Ligne label="Produit" valeur={vente.produit_nom ?? "—"} colors={colors} />
         <Ligne label={t("nouvelle_creance_montant", langue)} valeur={`${vente.quantite} × ${vente.prix_unitaire.toLocaleString()} F`} colors={colors} />
         <Ligne label={t("nouvelle_creance_personne", langue)} valeur={vente.client_nom ?? "—"} colors={colors} dernier />
       </View>

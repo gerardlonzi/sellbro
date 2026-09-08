@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, Linking, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { router, useFocusEffect } from "expo-router";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { supabase } from "@/lib/supabase/client";
-import { BoutonPrimaire, EnteteEcran } from "@/components/UI";
+import { database } from "@/lib/database";
+import { Q } from "@nozbe/watermelondb";
+import { obtenirUserId } from "@/lib/auth/userCache";
+import { EnteteEcran } from "@/components/UI";
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
 import { dansPlageMontant } from "@/lib/filtres/appliquerFiltres";
@@ -30,15 +32,41 @@ export default function CreancesDettes() {
   const [filtres, setFiltres] = useState<ValeursFiltre>(VALEURS_FILTRE_VIDES);
   const [panneauOuvert, setPanneauOuvert] = useState(false);
 
-  useEffect(() => {
-    chargerListe();
-  }, [onglet]);
+  useFocusEffect(
+    useCallback(() => {
+      chargerListe();
+    }, [onglet])
+  );
 
   async function chargerListe() {
     setChargement(true);
-    const { data } = await supabase.from("creances_dettes").select("*").eq("type", onglet).order("date_echeance", { ascending: true });
-    setListe(data ?? []);
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
+    const resultats = await database.get("creances_dettes").query(
+      Q.where("user_id", userId),
+      Q.where("type", onglet)
+    ).fetch();
+    setListe((resultats as any[]).map((c) => ({
+      id: c.id, type: c.type, personne_nom: c.personneNom, telephone: c.telephone,
+      montant_restant: c.montantRestant, date_echeance: c.dateEcheance, statut: c.statut,
+    })));
     setChargement(false);
+  }
+
+  async function marquerPayee(id: string) {
+    const enreg = await database.get("creances_dettes").find(id);
+    await database.write(async () => {
+      await (enreg as any).update((c: any) => { c.statut = "payee"; });
+    });
+    chargerListe();
+  }
+
+  async function supprimerCreance(id: string) {
+    const enreg = await database.get("creances_dettes").find(id);
+    await database.write(async () => {
+      await (enreg as any).destroyPermanently();
+    });
+    chargerListe();
   }
 
   function estEnRetard(c: CreanceDette) {
@@ -124,8 +152,8 @@ export default function CreancesDettes() {
                     <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formater(c.montant_restant)}</Text>
                     <MenuContextuel
                       actions={[
-                        { label: "Marquer payée", icone: "check-circle", onPress: async () => { await supabase.from("creances_dettes").update({ statut: "payee" }).eq("id", c.id); chargerListe(); } },
-                        { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { await supabase.from("creances_dettes").delete().eq("id", c.id); chargerListe(); } },
+                        { label: "Marquer payée", icone: "check-circle", onPress: async () => { await marquerPayee(c.id); } },
+                        { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { await supprimerCreance(c.id); } },
                       ]}
                     />
                   </View>
@@ -138,7 +166,7 @@ export default function CreancesDettes() {
                     <Feather name="phone" size={13} color={colors.textPrimary} />
                   </Pressable>
                   <Pressable onPress={() => envoyerWhatsapp(c.telephone, c.personne_nom, c.montant_restant)} style={[styles.boutonAction, { backgroundColor: "#1D9E75" }]}>
-                    <Feather name="message-circle" size={13} color="#fff" />
+                    <MaterialCommunityIcons name="whatsapp" size={13} color="#fff" />
                   </Pressable>
                 </View>
               </View>

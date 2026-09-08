@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useConnexion } from "@/lib/useConnexion";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
@@ -21,10 +20,9 @@ type VenteRecente = { nom: string; montant: number; source: "vocal" | "scan" | "
 
 export default function Accueil() {
   const { colors } = useTheme();
-  const enLigne = useConnexion();
   const { formater } = useCurrency();
   const { langue } = useLangue();
-  const { planId, plan, pret: planPret } = usePlanActuel();
+  const { planId, pret: planPret } = usePlanActuel();
   const [nomBoutique, setNomBoutique] = useState("");
   const [ca, setCa] = useState(0);
   const [nbVentes, setNbVentes] = useState(0);
@@ -35,9 +33,11 @@ export default function Accueil() {
   const { afficherTour, terminerTour } = useTourGuide();
   const [afficherPopupCompte, setAfficherPopupCompte] = useState(false);
 
-  useEffect(() => {
-    chargerDonnees();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      chargerDonnees();
+    }, [])
+  );
 
   async function chargerDonnees() {
     const nom = await AsyncStorage.getItem("boutika_nom_boutique");
@@ -81,7 +81,6 @@ export default function Accueil() {
     Alert.alert(t("bientot_disponible_titre", langue), t("bientot_disponible_texte", langue));
   }
 
-  const desactive = !enLigne;
   const estPremium = planId === "premium";
   const benefice = Math.round(ca * 0.3);
 
@@ -210,7 +209,7 @@ export default function Accueil() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 14, paddingTop: 50, height:'100%' },
+  container: { padding: 14, paddingTop: 50 },
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
   enteteDroite: { flexDirection: "row", alignItems: "center", gap: 10 },

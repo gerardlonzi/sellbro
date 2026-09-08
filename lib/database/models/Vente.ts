@@ -1,5 +1,5 @@
 import { Model } from "@nozbe/watermelondb";
-import { field, text, date, readonly } from "@nozbe/watermelondb/decorators";
+import { field, text, date } from "@nozbe/watermelondb/decorators";
 
 export default class Vente extends Model {
   static table = "ventes";
@@ -18,5 +18,5 @@ export default class Vente extends Model {
   @text("image_facture_url") imageFactureUrl!: string | null;
   @text("donnees_supplementaires") donneesSupplementairesJson!: string;
   @field("synchronise") synchronise!: boolean;
-  @readonly @date("cree_le") creeLe!: Date;
+  @date("cree_le") creeLe!: Date;
 }

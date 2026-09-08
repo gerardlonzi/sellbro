@@ -21,7 +21,7 @@ export default function OnboardingSlides() {
   const { langue } = useLangue();
   const [indexActif, setIndexActif] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
-  const [chargement, setChargement] = useState(false);
+  const [chargement] = useState(false);
   const [nomBoutique, setNomBoutique] = useState("");
 
   useEffect(() => {

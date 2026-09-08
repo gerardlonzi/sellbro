@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { PeriodeId } from "@/lib/periode/periodes";
-import { Plan, PlanId, periodesAutorisees } from "@/lib/plan/quotas";
+import { Plan, periodesAutorisees } from "@/lib/plan/quotas";
 import { LimitePopup } from "./LimitePopup";
 
 const PERIODES: { id: PeriodeId; cle: string }[] = [

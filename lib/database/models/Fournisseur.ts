@@ -1,5 +1,5 @@
 import { Model } from "@nozbe/watermelondb";
-import { field, text, date, readonly } from "@nozbe/watermelondb/decorators";
+import { field, text, date } from "@nozbe/watermelondb/decorators";
 
 export default class Fournisseur extends Model {
   static table = "fournisseurs";
@@ -11,5 +11,5 @@ export default class Fournisseur extends Model {
   @field("total_achats") totalAchats!: number;
   @field("montant_du") montantDu!: number;
   @field("synchronise") synchronise!: boolean;
-  @readonly @date("cree_le") creeLe!: Date;
+  @date("cree_le") creeLe!: Date;
 }

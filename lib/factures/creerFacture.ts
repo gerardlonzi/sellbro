@@ -28,6 +28,7 @@ export async function creerFactureDepuisVentes(userId: string, venteIds: string[
       f.total = sousTotal;
       f.statut = "en_attente";
       f.montantPaye = 0;
+      f.creeLe = new Date();
       f.synchronise = false;
     });
     factureId = facture.id;

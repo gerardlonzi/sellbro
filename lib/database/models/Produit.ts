@@ -1,5 +1,5 @@
 import { Model } from "@nozbe/watermelondb";
-import { field, text, date, readonly } from "@nozbe/watermelondb/decorators";
+import { field, text, date } from "@nozbe/watermelondb/decorators";
 
 export default class Produit extends Model {
   static table = "produits";
@@ -14,7 +14,7 @@ export default class Produit extends Model {
   @field("seuil_alerte") seuilAlerte!: number;
   @text("champs_supplementaires") champsSupplementairesJson!: string;
   @field("synchronise") synchronise!: boolean;
-  @readonly @date("cree_le") creeLe!: Date;
+  @date("cree_le") creeLe!: Date;
 
   get champsSupplementaires(): Record<string, string> {
     try { return JSON.parse(this.champsSupplementairesJson || "{}"); } catch { return {}; }

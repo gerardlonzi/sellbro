@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
+import { useFocusEffect } from "expo-router";
 
 type Notification = { id: string; type: string; message: string; lu: boolean; created_at: string };
 const ICONES: Record<string, keyof typeof Feather.glyphMap> = {
@@ -19,9 +20,11 @@ export default function Notifications() {
   const { langue } = useLangue();
   const [liste, setListe] = useState<Notification[]>([]);
 
-  useEffect(() => {
-    supabase.from("notifications").select("*").order("created_at", { ascending: false }).then(({ data }) => setListe(data ?? []));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      supabase.from("notifications").select("*").order("created_at", { ascending: false }).then(({ data }) => setListe(data ?? []));
+    }, [])
+  );
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>

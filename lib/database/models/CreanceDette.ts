@@ -1,5 +1,5 @@
 import { Model } from "@nozbe/watermelondb";
-import { field, text, date, readonly } from "@nozbe/watermelondb/decorators";
+import { field, text, date } from "@nozbe/watermelondb/decorators";
 
 export default class CreanceDette extends Model {
   static table = "creances_dettes";
@@ -16,5 +16,5 @@ export default class CreanceDette extends Model {
   @text("note") note!: string | null;
   @text("produit_concerne") produitConcerne!: string | null;
   @field("synchronise") synchronise!: boolean;
-  @readonly @date("cree_le") creeLe!: Date;
+  @date("cree_le") creeLe!: Date;
 }

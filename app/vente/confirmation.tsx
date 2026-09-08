@@ -2,15 +2,16 @@ import { useState } from "react";
 import { View, Text, StyleSheet, TextInput, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { supabase } from "@/lib/supabase/client";
+import { database } from "@/lib/database";
+import { obtenirUserId } from "@/lib/auth/userCache";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { BoutonPrimaire, BoutonSecondaire, Carte } from "@/components/UI";
-import { extraireVenteDepuisTexte } from "@/lib/ai/extraction";
 
 // Écran commun au vocal ET au scan — obligatoire avant toute validation,
 // comme décidé : jamais d'enregistrement automatique sans confirmation.
 export default function Confirmation() {
   const { colors } = useTheme();
-  const { source, texteExtrait } = useLocalSearchParams<{ source: string; texteExtrait?: string }>();
+  const { source } = useLocalSearchParams<{ source: string }>();
 
 
   // TODO : remplacer par les vraies valeurs extraites par l'IA
@@ -22,29 +23,31 @@ export default function Confirmation() {
   const [modePaiement, setModePaiement] = useState<"cash" | "momo" | "credit">("cash");
 
   async function validerVente() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await obtenirUserId();
+    if (!userId) return;
 
-    await supabase.from("ventes").insert({
-      user_id: user.id,
-      quantite: Number(quantite),
-      prix_unitaire: Number(prixUnitaire),
-      client_nom: client,
-      mode_paiement: modePaiement,
-      source: source ?? "manuel",
+    await database.write(async () => {
+      await database.get("ventes").create((v: any) => {
+        v.userId = userId;
+        v.produitId = null;
+        v.produitNom = produit.trim() || null;
+        v.quantite = Number(quantite);
+        v.prixUnitaire = Number(prixUnitaire);
+        v.clientNom = client.trim() || null;
+        v.clientTelephone = null;
+        v.modePaiement = modePaiement;
+        v.source = source ?? "manuel";
+        v.donneesSupplementairesJson = "{}";
+        v.creeLe = new Date();
+        v.synchronise = false;
+      });
     });
 
+    await synchroniserPourUtilisateurCourant();
     router.replace("/(tabs)/accueil");
   }
 
   const total = Number(quantite) * Number(prixUnitaire) || 0;
-
-const extraction = texteExtrait
-  ? extraireVenteDepuisTexte(texteExtrait, ["Savon", "Riz", "Huile", "Sucre"]) // TODO: remplacer par les vrais noms de produits de l'utilisateur
-  : null;
-
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -11,6 +11,7 @@ import { CurrencyProvider } from "@/lib/currency/CurrencyProvider";
 import { PaysProvider } from "@/lib/pays/PaysProvider";
 import { CategoriesProvider } from "@/lib/categories/CategoriesProvider";
 import { LangueProvider } from "@/lib/i18n";
+import { useSynchronisation } from "@/lib/sync/useSynchronisation";
 
 // ---------------------------------------------------------
 // IMPORTANT : empêcher le splash de disparaître
@@ -22,6 +23,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 function AppContent() {
   const { colors } = useTheme();
+
+  // Synchronise local <-> Supabase au démarrage et à chaque retour de connexion.
+  useSynchronisation();
 
   const [appReady, setAppReady] = useState(false);
 
@@ -38,10 +42,6 @@ function AppContent() {
         // - chargement de la langue
         // - etc.
         // -------------------------------------------------
-
-        // Exemple :
-        // await initialiserApplication();
-
       } catch (error) {
         console.error("Erreur initialisation application :", error);
       } finally {
@@ -52,15 +52,15 @@ function AppContent() {
     prepare();
   }, []);
 
-  const onLayoutRootView = useCallback(async () => {
-    if (!appReady) {
-      return;
-    }
-
-    try {
-      await SplashScreen.hideAsync();
-    } catch (error) {
-      console.log("Erreur fermeture splash :", error);
+  // Cache le splash dès que l'app est prête.
+  // NE PAS utiliser onLayout : en passant du <View> de chargement au
+  // <View> principal (même type de composant), React réutilise la vue
+  // native déjà mesurée et onLayout ne se re-déclenche jamais.
+  useEffect(() => {
+    if (appReady) {
+      SplashScreen.hideAsync().catch((error) => {
+        console.log("Erreur fermeture splash :", error);
+      });
     }
   }, [appReady]);
 
@@ -89,7 +89,6 @@ function AppContent() {
           backgroundColor: colors.background,
         },
       ]}
-      onLayout={onLayoutRootView}
     >
       <StatusBar style="auto" />
 

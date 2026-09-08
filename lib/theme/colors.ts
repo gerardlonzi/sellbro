@@ -1,3 +1,5 @@
+export type ThemeColors = typeof lightColors;
+
 export const lightColors = {
   background: "#FFFFFF",
   surface: "#F7F6F3",

@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { supabase } from "@/lib/supabase/client";
+import { database } from "@/lib/database";
+import { Q } from "@nozbe/watermelondb";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { EnteteEcran } from "@/components/UI";
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
 import { dansPeriode, dansPlageMontant } from "@/lib/filtres/appliquerFiltres";
-import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { MenuContextuel } from "@/components/MenuContextuel";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 
@@ -30,28 +31,39 @@ export default function Commandes() {
   const [chargement, setChargement] = useState(true);
   const [filtres, setFiltres] = useState<ValeursFiltre>(VALEURS_FILTRE_VIDES);
   const [panneauOuvert, setPanneauOuvert] = useState(false);
-  const { plan } = usePlanActuel();
+  const { client } = useLocalSearchParams<{ client?: string }>();
+  const [montantCreance, setMontantCreance] = useState(0);
 
-  useEffect(() => {
-    chargerVentes();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      chargerVentes();
+    }, [client])
+  );
 
   async function chargerVentes() {
     setChargement(true);
-    let requete = supabase.from("ventes").select("*").order("created_at", { ascending: false });
-  
-    if (plan?.historiqueJours) {
-      const dateLimit = new Date();
-      dateLimit.setDate(dateLimit.getDate() - plan.historiqueJours);
-      requete = requete.gte("created_at", dateLimit.toISOString());
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
+    const resultats = await database.get("ventes").query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc)).fetch();
+    setVentes((resultats as any[]).map((v) => ({
+      id: v.id, quantite: v.quantite, prix_unitaire: v.prixUnitaire, client_nom: v.clientNom,
+      source: v.source, mode_paiement: v.modePaiement,
+      created_at: v.creeLe ? v.creeLe.toISOString() : new Date().toISOString(),
+    })));
+
+    if (client) {
+      const creances = await database.get("creances_dettes").query(
+        Q.where("user_id", userId),
+        Q.where("type", "creance"),
+        Q.where("personne_nom", client)
+      ).fetch();
+      setMontantCreance((creances as any[]).filter((c) => c.statut !== "payee").reduce((s, c) => s + c.montantRestant, 0));
     }
-  
-    const { data } = await requete;
-    setVentes(data ?? []);
     setChargement(false);
   }
 
   let filtrees = ventes
+    .filter((v) => !client || v.client_nom === client)
     .filter((v) => (v.client_nom ?? "").toLowerCase().includes(recherche.toLowerCase()))
     .filter((v) => filtres.statut === "tous" || v.source === filtres.statut)
     .filter((v) => filtres.paiement === "tous" || v.mode_paiement === filtres.paiement)
@@ -69,9 +81,17 @@ export default function Commandes() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
 <View style={styles.entete}>
-  <EnteteEcran titre={t("commandes_titre", langue)} onRetour={() => router.back()} />
- 
+  <EnteteEcran titre={client ?? t("commandes_titre", langue)} onRetour={() => router.back()} />
+
 </View>
+      {client && (
+        <View style={[styles.bandeauTotal, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Total : {formater(total)} · Bénéfice estimé : {formater(Math.round(total * 0.3))}</Text>
+          {montantCreance > 0 && (
+            <Text style={{ color: colors.danger, fontSize: 12, marginTop: 4 }}>Crédit en cours : {formater(montantCreance)}</Text>
+          )}
+        </View>
+      )}
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
         <TextInput
           placeholder={t("commandes_recherche", langue)}
@@ -113,7 +133,7 @@ export default function Commandes() {
             <MenuContextuel
               actions={[
                 { label: "Voir détail", icone: "eye", onPress: () => router.push(`/transaction/${v.id}`) },
-                { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { await supabase.from("ventes").delete().eq("id", v.id); chargerVentes(); } },
+                { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { const enreg = await database.get("ventes").find(v.id); await database.write(async () => { await (enreg as any).destroyPermanently(); }); chargerVentes(); } },
               ]}
             />
           </View>

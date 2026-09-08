@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
@@ -23,9 +23,11 @@ export default function Factures() {
   const [factures, setFactures] = useState<Facture[]>([]);
   const [chargement, setChargement] = useState(true);
 
-  useEffect(() => {
-    charger();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      charger();
+    }, [])
+  );
 
   async function charger() {
     setChargement(true);

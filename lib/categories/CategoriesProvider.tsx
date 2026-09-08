@@ -7,6 +7,7 @@ const CATEGORIES_PAR_DEFAUT = ["Hygiène", "Alimentation", "Boissons", "Autre"];
 type CategoriesContextValue = {
   categories: string[];
   ajouterCategorie: (nom: string) => Promise<void>;
+  supprimerCategorie: (nom: string) => Promise<void>;
 };
 
 const CategoriesContext = createContext<CategoriesContextValue | null>(null);
@@ -23,13 +24,24 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }) 
   async function ajouterCategorie(nom: string) {
     const propre = nom.trim();
     if (!propre || categories.includes(propre)) return;
-    const nouvelles = [...categories, propre];
+    // Insère la nouvelle catégorie AVANT "Autre" (qui reste toujours en dernier).
+    const indexAutre = categories.indexOf("Autre");
+    const nouvelles =
+      indexAutre === -1
+        ? [...categories, propre]
+        : [...categories.slice(0, indexAutre), propre, ...categories.slice(indexAutre)];
+    setCategories(nouvelles);
+    await AsyncStorage.setItem(CLE_STOCKAGE, JSON.stringify(nouvelles));
+  }
+
+  async function supprimerCategorie(nom: string) {
+    const nouvelles = categories.filter((c) => c !== nom);
     setCategories(nouvelles);
     await AsyncStorage.setItem(CLE_STOCKAGE, JSON.stringify(nouvelles));
   }
 
   return (
-    <CategoriesContext.Provider value={{ categories, ajouterCategorie }}>
+    <CategoriesContext.Provider value={{ categories, ajouterCategorie, supprimerCategorie }}>
       {children}
     </CategoriesContext.Provider>
   );

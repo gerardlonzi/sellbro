@@ -29,6 +29,7 @@ export async function enregistrerMouvementStock(params: {
       m.stockAvant = stockAvant;
       m.stockApres = stockApres;
       m.raison = params.raison ?? null;
+      m.creeLe = new Date();
       m.synchronise = false;
     });
   });

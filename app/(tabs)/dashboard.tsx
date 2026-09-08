@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { supabase } from "@/lib/supabase/client";
+import { database } from "@/lib/database";
+import { Q } from "@nozbe/watermelondb";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { PeriodeId, plageDates } from "@/lib/periode/periodes";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
@@ -23,6 +25,8 @@ type Stats = {
 
 const STATS_VIDES: Stats = { ca: 0, ventes: 0, benefice: 0, parPaiement: {}, parCategorie: [], topProduits: [], topClients: [] };
 
+type Mouvement = { id: string; type: string; quantite: number; stockAvant: number; stockApres: number; nomProduit: string };
+
 export default function Dashboard() {
   const { colors } = useTheme();
   const { langue } = useLangue();
@@ -30,48 +34,71 @@ export default function Dashboard() {
   const { plan } = usePlanActuel();
   const [periode, setPeriode] = useState<PeriodeId>("semaine");
   const [stats, setStats] = useState<Stats>(STATS_VIDES);
+  const [mouvements, setMouvements] = useState<Mouvement[]>([]);
   const [chargement, setChargement] = useState(true);
 
-  useEffect(() => {
-    calculerStats();
-  }, [periode]);
+  useFocusEffect(
+    useCallback(() => {
+      calculerStats();
+    }, [periode])
+  );
 
   async function calculerStats() {
     setChargement(true);
     const { debut } = plageDates(periode);
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
 
-    const { data: ventes } = await supabase
-      .from("ventes")
-      .select("quantite, prix_unitaire, mode_paiement, client_nom, produit_id, produits(nom, categorie_nom)")
-      .gte("created_at", debut.toISOString());
+    const tousLesVentes = await database.get("ventes").query(Q.where("user_id", userId)).fetch();
+    const ventes = (tousLesVentes as any[]).filter((v) => v.creeLe >= debut);
 
-    if (!ventes || ventes.length === 0) {
+    const tousLesProduits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    const produitsParId = new Map((tousLesProduits as any[]).map((p) => [p.id, p]));
+
+    // Mouvements de stock : toujours chargés, indépendamment des ventes.
+    const tousLesMouvements = await database
+      .get("mouvements_stock")
+      .query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc))
+      .fetch();
+    setMouvements(
+      (tousLesMouvements as any[]).slice(0, 10).map((m) => ({
+        id: m.id,
+        type: m.type,
+        quantite: m.quantite,
+        stockAvant: m.stockAvant,
+        stockApres: m.stockApres,
+        nomProduit: produitsParId.get(m.produitId)?.nom ?? "—",
+      }))
+    );
+
+    if (ventes.length === 0) {
       setStats(STATS_VIDES);
       setChargement(false);
       return;
     }
 
-    const ca = ventes.reduce((s, v) => s + v.quantite * v.prix_unitaire, 0);
+    const ca = ventes.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
 
     const parPaiement: Record<string, number> = {};
     const parCategorieMap: Record<string, number> = {};
     const parProduitMap: Record<string, { ventes: number; montant: number }> = {};
     const parClientMap: Record<string, number> = {};
 
-    for (const v of ventes as any[]) {
-      const montantLigne = v.quantite * v.prix_unitaire;
-      const mode = v.mode_paiement ?? "—";
+    for (const v of ventes) {
+      const montantLigne = v.quantite * v.prixUnitaire;
+      const mode = v.modePaiement ?? "—";
       parPaiement[mode] = (parPaiement[mode] ?? 0) + montantLigne;
 
-      const categorie = v.produits?.categorie_nom ?? "Sans catégorie";
+      const produit = v.produitId ? produitsParId.get(v.produitId) : null;
+      const categorie = produit?.categorieNom ?? "Sans catégorie";
       parCategorieMap[categorie] = (parCategorieMap[categorie] ?? 0) + montantLigne;
 
-      const nomProduit = v.produits?.nom ?? "—";
+      const nomProduit = v.produitNom ?? produit?.nom ?? "—";
       if (!parProduitMap[nomProduit]) parProduitMap[nomProduit] = { ventes: 0, montant: 0 };
       parProduitMap[nomProduit].ventes += v.quantite;
       parProduitMap[nomProduit].montant += montantLigne;
 
-      if (v.client_nom) parClientMap[v.client_nom] = (parClientMap[v.client_nom] ?? 0) + montantLigne;
+      if (v.clientNom) parClientMap[v.clientNom] = (parClientMap[v.clientNom] ?? 0) + montantLigne;
     }
 
     const parCategorie = Object.entries(parCategorieMap).map(([nom, montant]) => ({ nom, montant })).sort((a, b) => b.montant - a.montant);
@@ -99,11 +126,6 @@ export default function Dashboard() {
 
       {chargement ? (
         <ActivityIndicator style={{ marginTop: 30 }} color={colors.accent} />
-      ) : stats.ventes === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="bar-chart-2" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: "center" }}>{t("dashboard_aucune_donnee", langue)}</Text>
-        </View>
       ) : (
         <>
           <View style={styles.ligneDeuxCartes}>
@@ -166,14 +188,32 @@ export default function Dashboard() {
           )}
 
           {/* Par mode de paiement */}
+          {Object.keys(stats.parPaiement).length > 0 && (
+            <Carte style={{ marginTop: 12 }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_par_paiement", langue)}</Text>
+              {Object.entries(stats.parPaiement).map(([mode, montant]) => (
+                <View key={mode} style={styles.lignePaiement}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{mode}</Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 12, fontWeight: "500" }}>{formater(montant)}</Text>
+                </View>
+              ))}
+            </Carte>
+          )}
+
+          {/* Mouvements de stock */}
           <Carte style={{ marginTop: 12, marginBottom: 20 }}>
-            <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_par_paiement", langue)}</Text>
-            {Object.entries(stats.parPaiement).map(([mode, montant]) => (
-              <View key={mode} style={styles.lignePaiement}>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{mode}</Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 12, fontWeight: "500" }}>{formater(montant)}</Text>
-              </View>
-            ))}
+            <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Mouvements de stock</Text>
+            {mouvements.length === 0 ? (
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Aucun mouvement</Text>
+            ) : (
+              mouvements.map((m, i) => (
+                <View key={m.id} style={[styles.ligneTop, i < mouvements.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{m.nomProduit}</Text>
+                  <Text style={{ fontSize: 11, color: colors.textMuted, marginRight: 10 }}>{m.type} {m.quantite > 0 ? "+" : ""}{m.quantite}</Text>
+                  <Text style={{ fontSize: 11, color: colors.textSecondary }}>{m.stockAvant} → {m.stockApres}</Text>
+                </View>
+              ))
+            )}
           </Carte>
         </>
       )}
@@ -183,7 +223,7 @@ export default function Dashboard() {
 
 const styles = StyleSheet.create({
   container: { padding: 14, paddingTop: 50 },
-  entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
+  entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   boutonExport: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   ligneDeuxCartes: { flexDirection: "row", gap: 10 },
   etatVide: { alignItems: "center", paddingTop: 40 },

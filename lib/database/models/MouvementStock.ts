@@ -1,5 +1,5 @@
 import { Model } from "@nozbe/watermelondb";
-import { field, text, date, readonly } from "@nozbe/watermelondb/decorators";
+import { field, text, date } from "@nozbe/watermelondb/decorators";
 
 export default class MouvementStock extends Model {
   static table = "mouvements_stock";
@@ -12,5 +12,5 @@ export default class MouvementStock extends Model {
   @field("stock_apres") stockApres!: number;
   @text("raison") raison!: string | null;
   @field("synchronise") synchronise!: boolean;
-  @readonly @date("cree_le") creeLe!: Date;
+  @date("cree_le") creeLe!: Date;
 }
