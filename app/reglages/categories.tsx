@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert } from 
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 import { EnteteEcran } from "@/components/UI";
@@ -10,6 +11,7 @@ import { EnteteEcran } from "@/components/UI";
 export default function GestionCategories() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { categories, ajouterCategorie, supprimerCategorie } = useCategories();
   const [nouvelleCategorie, setNouvelleCategorie] = useState("");
 
@@ -17,12 +19,20 @@ export default function GestionCategories() {
     if (!nouvelleCategorie.trim()) return;
     await ajouterCategorie(nouvelleCategorie.trim());
     setNouvelleCategorie("");
+    showToast(t("toast_categorie_ajoutee", langue), "success");
   }
 
   function confirmerSuppression(nom: string) {
     Alert.alert(t("categories_supprimer_titre", langue), t("categories_supprimer_texte", langue)(nom), [
       { text: t("popup_non", langue), style: "cancel" },
-      { text: t("categories_supprimer_confirmer", langue), style: "destructive", onPress: () => supprimerCategorie(nom) },
+      {
+        text: t("categories_supprimer_confirmer", langue),
+        style: "destructive",
+        onPress: () => {
+          supprimerCategorie(nom);
+          showToast(t("toast_categorie_supprimee", langue), "success");
+        },
+      },
     ]);
   }
 
