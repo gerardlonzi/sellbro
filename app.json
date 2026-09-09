@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Sellbro",
+    "name": "CIKAP",
     "slug": "sellbro",
     "scheme": "sellbro",
     "version": "1.0.0",
@@ -31,7 +31,8 @@
           "imageWidth": 160
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-notifications"
     ]
   }
 }

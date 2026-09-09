@@ -12,6 +12,7 @@ import { PaysProvider } from "@/lib/pays/PaysProvider";
 import { CategoriesProvider } from "@/lib/categories/CategoriesProvider";
 import { LangueProvider } from "@/lib/i18n";
 import { useSynchronisation } from "@/lib/sync/useSynchronisation";
+import { verifierAlertesEtNotifier } from "@/lib/notifications/notifications";
 
 // ---------------------------------------------------------
 // IMPORTANT : empêcher le splash de disparaître
@@ -26,6 +27,12 @@ function AppContent() {
 
   // Synchronise local <-> Supabase au démarrage et à chaque retour de connexion.
   useSynchronisation();
+
+  // Vérifie les alertes (stock faible / créances en retard) et planifie
+  // une notification locale quotidienne — délivrée même app fermée.
+  useEffect(() => {
+    verifierAlertesEtNotifier();
+  }, []);
 
   const [appReady, setAppReady] = useState(false);
 
