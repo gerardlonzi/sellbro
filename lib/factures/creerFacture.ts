@@ -1,5 +1,6 @@
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 async function genererNumero(userId: string): Promise<string> {
   const existantes = await database.get("factures" as any).query(Q.where("user_id", userId)).fetchCount();
@@ -44,5 +45,6 @@ export async function creerFactureDepuisVentes(userId: string, venteIds: string[
     }
   });
 
+  await enregistrerActivite("facture", "ajout", `Facture ${numero} créée`);
   return factureId;
 }

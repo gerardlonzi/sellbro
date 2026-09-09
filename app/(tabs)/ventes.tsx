@@ -75,7 +75,10 @@ export default function Ventes() {
     router.push(`/factures/${factureId}`);
   }
 
-  const filtrees = ventes.filter((v) => (v.clientNom ?? "").toLowerCase().includes(recherche.toLowerCase()));
+  const filtrees = ventes.filter((v) =>
+    (v.clientNom ?? "").toLowerCase().includes(recherche.toLowerCase()) ||
+    (v.produitNom ?? "").toLowerCase().includes(recherche.toLowerCase())
+  );
   const total = filtrees.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
 
   return (

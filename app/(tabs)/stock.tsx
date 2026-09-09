@@ -42,6 +42,7 @@ import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 type Produit = {
   id: string;
@@ -104,7 +105,7 @@ export default function Stock() {
         quantite_stock: p.quantiteStock,
         seuil_alerte: p.seuilAlerte,
         categorie_nom: p.categorieNom,
-        image_uri: p.champsSupplementaires?.image_uri ?? null,
+        image_uri: p.champsSupplementaires?.images ? JSON.parse(p.champsSupplementaires.images)[0] ?? null : (p.champsSupplementaires?.image_uri ?? null),
       }))
     );
 
@@ -488,6 +489,7 @@ export default function Stock() {
                       await database.write(async () => {
                         await (enreg as any).destroyPermanently();
                       });
+                      await enregistrerActivite("produit", "suppression", `Produit supprimé : ${p.nom}`);
                       chargerProduits();
                     },
                   },

@@ -8,6 +8,7 @@ import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { enregistrerActivite } from "@/lib/audit/journal";
 import { EnteteEcran } from "@/components/UI";
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
@@ -58,6 +59,7 @@ export default function CreancesDettes() {
     await database.write(async () => {
       await (enreg as any).update((c: any) => { c.statut = "payee"; });
     });
+    await enregistrerActivite("creance", "modification", "Créance marquée payée");
     chargerListe();
   }
 
@@ -66,6 +68,7 @@ export default function CreancesDettes() {
     await database.write(async () => {
       await (enreg as any).destroyPermanently();
     });
+    await enregistrerActivite("creance", "suppression", "Créance supprimée");
     chargerListe();
   }
 
@@ -158,10 +161,10 @@ export default function CreancesDettes() {
                     />
                   </View>
                 </View>
-                <Text style={{ color: enRetard ? colors.danger : colors.textMuted, fontSize: 11, marginBottom: 8 }}>
-                  {c.statut === "payee" ? t("creances_payee", langue) : enRetard ? t("creances_en_retard", langue) : ""}
-                </Text>
                 <View style={styles.ligneActions}>
+                  <Text style={{ flex: 1, color: enRetard ? colors.danger : colors.textMuted, fontSize: 11 }}>
+                    {c.statut === "payee" ? t("creances_payee", langue) : enRetard ? t("creances_en_retard", langue) : ""}
+                  </Text>
                   <Pressable onPress={() => appeler(c.telephone)} style={[styles.boutonAction, { borderColor: colors.border, borderWidth: 1 }]}>
                     <Feather name="phone" size={13} color={colors.textPrimary} />
                   </Pressable>

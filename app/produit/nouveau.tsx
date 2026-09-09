@@ -48,7 +48,7 @@ export default function NouveauProduit() {
   const [couleurChoisie, setCouleurChoisie] = useState<string | null>(null);
   const [poidsValeur, setPoidsValeur] = useState("");
   const [poidsUnite, setPoidsUnite] = useState("kg");
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const {plan} = usePlanActuel();
   const { reference } = useLocalSearchParams<{ reference?: string }>();
 
@@ -67,17 +67,27 @@ export default function NouveauProduit() {
     setChampsActifs((actuels) => (actuels.includes(cle) ? actuels.filter((c) => c !== cle) : [...actuels, cle]));
   }
 
-  async function choisirImage() {
+  async function ajouterImages() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
 
     const resultat = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.7,
-      allowsEditing: true,
-      aspect: [1, 1],
+      allowsMultipleSelection: true,
     });
-    if (!resultat.canceled) setImageUri(resultat.assets[0].uri);
+    if (!resultat.canceled) {
+      setImages((actuel) => [...actuel, ...resultat.assets.map((a) => a.uri)]);
+    }
+  }
+
+  async function prendrePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return;
+    const resultat = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (!resultat.canceled) {
+      setImages((actuel) => [...actuel, resultat.assets[0].uri]);
+    }
   }
 
 
@@ -97,7 +107,7 @@ export default function NouveauProduit() {
     const champsSupplementaires: Record<string, string> = { ...valeursTexte };
     if (champsActifs.includes("couleur") && couleurChoisie) champsSupplementaires.couleur = couleurChoisie;
     if (champsActifs.includes("poids") && poidsValeur) champsSupplementaires.poids = `${poidsValeur} ${poidsUnite}`;
-    if (champsActifs.includes("image") && imageUri) champsSupplementaires.image_uri = imageUri;
+    if (champsActifs.includes("image") && images.length > 0) champsSupplementaires.images = JSON.stringify(images);
   
     await database.write(async () => {
       await database.get("produits").create((p: any) => {
@@ -218,17 +228,21 @@ export default function NouveauProduit() {
       {champsActifs.includes("image") && (
         <View style={{ marginBottom: 16 }}>
           <Text style={[styles.label, { color: colors.textSecondary }]}>{t("produit_champ_image", langue)}</Text>
-          {imageUri ? (
-            <Pressable onPress={choisirImage}>
-              <Image source={{ uri: imageUri }} style={styles.apercuImage} />
-              <Text style={{ fontSize: 11, color: colors.accent, marginTop: 6 }}>{t("produit_changer_image", langue)}</Text>
-            </Pressable>
-          ) : (
-            <Pressable onPress={choisirImage} style={[styles.zoneImage, { borderColor: colors.border }]}>
+          <View style={styles.ligneImages}>
+            {images.map((uri, i) => (
+              <Pressable key={i} onPress={() => setImages((actuel) => actuel.filter((_, idx) => idx !== i))}>
+                <Image source={{ uri }} style={styles.miniatureImage} />
+              </Pressable>
+            ))}
+            <Pressable onPress={prendrePhoto} style={[styles.zoneImage, { borderColor: colors.border }]}>
               <Feather name="camera" size={22} color={colors.textMuted} />
-              <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 6 }}>{t("produit_ajouter_image", langue)}</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{t("produit_prendre_photo", langue)}</Text>
             </Pressable>
-          )}
+            <Pressable onPress={ajouterImages} style={[styles.zoneImage, { borderColor: colors.border }]}>
+              <Feather name="plus" size={22} color={colors.textMuted} />
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{t("produit_ajouter_image", langue)}</Text>
+            </Pressable>
+          </View>
         </View>
       )}
       <Text style={[styles.label, { color: colors.textSecondary, marginTop: 8 }]}>{t("produit_champ_facultatif", langue)}</Text>
@@ -281,6 +295,7 @@ const styles = StyleSheet.create({
   lignePoids: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
   ligneUnites: { flexDirection: "row", gap: 6 },
   puceUnite: { paddingHorizontal: 10, paddingVertical: 9, borderRadius: 8 },
-  zoneImage: { height: 120, borderWidth: 1, borderStyle: "dashed", borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  apercuImage: { width: "100%", height: 160, borderRadius: 12 },
+  ligneImages: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  miniatureImage: { width: 80, height: 80, borderRadius: 8 },
+  zoneImage: { width: 80, height: 80, borderWidth: 1, borderStyle: "dashed", borderRadius: 8, alignItems: "center", justifyContent: "center" },
 });

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal } from "react-native";
 import { router } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
@@ -12,6 +13,7 @@ import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { genererRecuPdf } from "@/lib/export/genererPdf";
 
 type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number };
 type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number };
@@ -30,6 +32,10 @@ export default function NouvelleVente() {
   const [produits, setProduits] = useState<Produit[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectionProduits, setSelectionProduits] = useState<Set<string>>(new Set());
+  const [scannerOuvert, setScannerOuvert] = useState(false);
+  const [verrouilleScan, setVerrouilleScan] = useState(false);
+  const [catalogue, setCatalogue] = useState<(Produit & { reference: string | null })[]>([]);
+  const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
 
   async function ouvrirSelecteurProduit() {
     const userId = await obtenirUserId();
@@ -65,7 +71,42 @@ export default function NouvelleVente() {
     setSelecteurProduitOuvert(false);
   }
 
+  // Charge le catalogue (avec la référence = code-barres) puis ouvre le scanner.
+  async function ouvrirScanner() {
+    const userId = await obtenirUserId();
+    if (!userId) return;
+    const resultats = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    setCatalogue((resultats as any[]).map((p) => ({
+      id: p.id, nom: p.nom, prixVente: p.prixVente, quantiteStock: p.quantiteStock,
+      reference: p.champsSupplementaires?.reference ?? null,
+    })));
+    setScannerOuvert(true);
+  }
+
+  function surBarcodeScanne({ data }: { data: string }) {
+    if (verrouilleScan) return;
+    setVerrouilleScan(true);
+
+    const produit = catalogue.find((p) => p.reference === data);
+    if (produit) {
+      ajouterAuPanier(produit);
+    } else {
+      Alert.alert(t("vente_scan_introuvable_titre", langue), t("vente_scan_introuvable", langue));
+    }
+
+    // Réarme le scan après un court délai pour enchaîner plusieurs produits.
+    setTimeout(() => setVerrouilleScan(false), 1200);
+  }
+
   function modifierQuantite(index: number, delta: number) {
+    const ligne = panier[index];
+    if (delta > 0 && ligne.produitId) {
+      const produit = produits.find((p) => p.id === ligne.produitId);
+      if (produit && ligne.quantite >= produit.quantiteStock) {
+        Alert.alert("", t("vente_rupture_stock", langue));
+        return;
+      }
+    }
     setPanier((actuel) =>
       actuel.map((l, i) => (i === index ? { ...l, quantite: Math.max(1, l.quantite + delta) } : l))
     );
@@ -95,7 +136,7 @@ export default function NouvelleVente() {
 
   const total = panier.reduce((s, l) => s + l.quantite * l.prixUnitaire, 0);
 
-  async function sauvegarder() {
+  async function sauvegarder(imprimer = false) {
     if (panier.length === 0) {
       Alert.alert("", t("vente_panier_vide", langue));
       return;
@@ -164,6 +205,9 @@ export default function NouvelleVente() {
 
     await synchroniserPourUtilisateurCourant();
     await enregistrerActivite("vente", "ajout", "Nouvelle vente");
+    if (imprimer) {
+      await genererRecuPdf(client.trim() || null, clientTelephone.trim() || null, panier, total);
+    }
     setChargement(false);
     router.back();
   }
@@ -192,10 +236,16 @@ export default function NouvelleVente() {
         </View>
       ))}
 
-      <Pressable onPress={ouvrirSelecteurProduit} style={[styles.boutonAjouterProduit, { borderColor: colors.accent }]}>
-        <Feather name="plus" size={15} color={colors.accent} />
-        <Text style={{ color: colors.accent, fontSize: 13 }}>{t("vente_ajouter_produit", langue)}</Text>
-      </Pressable>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Pressable onPress={ouvrirSelecteurProduit} style={[styles.boutonAjouterProduit, { borderColor: colors.accent, flex: 1 }]}>
+          <Feather name="plus" size={15} color={colors.accent} />
+          <Text style={{ color: colors.accent, fontSize: 13 }}>{t("vente_ajouter_produit", langue)}</Text>
+        </Pressable>
+        <Pressable onPress={ouvrirScanner} style={[styles.boutonAjouterProduit, { borderColor: colors.accent, flex: 1 }]}>
+          <MaterialCommunityIcons name="barcode-scan" size={15} color={colors.accent} />
+          <Text style={{ color: colors.accent, fontSize: 13 }}>{t("vente_scanner", langue)}</Text>
+        </Pressable>
+      </View>
 
       {panier.length > 0 && (
         <View style={[styles.bandeauTotal, { backgroundColor: colors.accentBg }]}>
@@ -217,6 +267,15 @@ export default function NouvelleVente() {
         </Pressable>
       </View>
 
+      <TextInput
+        value={clientTelephone}
+        onChangeText={setClientTelephone}
+        placeholder={t("vente_client_telephone", langue)}
+        placeholderTextColor={colors.textMuted}
+        keyboardType="phone-pad"
+        style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, marginBottom: 14 }]}
+      />
+
       <Text style={[styles.label, { marginTop: 4 }]}>{t("vente_mode_paiement", langue)}</Text>
       <View style={styles.ligneDeux}>
         {(["cash", "momo", "credit"] as const).map((m) => (
@@ -232,10 +291,16 @@ export default function NouvelleVente() {
         ))}
       </View>
 
-      <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
-        <Feather name="check" size={16} color="#fff" />
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_enregistrer", langue)}</Text>
-      </Pressable>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <Pressable onPress={() => sauvegarder(false)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.accent, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
+          <Feather name="check" size={16} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_enregistrer", langue)}</Text>
+        </Pressable>
+        <Pressable onPress={() => sauvegarder(true)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.proFill, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
+          <Feather name="printer" size={16} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_imprimer", langue)}</Text>
+        </Pressable>
+      </View>
 
       <Modal visible={selecteurProduitOuvert} transparent animationType="slide">
         <Pressable style={styles.fondModal} onPress={() => setSelecteurProduitOuvert(false)}>
@@ -285,6 +350,39 @@ export default function NouvelleVente() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal visible={scannerOuvert} animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          {permissionCamera?.granted ? (
+            <>
+              <CameraView
+                style={StyleSheet.absoluteFill}
+                facing="back"
+                onBarcodeScanned={surBarcodeScanne}
+                barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "code93", "qr"] }}
+              />
+              <View style={styles.scannerOverlay}>
+                <View style={styles.scannerEntete}>
+                  <Pressable onPress={() => setScannerOuvert(false)}>
+                    <Feather name="x" size={22} color="#fff" />
+                  </Pressable>
+                  <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500" }}>{t("vente_scanner", langue)}</Text>
+                  <View style={{ width: 22 }} />
+                </View>
+                <View style={styles.scannerCadre} />
+                <Text style={styles.scannerAide}>{t("vente_scan_aide", langue)}</Text>
+              </View>
+            </>
+          ) : (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+              <Text style={{ color: "#fff", marginBottom: 16, textAlign: "center" }}>{t("vente_camera_permission", langue)}</Text>
+              <Pressable onPress={demanderPermissionCamera} style={{ backgroundColor: colors.accent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}>
+                <Text style={{ color: "#fff" }}>{t("vente_camera_autoriser", langue)}</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -307,4 +405,8 @@ const styles = StyleSheet.create({
   ligneChoixModal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1 },
   checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   boutonConfirmer: { paddingVertical: 13, borderRadius: 10, alignItems: "center", marginTop: 12 },
+  scannerOverlay: { flex: 1, justifyContent: "space-between", padding: 16, paddingTop: 50, paddingBottom: 40 },
+  scannerEntete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  scannerCadre: { width: 280, height: 160, borderWidth: 2, borderColor: "#fff", borderRadius: 8, borderStyle: "dashed", alignSelf: "center" },
+  scannerAide: { color: "#fff", fontSize: 12, marginTop: 12, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, alignSelf: "center" },
 });

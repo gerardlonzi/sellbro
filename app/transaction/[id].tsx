@@ -6,6 +6,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
+import { enregistrerActivite } from "@/lib/audit/journal";
 import { EnteteEcran } from "@/components/UI";
 
 type Vente = {
@@ -45,6 +46,7 @@ export default function DetailTransaction() {
         onPress: async () => {
           const enreg = await database.get("ventes").find(id);
           await database.write(async () => { await (enreg as any).destroyPermanently(); });
+          await enregistrerActivite("vente", "suppression", "Vente supprimée");
           router.back();
         },
       },

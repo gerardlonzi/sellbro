@@ -2,6 +2,7 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 export type InfosBoutique = {
   nom: string;
@@ -67,7 +68,7 @@ function enteteHtml(infos: InfosBoutique, titre: string, sousTitre?: string): st
 }
 
 function piedHtml(): string {
-  return `<div style="margin-top:30px;padding-top:10px;border-top:1px solid #E5E3DC;font-size:10px;color:#9B9A93;text-align:center;">Document généré par Sellbro</div>`;
+  return `<div style="margin-top:30px;padding-top:10px;border-top:1px solid #E5E3DC;font-size:10px;color:#9B9A93;text-align:center;">Document généré par CIKAP</div>`;
 }
 
 const STYLE = `<style>
@@ -116,6 +117,7 @@ export async function genererFacturePdf(facture: any, lignes: any[]) {
   </body></html>`;
 
   await partager(html, `Facture-${facture.numero}.pdf`);
+  await enregistrerActivite("impression", "ajout", `Facture ${facture.numero} imprimée`);
 }
 
 // Génère et partage un export comptable PDF.
@@ -138,4 +140,40 @@ export async function genererExportPdf(stats: { ca: number; benefice: number; ve
   </body></html>`;
 
   await partager(html, `Export-comptable.pdf`);
+  await enregistrerActivite("impression", "ajout", "Export comptable généré");
+}
+
+// Génère et partage un reçu de vente (ticket) PDF.
+export async function genererRecuPdf(
+  client: string | null,
+  telephone: string | null,
+  lignes: { nom: string; quantite: number; prixUnitaire: number }[],
+  total: number
+) {
+  const infos = await obtenirInfosBoutique();
+  const lignesHtml = lignes
+    .map(
+      (l) => `<tr>
+        <td>${l.nom}</td>
+        <td class="droite">${l.quantite}</td>
+        <td class="droite">${(l.quantite * l.prixUnitaire).toLocaleString()} F</td>
+      </tr>`
+    )
+    .join("");
+
+  const html = `<html><head>${STYLE}</head><body>
+    ${enteteHtml(infos, "REÇU DE VENTE", new Date().toLocaleString())}
+    ${client ? `<div style="font-size:12px;margin-bottom:8px;"><b>Client :</b> ${client}${telephone ? ` — ${telephone}` : ""}</div>` : ""}
+    <table>
+      <tr><th>Produit</th><th class="droite">Qté</th><th class="droite">Montant</th></tr>
+      ${lignesHtml}
+    </table>
+    <table style="width:auto;margin-left:auto;min-width:180px;">
+      <tr><td class="total">Total</td><td class="droite total">${total.toLocaleString()} F</td></tr>
+    </table>
+    ${piedHtml()}
+  </body></html>`;
+
+  await partager(html, `Recu-vente.pdf`);
+  await enregistrerActivite("impression", "ajout", "Reçu de vente imprimé");
 }

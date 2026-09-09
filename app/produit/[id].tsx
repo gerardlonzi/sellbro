@@ -6,6 +6,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 export default function DetailProduit() {
   const { colors } = useTheme();
@@ -74,6 +75,7 @@ export default function DetailProduit() {
         onPress: async () => {
           const p = await database.get("produits").find(id);
           await database.write(async () => { await (p as any).destroyPermanently(); });
+          await enregistrerActivite("produit", "suppression", `Produit supprimé : ${nom}`);
           router.back();
         },
       },
@@ -131,9 +133,9 @@ export default function DetailProduit() {
         )}
       </View>
 
-      {champsSupp.image_uri ? (
-        <Image source={{ uri: champsSupp.image_uri }} style={styles.imageProduit} />
-      ) : null}
+      {(champsSupp.images ? JSON.parse(champsSupp.images) : champsSupp.image_uri ? [champsSupp.image_uri] : []).map((uri: string, i: number) => (
+        <Image key={i} source={{ uri }} style={styles.imageProduit} />
+      ))}
 
       {Object.keys(champsSupp).length > 0 && (
         <View style={[styles.blocChamps, { backgroundColor: colors.surface, borderColor: colors.border }]}>
