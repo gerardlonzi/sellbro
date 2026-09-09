@@ -15,7 +15,9 @@ export type InfosBoutique = {
 // Récupère les infos de l'entreprise : nom, contact, secteur et logo.
 // Le logo est stocké localement (AsyncStorage) ; s'il manque, on affiche
 // simplement le nom de la boutique en en-tête.
-export async function obtenirInfosBoutique(): Promise<InfosBoutique> {
+const CLE_INFOS = "boutika_infos";
+
+async function infosDepuisSupabase(): Promise<InfosBoutique> {
   let nom = "Ma boutique";
   let telephone: string | null = null;
   let email: string | null = null;
@@ -40,6 +42,23 @@ export async function obtenirInfosBoutique(): Promise<InfosBoutique> {
 
   const logo = await AsyncStorage.getItem("boutika_logo");
   return { nom, telephone, email, secteur, logo };
+}
+
+export async function obtenirInfosBoutique(): Promise<InfosBoutique> {
+  // 1. Cache local : retour immédiat — imprimer ne doit jamais attendre le réseau.
+  const cache = await AsyncStorage.getItem(CLE_INFOS);
+  if (cache) {
+    // Rafraîchit en arrière-plan pour la prochaine fois (non bloquant).
+    infosDepuisSupabase()
+      .then((infos) => AsyncStorage.setItem(CLE_INFOS, JSON.stringify(infos)))
+      .catch(() => {});
+    return JSON.parse(cache) as InfosBoutique;
+  }
+
+  // 2. Premier appel (pas encore de cache) : on va chercher puis on met en cache.
+  const infos = await infosDepuisSupabase();
+  AsyncStorage.setItem(CLE_INFOS, JSON.stringify(infos)).catch(() => {});
+  return infos;
 }
 
 function enteteHtml(infos: InfosBoutique, titre: string, sousTitre?: string): string {
