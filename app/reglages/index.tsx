@@ -75,7 +75,7 @@ export default function Reglages() {
         <>
           <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 6, marginBottom: 8 }}>🧪 TEST — Forcer un plan</Text>
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-            {(["gratuit", "starter", "premium"] as const).map((p) => (
+            {(["gratuit", "premium"] as const).map((p) => (
               <Pressable
                 key={p}
                 onPress={() => definirPlanTest(p)}

@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 
-export type PlanId = "gratuit" | "starter" | "premium";
+export type PlanId = "gratuit" | "premium";
 
 export type Plan = {
   id: PlanId;
@@ -22,21 +22,16 @@ fournisseurs: boolean;
 depenses: boolean;
 };
 
-// Valeurs de secours si la lecture Supabase échoue (hors ligne, erreur
-// réseau) — l'app doit toujours pouvoir démarrer, même sans connexion.
+// Modèle 2 formules : « Essai gratuit » (toutes les fonctionnalités Premium,
+// limité dans le temps par le gate) et « Premium » (illimité).
+// Le blocage temporel de l'essai est géré par peutEcrire() / l'expiration,
+// PAS par des quotas — d'où des fonctionnalités identiques au Premium.
 const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
   gratuit: {
-    id: "gratuit", nom: "Gratuit", actif: true, prix: 0,
-    quotaVocal: 4, quotaScan: 4, quotaProduits: 30, quotaCreances: 15,
-    historiqueJours: 7, rapportsMax: "semaine",
-    exportComptable: false, sauvegardeCloud: false, multiEmployes: false, supportPrioritaire: false,
-    factures: false, fournisseurs: false, depenses: false
-  },
-  starter: {
-    id: "starter", nom: "Starter", actif: true, prix: 1500,
-    quotaVocal: 150, quotaScan: 350, quotaProduits: null, quotaCreances: null,
+    id: "gratuit", nom: "Essai gratuit", actif: true, prix: 0,
+    quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
     historiqueJours: null, rapportsMax: "annee",
-    exportComptable: true, sauvegardeCloud: true, multiEmployes: false, supportPrioritaire: false,
+    exportComptable: true, sauvegardeCloud: true, multiEmployes: true, supportPrioritaire: true,
     factures: true, fournisseurs: true, depenses: true,
   },
   premium: {

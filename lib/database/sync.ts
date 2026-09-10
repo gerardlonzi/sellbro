@@ -2,10 +2,11 @@ import { Q } from "@nozbe/watermelondb";
 import { database } from "./index";
 import { supabase } from "@/lib/supabase/client";
 import { etatPlanActuel, rafraichirPlan } from "@/lib/plan/planStore";
+import { estEssaiActifLocal } from "@/lib/trial/deviceTrial";
 
-// Seuls les abonnés (Starter/Premium) ont `sauvegarde_cloud = true` et voient
-// leurs données métier synchronisées vers Supabase. Les comptes Gratuit restent
-// en local (WatermelonDB) : on ne pousse ni ne tire leurs données métier.
+// La sync cloud est active dès le PREMIER jour (pendant l'essai gratuit),
+// puis en permanence pour les abonnés Premium. Elle s'arrête si l'essai
+// expire sans abonnement (mode lecture seule).
 // (Les données d'identité dans `profiles` sont, elles, toujours côté Supabase
 // pour tous, car l'authentification par email l'exige.)
 async function peutSynchroniser(): Promise<boolean> {
@@ -14,7 +15,8 @@ async function peutSynchroniser(): Promise<boolean> {
     await rafraichirPlan();
     etat = etatPlanActuel();
   }
-  return etat.plan?.sauvegardeCloud === true;
+  if (etat.planId === "premium") return true;
+  return await estEssaiActifLocal();
 }
 
 // Envoie vers Supabase tout ce qui a été créé hors ligne et jamais synchronisé.
@@ -24,6 +26,9 @@ export async function pousserDonneesLocales() {
     { nom: "ventes", table: "ventes" },
     { nom: "achats", table: "achats" },
     { nom: "creances_dettes", table: "creances_dettes" },
+    { nom: "depenses", table: "depenses" },
+    { nom: "fournisseurs", table: "fournisseurs" },
+    { nom: "mouvements_stock", table: "mouvements_stock" },
   ];
 
   for (const t of tables) {
@@ -56,10 +61,14 @@ function construireDonneesEnvoi(nomTable: string, e: any): any {
     };
   }
   if (nomTable === "ventes") {
+    const supp = JSON.parse(e.donneesSupplementairesJson || "{}");
     return {
       user_id: e.userId, produit_id: e.produitId, quantite: e.quantite, prix_unitaire: e.prixUnitaire,
       client_nom: e.clientNom, client_telephone: e.clientTelephone, mode_paiement: e.modePaiement,
-      source: e.source, donnees_supplementaires: JSON.parse(e.donneesSupplementairesJson || "{}"),
+      source: e.source,
+      // Le nom du produit (dénormalisé) est conservé dans le jsonb pour survivre
+      // au changement d'appareil, même si le produit est supprimé entre-temps.
+      donnees_supplementaires: { ...supp, produit_nom: e.produitNom },
     };
   }
   if (nomTable === "achats") {
@@ -69,10 +78,29 @@ function construireDonneesEnvoi(nomTable: string, e: any): any {
     };
   }
   // creances_dettes
+  if (nomTable === "creances_dettes") {
+    return {
+      user_id: e.userId, type: e.type, personne_nom: e.personneNom, telephone: e.telephone,
+      montant_initial: e.montantInitial, montant_restant: e.montantRestant, date_echeance: e.dateEcheance,
+      statut: e.statut, note: e.note, produit_concerne: e.produitConcerne,
+    };
+  }
+  if (nomTable === "depenses") {
+    return {
+      user_id: e.userId, categorie: e.categorie, description: e.description,
+      montant: e.montant, donnees_supplementaires: {},
+    };
+  }
+  if (nomTable === "fournisseurs") {
+    return {
+      user_id: e.userId, nom: e.nom, telephone: e.telephone,
+      total_achats: e.totalAchats ?? 0, montant_du: e.montantDu ?? 0,
+    };
+  }
+  // mouvements_stock
   return {
-    user_id: e.userId, type: e.type, personne_nom: e.personneNom, telephone: e.telephone,
-    montant_initial: e.montantInitial, montant_restant: e.montantRestant, date_echeance: e.dateEcheance,
-    statut: e.statut, note: e.note, produit_concerne: e.produitConcerne,
+    user_id: e.userId, produit_id: e.produitId, type: e.type, quantite: e.quantite,
+    stock_avant: e.stockAvant, stock_apres: e.stockApres, raison: e.raison,
   };
 }
 
@@ -80,11 +108,14 @@ function construireDonneesEnvoi(nomTable: string, e: any): any {
 // (approche simple : on remplace le cache, pas une fusion incrémentale
 // avec résolution de conflits — suffisant pour un utilisateur mono-appareil).
 export async function tirerDonneesDistantes(userId: string) {
-  const [produits, ventes, achats, creances] = await Promise.all([
+  const [produits, ventes, achats, creances, depenses, fournisseurs, mouvements] = await Promise.all([
     supabase.from("produits").select("*").eq("user_id", userId),
     supabase.from("ventes").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(200),
     supabase.from("achats").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(200),
     supabase.from("creances_dettes").select("*").eq("user_id", userId),
+    supabase.from("depenses").select("*").eq("user_id", userId),
+    supabase.from("fournisseurs").select("*").eq("user_id", userId),
+    supabase.from("mouvements_stock").select("*").eq("user_id", userId),
   ]);
 
   await database.write(async () => {
@@ -94,7 +125,8 @@ export async function tirerDonneesDistantes(userId: string) {
       seuilAlerte: r.seuil_alerte, champsSupplementairesJson: JSON.stringify(r.champs_supplementaires ?? {}), creeLe: new Date(r.created_at), synchronise: true,
     }));
     await remplacerTable("ventes", ventes.data ?? [], (r) => ({
-      remoteId: r.id, userId: r.user_id, produitId: r.produit_id, produitNom: null,
+      remoteId: r.id, userId: r.user_id, produitId: r.produit_id,
+      produitNom: r.donnees_supplementaires?.produit_nom ?? null,
       quantite: r.quantite, prixUnitaire: r.prix_unitaire, clientNom: r.client_nom, clientTelephone: r.client_telephone,
       modePaiement: r.mode_paiement, source: r.source, audioUrl: r.audio_url, imageFactureUrl: r.image_facture_url,
       donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}), creeLe: new Date(r.created_at), synchronise: true,
@@ -108,6 +140,18 @@ export async function tirerDonneesDistantes(userId: string) {
       remoteId: r.id, userId: r.user_id, type: r.type, personneNom: r.personne_nom, telephone: r.telephone,
       montantInitial: r.montant_initial, montantRestant: r.montant_restant, dateEcheance: r.date_echeance,
       statut: r.statut, note: r.note, produitConcerne: r.produit_concerne, creeLe: new Date(r.created_at), synchronise: true,
+    }));
+    await remplacerTable("depenses", depenses.data ?? [], (r) => ({
+      remoteId: r.id, userId: r.user_id, categorie: r.categorie, description: r.description,
+      montant: r.montant, creeLe: new Date(r.created_at), synchronise: true,
+    }));
+    await remplacerTable("fournisseurs", fournisseurs.data ?? [], (r) => ({
+      remoteId: r.id, userId: r.user_id, nom: r.nom, telephone: r.telephone, adresse: r.adresse ?? null,
+      totalAchats: r.total_achats, montantDu: r.montant_du, creeLe: new Date(r.created_at), synchronise: true,
+    }));
+    await remplacerTable("mouvements_stock", mouvements.data ?? [], (r) => ({
+      remoteId: r.id, userId: r.user_id, produitId: r.produit_id, type: r.type, quantite: r.quantite,
+      stockAvant: r.stock_avant, stockApres: r.stock_apres, raison: r.raison, creeLe: new Date(r.created_at), synchronise: true,
     }));
   });
 }

@@ -7,28 +7,25 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 
-type PlanId = "starter" | "premium";
+type PlanId = "premium";
 
 export default function OnboardingPlan() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const [planChoisi, setPlanChoisi] = useState<PlanId>("starter");
+  const [planChoisi, setPlanChoisi] = useState<PlanId>("premium");
   const [chargement, setChargement] = useState(false);
 
   const PLANS: { id: PlanId; nomCle: string; prixCle: string; prixJourCle?: string; descCle: string; fonctionnalitesCle: string; populaire?: boolean }[] = [
-    { id: "starter", nomCle: "plan_starter_nom", prixCle: "plan_starter_prix", prixJourCle: "plan_starter_prix_jour", descCle: "plan_starter_description", fonctionnalitesCle: "plan_starter_fonctionnalites", populaire: true },
-    { id: "premium", nomCle: "plan_premium_nom", prixCle: "plan_premium_prix", prixJourCle: "plan_premium_prix_jour", descCle: "plan_premium_description", fonctionnalitesCle: "plan_premium_fonctionnalites" },
+    { id: "premium", nomCle: "plan_premium_nom", prixCle: "plan_premium_prix", prixJourCle: "plan_premium_prix_jour", descCle: "plan_premium_description", fonctionnalitesCle: "plan_premium_fonctionnalites", populaire: true },
   ];
 
   const TEXTE_BOUTON: Record<PlanId, string> = {
-    starter: t("bouton_plan_starter", langue),
     premium: t("bouton_plan_premium", langue),
   };
 
   // Même logique de teinte que sur l'écran des slides : chaque plan a sa
   // couleur, et le dégradé de fond suit le plan sélectionné.
   const teinteParPlan: Record<PlanId, string> = {
-    starter: colors.accent,
     premium: colors.proFill,
   };
   const couleurDegrade = teinteParPlan[planChoisi];
