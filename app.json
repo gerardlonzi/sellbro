@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "CIKAP",
-    "slug": "sellbro",
-    "scheme": "sellbro",
+    "slug": "cikap",
+    "scheme": "cikap",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -10,11 +10,11 @@
 
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.eyetech.sellbro"
+      "bundleIdentifier": "com.eyetech.cikap"
     },
 
     "android": {
-      "package": "com.eyetech.sellbro"
+      "package": "com.eyetech.cikap"
     },
 
     "plugins": [
@@ -32,7 +32,14 @@
         }
       ],
       "expo-audio",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Autoriser l'accès à vos photos pour ajouter des images de produits.",
+          "cameraPermission": "Autoriser l'accès à la caméra pour photographier vos produits."
+        }
+      ]
     ]
   }
 }

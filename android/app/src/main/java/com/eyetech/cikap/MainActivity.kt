@@ -1,4 +1,4 @@
-package com.eyetech.sellbro
+package com.eyetech.cikap
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

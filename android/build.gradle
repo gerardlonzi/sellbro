@@ -1,5 +1,13 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+// Force a stable NDK across ALL modules (including node_modules libraries like
+// react-native-screens and expo-modules-core). NDK r27 (27.1.12297006) has a
+// linker bug on Windows that leaves libc++ symbols undefined (std::__ndk1::...).
+// The expo-root-project plugin defaults this to r27 UNLESS we pre-set it here
+// (its setIfNotExist leaves an existing value untouched), and every library
+// reads `rootProject.ext.ndkVersion`.
+ext.ndkVersion = "26.1.10909125"
+
 buildscript {
   repositories {
     google()

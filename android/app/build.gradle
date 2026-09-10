@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.eyetech.sellbro'
+    namespace 'com.eyetech.cikap'
     defaultConfig {
-        applicationId 'com.eyetech.sellbro'
+        applicationId 'com.eyetech.cikap'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

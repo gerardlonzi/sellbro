@@ -1,4 +1,4 @@
-package com.eyetech.sellbro
+package com.eyetech.cikap
 
 import android.app.Application
 import android.content.res.Configuration
