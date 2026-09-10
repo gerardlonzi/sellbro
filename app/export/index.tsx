@@ -8,13 +8,18 @@ import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { PeriodeId, plageDates } from "@/lib/periode/periodes";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
-import { EnteteEcran } from "@/components/UI";
+import { EnteteEcran, Skeleton } from "@/components/UI";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { genererExportPdf, obtenirInfosBoutique } from "@/lib/export/genererPdf";
 
-type StatsExport = { ca: number; benefice: number; ventes: number; parPaiement: Record<string, number> };
+type StatsExport = {
+  ca: number; benefice: number; ventes: number; parPaiement: Record<string, number>;
+  produitsEnStock: number; ruptures: number;
+  topProduits: { nom: string; ventes: number; montant: number }[];
+  topClients: { nom: string; montant: number }[];
+};
 
 export default function Export() {
   const { colors } = useTheme();
@@ -23,8 +28,9 @@ export default function Export() {
   const { plan } = usePlanActuel();
   const [periode, setPeriode] = useState<PeriodeId>("mois");
   const [format, setFormat] = useState<"pdf" | "excel">("pdf");
-  const [stats, setStats] = useState<StatsExport>({ ca: 0, benefice: 0, ventes: 0, parPaiement: {} });
+  const [stats, setStats] = useState<StatsExport>({ ca: 0, benefice: 0, ventes: 0, parPaiement: {}, produitsEnStock: 0, ruptures: 0, topProduits: [], topClients: [] });
   const [chargement, setChargement] = useState(false);
+  const [chargementStats, setChargementStats] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
@@ -33,18 +39,36 @@ export default function Export() {
   );
 
   async function calculerStats() {
+    setChargementStats(true);
     const { debut } = plageDates(periode);
     const userId = await obtenirUserId();
-    if (!userId) return;
+    if (!userId) { setChargementStats(false); return; }
+
     const tousLesVentes = await database.get("ventes").query(Q.where("user_id", userId)).fetch();
     const ventes = (tousLesVentes as any[]).filter((v) => v.creeLe >= debut);
     const ca = ventes.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
+
     const parPaiement: Record<string, number> = {};
+    const parProduit: Record<string, { ventes: number; montant: number }> = {};
+    const parClient: Record<string, number> = {};
     for (const v of ventes) {
       const mode = v.modePaiement ?? "—";
       parPaiement[mode] = (parPaiement[mode] ?? 0) + v.quantite * v.prixUnitaire;
+      const nomProduit = v.produitNom ?? "—";
+      if (!parProduit[nomProduit]) parProduit[nomProduit] = { ventes: 0, montant: 0 };
+      parProduit[nomProduit].ventes += v.quantite;
+      parProduit[nomProduit].montant += v.quantite * v.prixUnitaire;
+      if (v.clientNom) parClient[v.clientNom] = (parClient[v.clientNom] ?? 0) + v.quantite * v.prixUnitaire;
     }
-    setStats({ ca, benefice: Math.round(ca * 0.3), ventes: ventes.length, parPaiement });
+
+    const tousLesProduits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    const produitsEnStock = (tousLesProduits as any[]).length;
+    const ruptures = (tousLesProduits as any[]).filter((p) => p.quantiteStock === 0).length;
+    const topProduits = Object.entries(parProduit).map(([nom, d]) => ({ nom, ...d })).sort((a, b) => b.ventes - a.ventes || b.montant - a.montant).slice(0, 5);
+    const topClients = Object.entries(parClient).map(([nom, montant]) => ({ nom, montant })).sort((a, b) => b.montant - a.montant).slice(0, 5);
+
+    setStats({ ca, benefice: Math.round(ca * 0.3), ventes: ventes.length, parPaiement, produitsEnStock, ruptures, topProduits, topClients });
+    setChargementStats(false);
   }
 
   async function generer() {
@@ -118,9 +142,21 @@ export default function Export() {
 
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={{ fontSize: 12, fontWeight: "500", color: colors.textPrimary, marginBottom: 10 }}>Aperçu</Text>
-        <Ligne label={t("dashboard_ca", langue)} valeur={formater(stats.ca)} colors={colors} />
-        <Ligne label={t("dashboard_benefice", langue)} valeur={formater(stats.benefice)} colors={colors} />
-        <Ligne label={t("dashboard_ventes", langue)} valeur={String(stats.ventes)} colors={colors} dernier />
+        {chargementStats ? (
+          <View style={{ gap: 12 }}>
+            <Skeleton width="70%" height={14} />
+            <Skeleton width="60%" height={14} />
+            <Skeleton width="45%" height={14} />
+          </View>
+        ) : (
+          <>
+            <Ligne label={t("dashboard_ca", langue)} valeur={formater(stats.ca)} colors={colors} />
+            <Ligne label={t("dashboard_benefice", langue)} valeur={formater(stats.benefice)} colors={colors} />
+            <Ligne label={t("dashboard_ventes", langue)} valeur={String(stats.ventes)} colors={colors} />
+            <Ligne label={t("export_produits_stock", langue)} valeur={String(stats.produitsEnStock)} colors={colors} />
+            <Ligne label={t("export_ruptures", langue)} valeur={String(stats.ruptures)} colors={colors} dernier />
+          </>
+        )}
       </View>
 
       <Pressable

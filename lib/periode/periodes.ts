@@ -14,3 +14,11 @@ export function plageDates(periode: PeriodeId): { debut: Date; fin: Date } {
 
   return { debut, fin };
 }
+
+// Fenêtre de même durée, immédiatement avant la période courante.
+// Utilisée pour les indicateurs de tendance (comparaison vs période précédente).
+export function plagePrecedente(periode: PeriodeId): { debut: Date; fin: Date } {
+  const { debut } = plageDates(periode);
+  const duree = Date.now() - debut.getTime();
+  return { debut: new Date(debut.getTime() - duree), fin: debut };
+}
