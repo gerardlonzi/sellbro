@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
-import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { supabase } from "@/lib/supabase/client";
@@ -18,6 +19,7 @@ const ICONES_SOURCE: Record<string, any> = { vocal: "mic", scan: "camera", manue
 export default function Ventes() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { formater } = useCurrency();
   const [recherche, setRecherche] = useState("");
   const [rechercheOuverte, setRechercheOuverte] = useState(false);
@@ -62,7 +64,7 @@ export default function Ventes() {
 
   async function creerFacture() {
     if (selectionnees.size === 0) {
-      Alert.alert("", t("ventes_erreur_facture_vide", langue));
+      showToast(t("ventes_erreur_facture_vide", langue), "error");
       return;
     }
     setCreationEnCours(true);

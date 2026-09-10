@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
+import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
@@ -11,11 +13,14 @@ import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { peutEcrire } from "@/lib/trial/gate";
 
 type Produit = { id: string; nom: string };
 
 export default function NouvelAchat() {
   const { colors } = useTheme();
+  const { langue } = useLangue();
+  const { showToast } = useToast();
   const [fournisseur, setFournisseur] = useState("");
   const [description, setDescription] = useState("");
   const [montant, setMontant] = useState("");
@@ -41,8 +46,13 @@ export default function NouvelAchat() {
   }
 
   async function sauvegarder() {
+    if (chargement) return;
+    if (!(await peutEcrire())) {
+      showToast(t("essai_expire", langue), "error");
+      return;
+    }
     if (!montant) {
-      Alert.alert("", "Le montant est nécessaire.");
+      showToast(t("achats_erreur_montant", langue), "error");
       return;
     }
     setChargement(true);
@@ -76,32 +86,33 @@ export default function NouvelAchat() {
     await synchroniserPourUtilisateurCourant();
     await enregistrerActivite("achat", "ajout", "Nouvel achat");
     setChargement(false);
+    showToast(t("toast_enregistre", langue), "success");
     router.back();
   }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <EnteteEcran titre="Nouvel achat" onRetour={() => router.back()} />
+      <EnteteEcran titre={t("achats_titre", langue)} onRetour={() => router.back()} />
 
-      <Champ label="Fournisseur" valeur={fournisseur} onChange={setFournisseur} colors={colors} />
-      <Champ label="Description" valeur={description} onChange={setDescription} colors={colors} />
-      <Champ label="Montant" valeur={montant} onChange={setMontant} numerique colors={colors} />
+      <Champ label={t("achats_fournisseur", langue)} valeur={fournisseur} onChange={setFournisseur} colors={colors} />
+      <Champ label={t("achats_description", langue)} valeur={description} onChange={setDescription} colors={colors} />
+      <Champ label={t("achats_montant", langue)} valeur={montant} onChange={setMontant} numerique colors={colors} />
 
-      <Text style={styles.label}>Lier à un produit du stock (facultatif)</Text>
+      <Text style={styles.label}>{t("achats_lier_produit", langue)}</Text>
       <Pressable onPress={ouvrirSelecteur} style={[styles.selecteur, { borderColor: colors.border }]}>
         <Text style={{ color: nomProduitLie ? colors.textPrimary : colors.textMuted, fontSize: 14 }}>
-          {nomProduitLie || "Choisir un produit"}
+          {nomProduitLie || t("achats_choisir_produit", langue)}
         </Text>
         <Feather name="chevron-right" size={16} color={colors.textMuted} />
       </Pressable>
 
       {produitId && (
-        <Champ label="Quantité reçue" valeur={quantiteRecue} onChange={setQuantiteRecue} numerique colors={colors} />
+        <Champ label={t("achats_quantite_recue", langue)} valeur={quantiteRecue} onChange={setQuantiteRecue} numerique colors={colors} />
       )}
 
       <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
         <Feather name="check" size={16} color="#fff" />
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : "Enregistrer"}</Text>
+        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("achats_enregistrer", langue)}</Text>
       </Pressable>
 
       <Modal visible={selecteurOuvert} transparent animationType="slide">

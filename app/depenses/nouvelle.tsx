@@ -1,28 +1,36 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { database } from "@/lib/database";
 import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { peutEcrire } from "@/lib/trial/gate";
 
 const CATEGORIES = ["loyer", "electricite", "transport", "salaire", "internet", "autre"];
 
 export default function NouvelleDepense() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const [categorie, setCategorie] = useState("loyer");
   const [description, setDescription] = useState("");
   const [montant, setMontant] = useState("");
   const [chargement, setChargement] = useState(false);
 
   async function sauvegarder() {
+    if (chargement) return;
+    if (!(await peutEcrire())) {
+      showToast(t("essai_expire", langue), "error");
+      return;
+    }
     if (!montant) {
-      Alert.alert("", t("nouvelle_creance_erreur", langue));
+      showToast(t("nouvelle_creance_erreur", langue), "error");
       return;
     }
     setChargement(true);
@@ -42,6 +50,7 @@ export default function NouvelleDepense() {
     await synchroniserPourUtilisateurCourant();
     await enregistrerActivite("depense", "ajout", "Nouvelle dépense");
     setChargement(false);
+    showToast(t("toast_enregistre", langue), "success");
     router.back();
   }
 

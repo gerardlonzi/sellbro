@@ -5,7 +5,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { EnteteEcran } from "@/components/UI";
 
-const NUMERO_SUPPORT = "+237600000000";
+const NUMERO_SUPPORT = "+237671986281";
 
 export default function Contact() {
   const { colors } = useTheme();
@@ -32,7 +32,7 @@ export default function Contact() {
         </View>
       </Pressable>
 
-      <Pressable onPress={() => Linking.openURL("mailto:support@boutika.app")} style={[styles.boutonContact, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+      <Pressable onPress={() => Linking.openURL("mailto:contact.tosign@gmail.com")} style={[styles.boutonContact, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
         <Feather name="mail" size={18} color={colors.textPrimary} />
         <View>
           <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500" }}>{t("contact_email", langue)}</Text>

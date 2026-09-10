@@ -8,7 +8,7 @@ export function useTourGuide() {
 
   useEffect(() => {
     AsyncStorage.getItem(CLE_TOUR).then((valeur) => {
-      if (valeur !== "true") setAfficherTour(true);
+      if (valeur !== "true") setAfficherTour(false); //
     });
   }, []);
 

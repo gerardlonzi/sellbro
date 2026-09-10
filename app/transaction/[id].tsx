@@ -3,10 +3,12 @@ import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from "rea
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { peutEcrire } from "@/lib/trial/gate";
 import { EnteteEcran } from "@/components/UI";
 
 type Vente = {
@@ -17,10 +19,12 @@ type Vente = {
 export default function DetailTransaction() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { formater } = useCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [vente, setVente] = useState<Vente | null>(null);
   const [chargement, setChargement] = useState(true);
+  const [enregistrement, setEnregistrement] = useState(false);
 
   useEffect(() => {
     charger();
@@ -44,10 +48,18 @@ export default function DetailTransaction() {
         text: t("categories_supprimer_confirmer", langue),
         style: "destructive",
         onPress: async () => {
-          const enreg = await database.get("ventes").find(id);
-          await database.write(async () => { await (enreg as any).destroyPermanently(); });
-          await enregistrerActivite("vente", "suppression", "Vente supprimée");
-          router.back();
+          if (enregistrement) return;
+          if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+          setEnregistrement(true);
+          try {
+            const enreg = await database.get("ventes").find(id);
+            await database.write(async () => { await (enreg as any).destroyPermanently(); });
+            await enregistrerActivite("vente", "suppression", "Vente supprimée");
+            showToast(t("toast_supprime", langue), "success");
+            router.back();
+          } finally {
+            setEnregistrement(false);
+          }
         },
       },
     ]);

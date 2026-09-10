@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { demarrerOuVerifierEssaiGratuit } from "@/lib/trial/deviceTrial";
@@ -15,6 +16,7 @@ import {
 export default function VerificationOtp() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const params = useLocalSearchParams<{ email: string }>();
 
   const [email, setEmail] = useState(params.email ?? "");
@@ -45,7 +47,7 @@ export default function VerificationOtp() {
 
     if (error) {
       setChargement(false);
-      Alert.alert("", t("otp_erreur", langue));
+      showToast(t("otp_erreur", langue), "error");
       return;
     }
 
@@ -59,12 +61,12 @@ export default function VerificationOtp() {
 
   async function renvoyer() {
     await envoyerCodeEmail(email);
-    Alert.alert("", t("otp_sous_titre", langue)(email));
+    showToast(t("otp_sous_titre", langue)(email), "info");
   }
 
   async function confirmerChangementEmail() {
     if (!emailValide(nouvelEmail)) {
-      Alert.alert("", t("erreur_email_invalide", langue));
+      showToast(t("erreur_email_invalide", langue), "error");
       return;
     }
 
@@ -73,7 +75,7 @@ export default function VerificationOtp() {
 
     if (error) {
       setChargement(false);
-      Alert.alert("", error.message);
+      showToast(error.message, "error");
       return;
     }
 
@@ -81,7 +83,7 @@ export default function VerificationOtp() {
     setNouvelEmail("");
     setModeModification(false);
     setChargement(false);
-    Alert.alert("", t("otp_email_modifie", langue));
+    showToast(t("otp_email_modifie", langue), "success");
   }
 
   return (

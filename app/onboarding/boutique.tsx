@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t, Langue } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { useConnexion } from "@/lib/useConnexion";
@@ -15,6 +16,7 @@ import { supabase } from "@/lib/supabase/client";
 export default function OnboardingBoutique() {
   const { colors } = useTheme();
   const { langue, changerLangue } = useLangue();
+  const { showToast } = useToast();
   const { devise } = useCurrency();
   const [nomBoutique, setNomBoutique] = useState("");
   const enLigne = useConnexion();
@@ -31,11 +33,11 @@ const [telephone, setTelephone] = useState("");
   async function continuer() {
 
     if (!enLigne) {
-      Alert.alert("", t("erreur_connexion_requise", langue));
+      showToast(t("erreur_connexion_requise", langue), "error");
       return;
     }
     if (!emailValide(email)) {
-      Alert.alert("", t("erreur_email_invalide", langue));
+      showToast(t("erreur_email_invalide", langue), "error");
       return;
     }
   
@@ -44,7 +46,7 @@ const [telephone, setTelephone] = useState("");
     const autorise = await verifierLimiteAppareil();
     if (!autorise) {
       setVerificationEnCours(false);
-      Alert.alert("", t("erreur_trop_de_comptes", langue));
+      showToast(t("erreur_trop_de_comptes", langue), "error");
       return;
     }
   
@@ -63,7 +65,7 @@ const [telephone, setTelephone] = useState("");
     setVerificationEnCours(false);
 
     if (error) {
-      Alert.alert("", error.message);
+      showToast(error.message, "error");
       return;
     }
 

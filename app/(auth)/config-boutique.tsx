@@ -10,17 +10,24 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 export default function ConfigBoutique() {
   const { colors } = useTheme();
   const [nomBoutique, setNomBoutique] = useState("");
+  const [chargement, setChargement] = useState(false);
 
   async function continuer(sauverNom: boolean) {
-    if (sauverNom && nomBoutique.trim().length > 0) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from("profiles").update({ nom_boutique: nomBoutique }).eq("id", user.id);
+    if (chargement) return;
+    setChargement(true);
+    try {
+      if (sauverNom && nomBoutique.trim().length > 0) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from("profiles").update({ nom_boutique: nomBoutique }).eq("id", user.id);
+        }
       }
+      router.replace("/(tabs)/accueil");
+    } finally {
+      setChargement(false);
     }
-    router.replace("/(tabs)/accueil");
   }
 
   return (
@@ -45,10 +52,11 @@ export default function ConfigBoutique() {
       />
 
       <Pressable
-        style={[styles.bouton, { backgroundColor: colors.accent }]}
+        style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
         onPress={() => continuer(true)}
+        disabled={chargement}
       >
-        <Text style={styles.boutonTexte}>Continuer</Text>
+        <Text style={styles.boutonTexte}>{chargement ? "..." : "Continuer"}</Text>
       </Pressable>
     </View>
   );

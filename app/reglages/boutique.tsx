@@ -19,6 +19,7 @@ export default function InfosBoutique() {
   const [email, setEmail] = useState("");
   const [secteur, setSecteur] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
+  const [chargement, setChargement] = useState(false);
 
   useEffect(() => {
     charger();
@@ -60,22 +61,28 @@ export default function InfosBoutique() {
   }
 
   async function sauvegarder() {
-    await AsyncStorage.setItem("boutika_nom_boutique", nom);
-    if (logo) await AsyncStorage.setItem("boutika_logo", logo);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      await supabase
-        .from("profiles")
-        .update({
-          nom_boutique: nom.trim() || null,
-          telephone: telephone.trim() || null,
-          secteur: secteur.trim() || null,
-        })
-        .eq("id", user.id);
+    if (chargement) return;
+    setChargement(true);
+    try {
+      await AsyncStorage.setItem("boutika_nom_boutique", nom);
+      if (logo) await AsyncStorage.setItem("boutika_logo", logo);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("profiles")
+          .update({
+            nom_boutique: nom.trim() || null,
+            telephone: telephone.trim() || null,
+            secteur: secteur.trim() || null,
+          })
+          .eq("id", user.id);
+      }
+      router.back();
+    } finally {
+      setChargement(false);
     }
-    router.back();
   }
 
   return (
@@ -119,7 +126,7 @@ export default function InfosBoutique() {
       <TextInput value={secteur} onChangeText={setSecteur} placeholder="Ex: Alimentation" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} />
 
       <View style={{ marginTop: 20 }}>
-        <BoutonPrimaire texte={t("produit_sauver", langue)} onPress={sauvegarder} />
+        <BoutonPrimaire texte={t("produit_sauver", langue)} onPress={sauvegarder} disabled={chargement} />
       </View>
     </ScrollView>
   );

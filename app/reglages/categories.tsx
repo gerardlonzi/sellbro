@@ -7,6 +7,7 @@ import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 import { EnteteEcran } from "@/components/UI";
+import { peutEcrire } from "@/lib/trial/gate";
 
 export default function GestionCategories() {
   const { colors } = useTheme();
@@ -16,6 +17,7 @@ export default function GestionCategories() {
   const [nouvelleCategorie, setNouvelleCategorie] = useState("");
 
   async function ajouter() {
+    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
     if (!nouvelleCategorie.trim()) return;
     await ajouterCategorie(nouvelleCategorie.trim());
     setNouvelleCategorie("");

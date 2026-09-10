@@ -3,7 +3,9 @@ import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndic
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
+import { peutEcrire } from "@/lib/trial/gate";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
@@ -25,10 +27,12 @@ const ICONES_SOURCE: Record<string, any> = { vocal: "mic", scan: "camera", manue
 export default function Commandes() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { formater } = useCurrency();
   const [recherche, setRecherche] = useState("");
   const [ventes, setVentes] = useState<Vente[]>([]);
   const [chargement, setChargement] = useState(true);
+  const [enregistrement, setEnregistrement] = useState(false);
   const [filtres, setFiltres] = useState<ValeursFiltre>(VALEURS_FILTRE_VIDES);
   const [panneauOuvert, setPanneauOuvert] = useState(false);
   const { client } = useLocalSearchParams<{ client?: string }>();
@@ -133,7 +137,7 @@ export default function Commandes() {
             <MenuContextuel
               actions={[
                 { label: "Voir détail", icone: "eye", onPress: () => router.push(`/transaction/${v.id}`) },
-                { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { const enreg = await database.get("ventes").find(v.id); await database.write(async () => { await (enreg as any).destroyPermanently(); }); chargerVentes(); } },
+                { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { if (enregistrement) return; if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; } setEnregistrement(true); try { const enreg = await database.get("ventes").find(v.id); await database.write(async () => { await (enreg as any).destroyPermanently(); }); chargerVentes(); } finally { setEnregistrement(false); } } },
               ]}
             />
           </View>

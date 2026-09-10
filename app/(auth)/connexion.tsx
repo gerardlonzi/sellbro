@@ -1,8 +1,9 @@
 // app/(auth)/connexion.tsx
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { envoyerCodeEmail, verifierCodeEmail } from "@/lib/auth/emailVerification";
@@ -10,6 +11,7 @@ import { envoyerCodeEmail, verifierCodeEmail } from "@/lib/auth/emailVerificatio
 export default function Connexion() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const [etape, setEtape] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -21,7 +23,7 @@ export default function Connexion() {
 
   async function envoyerCode() {
     if (!emailValide(email)) {
-      Alert.alert("", t("erreur_email_invalide", langue));
+      showToast(t("erreur_email_invalide", langue), "error");
       return;
     }
     setChargement(true);
@@ -29,7 +31,7 @@ export default function Connexion() {
     setChargement(false);
 
     if (error) {
-      Alert.alert("", t("erreur_connexion_requise", langue));
+      showToast(t("erreur_connexion_requise", langue), "error");
       return;
     }
     setEtape("code");
@@ -41,7 +43,7 @@ export default function Connexion() {
     setChargement(false);
 
     if (error) {
-      Alert.alert("", t("otp_erreur", langue));
+      showToast(t("otp_erreur", langue), "error");
       return;
     }
 
