@@ -7,6 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Tes providers
 import { ThemeProvider, useTheme } from "@/lib/theme/ThemeProvider";
+import { ToastProvider } from "@/lib/toast/ToastProvider";
 import { CurrencyProvider } from "@/lib/currency/CurrencyProvider";
 import { PaysProvider } from "@/lib/pays/PaysProvider";
 import { CategoriesProvider } from "@/lib/categories/CategoriesProvider";
@@ -121,15 +122,17 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <LangueProvider>
-          <PaysProvider>
-            <CategoriesProvider>
-              <CurrencyProvider>
-                <AppContent />
-              </CurrencyProvider>
-            </CategoriesProvider>
-          </PaysProvider>
-        </LangueProvider>
+        <ToastProvider>
+          <LangueProvider>
+            <PaysProvider>
+              <CategoriesProvider>
+                <CurrencyProvider>
+                  <AppContent />
+                </CurrencyProvider>
+              </CategoriesProvider>
+            </PaysProvider>
+          </LangueProvider>
+        </ToastProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

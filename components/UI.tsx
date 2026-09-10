@@ -1,4 +1,5 @@
-import { View, Text, Pressable, StyleSheet, ViewStyle } from "react-native";
+import { useEffect, useRef } from "react";
+import { View, Text, Pressable, Animated, StyleSheet, ViewStyle, DimensionValue } from "react-native";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { Feather } from "@expo/vector-icons";
 
@@ -57,6 +58,24 @@ export function BoutonSecondaire({ texte, onPress }: { texte: string; onPress: (
       <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{texte}</Text>
     </Pressable>
   );
+}
+
+export function Skeleton({ width = "100%", height = 14, style }: { width?: DimensionValue; height?: number; style?: ViewStyle }) {
+  const { colors } = useTheme();
+  const opacite = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacite, { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(opacite, { toValue: 0.45, duration: 650, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacite]);
+
+  return <Animated.View style={[{ width, height, borderRadius: 6, backgroundColor: colors.border, opacity: opacite }, style]} />;
 }
 
 export function EnteteEcran({ titre, onRetour }: { titre: string; onRetour?: () => void }) {
