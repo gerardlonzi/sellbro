@@ -1,14 +1,18 @@
 import { useRef, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
+import { useToast } from "@/lib/toast/ToastProvider";
+import { useLangue, t } from "@/lib/i18n";
 import { scannerFacture } from "@/lib/ai/ocr";
 
 export default function ScanFacture() {
   const [permission, demanderPermission] = useCameraPermissions();
   const [traitement, setTraitement] = useState(false);
+  const { langue } = useLangue();
+  const { showToast } = useToast();
   const cameraRef = useRef<CameraView>(null);
 
   if (!permission) return <View style={{ flex: 1, backgroundColor: "#000" }} />;
@@ -17,10 +21,10 @@ export default function ScanFacture() {
     return (
       <View style={styles.permissionContainer}>
         <Text style={{ color: "#fff", marginBottom: 16, textAlign: "center" }}>
-          Boutika a besoin d'accéder à ta caméra pour scanner les factures
+          {t("scan_facture_besoin_camera", langue)}
         </Text>
         <Pressable onPress={demanderPermission} style={styles.boutonPermission}>
-          <Text style={{ color: "#fff" }}>Autoriser la caméra</Text>
+          <Text style={{ color: "#fff" }}>{t("scan_autoriser", langue)}</Text>
         </Pressable>
       </View>
     );
@@ -32,7 +36,7 @@ export default function ScanFacture() {
     setTraitement(false);
 
     if (!texte) {
-      Alert.alert("", "Impossible de traiter l'image — vérifie ta connexion ou ton quota.");
+      showToast(t("vente_scan_erreur_traitement", langue), "error");
       return;
     }
 
@@ -60,7 +64,7 @@ export default function ScanFacture() {
       {traitement && (
         <View style={styles.overlayTraitement}>
           <ActivityIndicator size="large" color="#fff" />
-          <Text style={{ color: "#fff", marginTop: 12 }}>Analyse en cours...</Text>
+          <Text style={{ color: "#fff", marginTop: 12 }}>{t("apercu_scan_analyse", langue)}</Text>
         </View>
       )}
 
@@ -70,13 +74,13 @@ export default function ScanFacture() {
             <Pressable onPress={() => router.back()}>
               <Feather name="x" size={22} color="#fff" />
             </Pressable>
-            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500" }}>Scanner une facture</Text>
+            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500" }}>{t("scan_facture_titre", langue)}</Text>
             <View style={{ width: 22 }} />
           </View>
 
           <View style={styles.zoneCadre}>
             <View style={styles.cadre} />
-            <Text style={styles.texteAide}>Aligne la facture dans le cadre</Text>
+            <Text style={styles.texteAide}>{t("scan_facture_aide", langue)}</Text>
           </View>
 
           <View style={styles.zoneCapture}>

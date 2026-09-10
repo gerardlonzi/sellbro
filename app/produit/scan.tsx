@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -16,6 +16,7 @@ export default function ScannerProduit() {
   const { langue } = useLangue();
   const [permission, demanderPermission] = useCameraPermissions();
   const [verrouille, setVerrouille] = useState(false);
+  const [resultat, setResultat] = useState<{ type: "trouve"; produitId: string; nom: string; reference: string } | { type: "introuvable"; reference: string } | null>(null);
 
   if (!permission) return <View style={{ flex: 1, backgroundColor: "#000" }} />;
 
@@ -38,7 +39,7 @@ export default function ScannerProduit() {
   }
 
   async function surBarcodeScanne({ data }: { data: string }) {
-    if (verrouille) return;
+    if (verrouille || resultat) return;
     setVerrouille(true);
 
     const userId = await obtenirUserId();
@@ -48,13 +49,15 @@ export default function ScannerProduit() {
     const produit = (resultats as any[]).find((p) => p.champsSupplementaires?.reference === data);
 
     if (produit) {
-      router.replace(`/produit/${produit.id}`);
+      setResultat({ type: "trouve", produitId: produit.id, nom: produit.nom, reference: data });
     } else {
-      Alert.alert(t("scan_produit_introuvable", langue), `${t("scan_aucune_reference", langue)} ${data}`, [
-        { text: t("scan_annuler", langue), style: "cancel", onPress: () => setVerrouille(false) },
-        { text: t("scan_creer_produit", langue), onPress: () => router.replace({ pathname: "/produit/nouveau", params: { reference: data } }) },
-      ]);
+      setResultat({ type: "introuvable", reference: data });
     }
+  }
+
+  function reinitialiser() {
+    setResultat(null);
+    setVerrouille(false);
   }
 
   return (
@@ -81,6 +84,39 @@ export default function ScannerProduit() {
 
         <View />
       </View>
+
+      {resultat && (
+        <View style={styles.overlayResultat}>
+          <View style={[styles.carteResultat, { backgroundColor: colors.surface }]}>
+            <Feather name={resultat.type === "trouve" ? "check-circle" : "alert-circle"} size={34} color={resultat.type === "trouve" ? colors.success : colors.warning} />
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: "600", marginTop: 10, textAlign: "center" }}>
+              {resultat.type === "trouve" ? t("scan_succes", langue) : t("scan_produit_introuvable", langue)}
+            </Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 4, textAlign: "center" }}>
+              {resultat.type === "trouve" ? resultat.nom : `${t("scan_aucune_reference", langue)} ${resultat.reference}`}
+            </Text>
+
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 18 }}>
+              <Pressable onPress={reinitialiser} style={[styles.boutonResultat, { borderColor: colors.border, borderWidth: 1, flex: 1 }]}>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, textAlign: "center" }}>{t("scan_autre_image", langue)}</Text>
+              </Pressable>
+              {resultat.type === "trouve" ? (
+                <Pressable onPress={() => router.replace(`/produit/${resultat.produitId}`)} style={[styles.boutonResultat, { backgroundColor: colors.accent, flex: 1 }]}>
+                  <Text style={{ color: "#fff", fontSize: 13, textAlign: "center" }}>{t("scan_voir", langue)}</Text>
+                </Pressable>
+              ) : (
+                <Pressable onPress={() => router.replace({ pathname: "/produit/nouveau", params: { reference: resultat.reference } })} style={[styles.boutonResultat, { backgroundColor: colors.accent, flex: 1 }]}>
+                  <Text style={{ color: "#fff", fontSize: 13, textAlign: "center" }}>{t("scan_creer_produit", langue)}</Text>
+                </Pressable>
+              )}
+            </View>
+
+            <Pressable onPress={() => router.back()} style={{ marginTop: 16 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 13 }}>{t("scan_quitter", langue)}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -94,4 +130,7 @@ const styles = StyleSheet.create({
   permissionContainer: { flex: 1, paddingTop: 50 },
   boutonRetour: { paddingHorizontal: 16, marginBottom: 8, alignSelf: "flex-start" },
   boutonPermission: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },
+  overlayResultat: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", padding: 24 },
+  carteResultat: { width: "100%", maxWidth: 360, borderRadius: 16, padding: 20, alignItems: "center" },
+  boutonResultat: { paddingVertical: 12, borderRadius: 8, alignItems: "center", justifyContent: "center" },
 });
