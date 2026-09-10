@@ -140,7 +140,10 @@ export default function Clients() {
         <ScrollView>
           {filtrees.map((c) => (
             <View key={c.nom} style={[styles.ligne, { borderBottomColor: colors.border }]}>
-              <View style={styles.ligneGauche}>
+              <Pressable
+                onPress={() => router.push({ pathname: "/client/[nom]", params: { nom: c.nom } })}
+                style={styles.ligneGauche}
+              >
                 <View style={[styles.avatar, { backgroundColor: colors.accentBg }]}>
                   <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "500" }}>{c.nom.slice(0, 2).toUpperCase()}</Text>
                 </View>
@@ -149,7 +152,7 @@ export default function Clients() {
                   <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{c.nbAchats} {t("clients_achats", langue)}</Text>
                 </View>
                 {c.aCreance && <View style={[styles.pointCreance, { backgroundColor: colors.danger }]} />}
-              </View>
+              </Pressable>
               <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10 }}>{c.total.toLocaleString()} F</Text>
               <MenuContextuel actions={[{ label: "Voir historique", icone: "list", onPress: () => router.push({ pathname: "/commandes", params: { client: c.nom } }) }]} />
             </View>

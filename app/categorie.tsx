@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ScrollView, TextInput, Pressable, Text, StyleSheet } from "react-native";
+import { ScrollView, TextInput, Pressable, Text, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -30,13 +30,22 @@ async function creerEtChoisir() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: 14, paddingTop: 50 }}>
       <EnteteEcran titre={t("categorie_titre", langue)} onRetour={() => router.back()} />
-      <TextInput
-        placeholder={t("categorie_recherche", langue)}
-        placeholderTextColor={colors.textMuted}
-        value={recherche}
-        onChangeText={setRecherche}
-        style={[styles.recherche, { borderColor: colors.border, color: colors.textPrimary }]}
-      />
+      <View style={styles.ligneRecherche}>
+        <TextInput
+          placeholder={t("categorie_recherche", langue)}
+          placeholderTextColor={colors.textMuted}
+          value={recherche}
+          onChangeText={setRecherche}
+          style={[styles.recherche, { borderColor: colors.border, color: colors.textPrimary }]}
+        />
+        <Pressable
+          onPress={() => peutCreer && creerEtChoisir()}
+          disabled={!peutCreer}
+          style={[styles.boutonPlus, { backgroundColor: peutCreer ? colors.accent : colors.border }]}
+        >
+          <Feather name="plus" size={18} color="#fff" />
+        </Pressable>
+      </View>
 
       {peutCreer && (
         <Pressable onPress={creerEtChoisir} style={[styles.ligneCreation, { borderColor: colors.accent }]}>
@@ -58,7 +67,9 @@ async function creerEtChoisir() {
 }
 
 const styles = StyleSheet.create({
-  recherche: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, marginBottom: 12 },
+  ligneRecherche: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  recherche: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13 },
+  boutonPlus: { width: 42, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   ligneCreation: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 10 },
   ligne: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 13, borderBottomWidth: 1 },
 });
