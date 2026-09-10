@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal } from "react-native";
 import { router } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
@@ -13,7 +14,9 @@ import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
-import { genererRecuPdf } from "@/lib/export/genererPdf";
+import { creerFactureDepuisVentes } from "@/lib/factures/creerFacture";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { peutEcrire } from "@/lib/trial/gate";
 
 type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number };
 type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number };
@@ -22,10 +25,13 @@ type Client = { nom: string; telephone: string | null };
 export default function NouvelleVente() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const [panier, setPanier] = useState<LigneVente[]>([]);
   const [client, setClient] = useState("");
   const [clientTelephone, setClientTelephone] = useState("");
   const [modePaiement, setModePaiement] = useState<"cash" | "momo" | "credit">("cash");
+  const [dateEcheance, setDateEcheance] = useState("");
+  const [afficherDateEcheance, setAfficherDateEcheance] = useState(false);
   const [chargement, setChargement] = useState(false);
   const [selecteurProduitOuvert, setSelecteurProduitOuvert] = useState(false);
   const [selecteurClientOuvert, setSelecteurClientOuvert] = useState(false);
@@ -91,7 +97,7 @@ export default function NouvelleVente() {
     if (produit) {
       ajouterAuPanier(produit);
     } else {
-      Alert.alert(t("vente_scan_introuvable_titre", langue), t("vente_scan_introuvable", langue));
+      showToast(t("vente_scan_introuvable", langue), "error");
     }
 
     // Réarme le scan après un court délai pour enchaîner plusieurs produits.
@@ -103,7 +109,7 @@ export default function NouvelleVente() {
     if (delta > 0 && ligne.produitId) {
       const produit = produits.find((p) => p.id === ligne.produitId);
       if (produit && ligne.quantite >= produit.quantiteStock) {
-        Alert.alert("", t("vente_rupture_stock", langue));
+        showToast(t("vente_rupture_stock", langue), "error");
         return;
       }
     }
@@ -136,24 +142,30 @@ export default function NouvelleVente() {
 
   const total = panier.reduce((s, l) => s + l.quantite * l.prixUnitaire, 0);
 
-  async function sauvegarder(imprimer = false) {
+  async function sauvegarder(genererFacture = false) {
+    if (chargement) return;
+    if (!(await peutEcrire())) {
+      showToast(t("essai_expire", langue), "error");
+      return;
+    }
     if (panier.length === 0) {
-      Alert.alert("", t("vente_panier_vide", langue));
+      showToast(t("vente_panier_vide", langue), "error");
       return;
     }
 
     if (modePaiement === "credit" && !client.trim()) {
-      Alert.alert("", t("vente_credit_nom_requis", langue));
+      showToast(t("vente_credit_nom_requis", langue), "error");
       return;
     }
 
     setChargement(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setChargement(false); return; }
 
+    const venteIds: string[] = [];
     await database.write(async () => {
       for (const ligne of panier) {
-        await database.get("ventes").create((v: any) => {
+        const vente = await database.get("ventes").create((v: any) => {
           v.userId = user.id;
           v.produitId = ligne.produitId;
           v.produitNom = ligne.nom;
@@ -167,6 +179,7 @@ export default function NouvelleVente() {
           v.creeLe = new Date();
           v.synchronise = false;
         });
+        venteIds.push(vente.id);
       }
 
       // Paiement à crédit → on crée la créance correspondante.
@@ -179,7 +192,7 @@ export default function NouvelleVente() {
           c.telephone = clientTelephone.trim() || null;
           c.montantInitial = totalVente;
           c.montantRestant = totalVente;
-          c.dateEcheance = null;
+          c.dateEcheance = dateEcheance || null;
           c.statut = "en_cours";
           c.note = null;
           c.produitConcerne = null;
@@ -188,7 +201,7 @@ export default function NouvelleVente() {
         });
       }
     });
-    
+
     // Déduit le stock APRÈS l'écriture des ventes (transaction séparée,
     // car enregistrerMouvementStock a sa propre database.write).
     for (const ligne of panier) {
@@ -205,9 +218,16 @@ export default function NouvelleVente() {
 
     await synchroniserPourUtilisateurCourant();
     await enregistrerActivite("vente", "ajout", "Nouvelle vente");
-    if (imprimer) {
-      await genererRecuPdf(client.trim() || null, clientTelephone.trim() || null, panier, total);
+
+    // Génération de facture : on regroupe les ventes en une facture puis on
+    // ouvre son écran (où se trouve le bouton Imprimer direct).
+    if (genererFacture && venteIds.length > 0) {
+      const factureId = await creerFactureDepuisVentes(user.id, venteIds);
+      setChargement(false);
+      router.replace(`/factures/${factureId}`);
+      return;
     }
+
     setChargement(false);
     router.back();
   }
@@ -291,14 +311,36 @@ export default function NouvelleVente() {
         ))}
       </View>
 
+      {modePaiement === "credit" && (
+        <>
+          <Text style={[styles.label, { marginTop: 12 }]}>{t("nouvelle_creance_echeance", langue)}</Text>
+          <Pressable onPress={() => setAfficherDateEcheance(true)} style={[styles.selecteurDate, { borderColor: colors.border }]}>
+            <Text style={{ color: dateEcheance ? colors.textPrimary : colors.textMuted, fontSize: 14 }}>
+              {dateEcheance || "AAAA-MM-JJ"}
+            </Text>
+            <Feather name="calendar" size={15} color={colors.textMuted} />
+          </Pressable>
+          {afficherDateEcheance && (
+            <DateTimePicker
+              value={dateEcheance ? new Date(dateEcheance) : new Date()}
+              mode="date"
+              onChange={(event: any, date?: Date) => {
+                setAfficherDateEcheance(false);
+                if (event.type === "set" && date) setDateEcheance(date.toISOString().split("T")[0]);
+              }}
+            />
+          )}
+        </>
+      )}
+
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Pressable onPress={() => sauvegarder(false)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.accent, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
           <Feather name="check" size={16} color="#fff" />
           <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_enregistrer", langue)}</Text>
         </Pressable>
         <Pressable onPress={() => sauvegarder(true)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.proFill, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
-          <Feather name="printer" size={16} color="#fff" />
-          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_imprimer", langue)}</Text>
+          <Feather name="file-text" size={16} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_generer_facture", langue)}</Text>
         </Pressable>
       </View>
 
@@ -397,6 +439,7 @@ const styles = StyleSheet.create({
   ligneChampBouton: { flexDirection: "row", gap: 8, marginBottom: 14 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14 },
   boutonImporter: { width: 42, alignItems: "center", justifyContent: "center", borderRadius: 8 },
+  selecteurDate: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 14 },
   ligneDeux: { flexDirection: "row", gap: 10 },
   choix: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
   boutonSauver: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 10, marginTop: 10 },

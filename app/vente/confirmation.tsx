@@ -21,30 +21,37 @@ export default function Confirmation() {
   const [prixUnitaire, setPrixUnitaire] = useState("500");
   const [client, setClient] = useState("Paul");
   const [modePaiement, setModePaiement] = useState<"cash" | "momo" | "credit">("cash");
+  const [chargement, setChargement] = useState(false);
 
   async function validerVente() {
-    const userId = await obtenirUserId();
-    if (!userId) return;
+    if (chargement) return;
+    setChargement(true);
+    try {
+      const userId = await obtenirUserId();
+      if (!userId) return;
 
-    await database.write(async () => {
-      await database.get("ventes").create((v: any) => {
-        v.userId = userId;
-        v.produitId = null;
-        v.produitNom = produit.trim() || null;
-        v.quantite = Number(quantite);
-        v.prixUnitaire = Number(prixUnitaire);
-        v.clientNom = client.trim() || null;
-        v.clientTelephone = null;
-        v.modePaiement = modePaiement;
-        v.source = source ?? "manuel";
-        v.donneesSupplementairesJson = "{}";
-        v.creeLe = new Date();
-        v.synchronise = false;
+      await database.write(async () => {
+        await database.get("ventes").create((v: any) => {
+          v.userId = userId;
+          v.produitId = null;
+          v.produitNom = produit.trim() || null;
+          v.quantite = Number(quantite);
+          v.prixUnitaire = Number(prixUnitaire);
+          v.clientNom = client.trim() || null;
+          v.clientTelephone = null;
+          v.modePaiement = modePaiement;
+          v.source = source ?? "manuel";
+          v.donneesSupplementairesJson = "{}";
+          v.creeLe = new Date();
+          v.synchronise = false;
+        });
       });
-    });
 
-    await synchroniserPourUtilisateurCourant();
-    router.replace("/(tabs)/accueil");
+      await synchroniserPourUtilisateurCourant();
+      router.replace("/(tabs)/accueil");
+    } finally {
+      setChargement(false);
+    }
   }
 
   const total = Number(quantite) * Number(prixUnitaire) || 0;
@@ -95,7 +102,7 @@ export default function Confirmation() {
       </View>
 
       <View style={{ marginTop: 24, gap: 10 }}>
-        <BoutonPrimaire texte="Valider la vente" onPress={validerVente} />
+        <BoutonPrimaire texte="Valider la vente" onPress={validerVente} disabled={chargement} />
         <BoutonSecondaire texte="Réenregistrer" onPress={() => router.back()} />
       </View>
     </View>

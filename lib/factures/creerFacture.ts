@@ -9,8 +9,9 @@ async function genererNumero(userId: string): Promise<string> {
 
 // Regroupe plusieurs lignes de vente (même client, même journée) en une facture.
 export async function creerFactureDepuisVentes(userId: string, venteIds: string[]) {
-  const ventes = await Promise.all(venteIds.map((id) => database.get("ventes").find(id)));
-  const lignes = ventes as any[];
+  // Une seule requête au lieu d'une requête par vente (évite le N+1).
+  const ventes = (await database.get("ventes").query(Q.where("id", Q.oneOf(venteIds))).fetch()) as any[];
+  const lignes = ventes.slice().sort((a, b) => (a.creeLe ?? 0) - (b.creeLe ?? 0));
 
   const sousTotal = lignes.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
   const numero = await genererNumero(userId);

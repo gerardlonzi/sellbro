@@ -3,8 +3,10 @@ import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
+import { peutEcrire } from "@/lib/trial/gate";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran, Badge } from "@/components/UI";
@@ -13,11 +15,13 @@ import { genererFacturePdf } from "@/lib/export/genererPdf";
 export default function DetailFacture() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { formater } = useCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [facture, setFacture] = useState<any>(null);
   const [lignes, setLignes] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
+  const [enregistrement, setEnregistrement] = useState(false);
 
   useEffect(() => {
     charger();
@@ -33,17 +37,28 @@ export default function DetailFacture() {
   }
 
   async function marquerPayee() {
-    await database.write(async () => {
-      await facture.update((f: any) => {
-        f.statut = "payee";
-        f.montantPaye = f.total;
+    if (enregistrement) return;
+    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+    setEnregistrement(true);
+    try {
+      await database.write(async () => {
+        await facture.update((f: any) => {
+          f.statut = "payee";
+          f.montantPaye = f.total;
+        });
       });
-    });
-    charger();
+      charger();
+    } finally {
+      setEnregistrement(false);
+    }
   }
 
-  async function partager() {
-    await genererFacturePdf(facture, lignes);
+  async function imprimer() {
+    await genererFacturePdf(facture, lignes, langue, false);
+  }
+
+  async function exporter() {
+    await genererFacturePdf(facture, lignes, langue, true);
   }
 
   if (chargement || !facture) {
@@ -82,14 +97,17 @@ export default function DetailFacture() {
 
       <View style={{ flexDirection: "row", gap: 10, marginTop: 20 }}>
         {facture.statut !== "payee" && (
-          <Pressable onPress={marquerPayee} style={[styles.bouton, { backgroundColor: colors.success }]}>
+          <Pressable onPress={marquerPayee} disabled={enregistrement} style={[styles.bouton, { backgroundColor: colors.success, opacity: enregistrement ? 0.6 : 1 }]}>
             <Feather name="check" size={15} color="#fff" />
             <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{t("facture_marquer_payee", langue)}</Text>
           </Pressable>
         )}
-        <Pressable onPress={partager} style={[styles.bouton, { borderColor: colors.border, borderWidth: 1 }]}>
-          <Feather name="share-2" size={15} color={colors.textPrimary} />
-          <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("facture_partager", langue)}</Text>
+        <Pressable onPress={imprimer} style={[styles.bouton, { backgroundColor: colors.accent }]}>
+          <Feather name="printer" size={15} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{t("vente_imprimer", langue)}</Text>
+        </Pressable>
+        <Pressable onPress={exporter} style={[styles.boutonExport, { borderColor: colors.border, borderWidth: 1 }]}>
+          <Feather name="download" size={15} color={colors.textPrimary} />
         </Pressable>
       </View>
     </ScrollView>
@@ -101,4 +119,5 @@ const styles = StyleSheet.create({
   carte: { borderWidth: 1, borderRadius: 12, padding: 16 },
   ligneFacture: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
   bouton: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: 10 },
+  boutonExport: { gap: 6, paddingVertical: 12, borderRadius: 10, paddingHorizontal:15 },
 });
