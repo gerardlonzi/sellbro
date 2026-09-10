@@ -3,16 +3,20 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Activi
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { peutEcrire } from "@/lib/trial/gate";
 
 export default function DetailProduit() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [chargement, setChargement] = useState(true);
+  const [enregistrement, setEnregistrement] = useState(false);
   const [nom, setNom] = useState("");
   const [prixVente, setPrixVente] = useState("");
   const [prixAchat, setPrixAchat] = useState("");
@@ -53,17 +57,29 @@ export default function DetailProduit() {
   }
 
   async function sauvegarder() {
-    const p = await database.get("produits").find(id);
-    await database.write(async () => {
-      await (p as any).update((x: any) => {
-        x.nom = nom;
-        x.prixVente = Number(prixVente);
-        x.prixAchat = Number(prixAchat) || null;
-        x.quantiteStock = Number(quantite) || 0;
-        x.seuilAlerte = Number(seuilAlerte) || 5;
+    if (enregistrement) return;
+    if (!(await peutEcrire())) {
+      showToast(t("essai_expire", langue), "error");
+      return;
+    }
+    setEnregistrement(true);
+    try {
+      const p = await database.get("produits").find(id);
+      await database.write(async () => {
+        await (p as any).update((x: any) => {
+          x.nom = nom;
+          x.prixVente = Number(prixVente);
+          x.prixAchat = Number(prixAchat) || null;
+          x.quantiteStock = Number(quantite) || 0;
+          x.seuilAlerte = Number(seuilAlerte) || 5;
+        });
       });
-    });
-    router.back();
+      await enregistrerActivite("produit", "modification", `Produit modifié : ${nom}`);
+      showToast(t("toast_produit_modifie", langue), "success");
+      router.back();
+    } finally {
+      setEnregistrement(false);
+    }
   }
 
   function confirmerSuppression() {
@@ -73,10 +89,17 @@ export default function DetailProduit() {
         text: t("categories_supprimer_confirmer", langue),
         style: "destructive",
         onPress: async () => {
-          const p = await database.get("produits").find(id);
-          await database.write(async () => { await (p as any).destroyPermanently(); });
-          await enregistrerActivite("produit", "suppression", `Produit supprimé : ${nom}`);
-          router.back();
+          if (enregistrement) return;
+          setEnregistrement(true);
+          try {
+            const p = await database.get("produits").find(id);
+            await database.write(async () => { await (p as any).destroyPermanently(); });
+            await enregistrerActivite("produit", "suppression", `Produit supprimé : ${nom}`);
+            showToast(t("toast_produit_supprime", langue), "success");
+            router.back();
+          } finally {
+            setEnregistrement(false);
+          }
         },
       },
     ]);
@@ -97,8 +120,8 @@ export default function DetailProduit() {
           <Feather name="x" size={20} color={colors.textSecondary} />
         </Pressable>
         <Text style={{ fontSize: 14, fontWeight: "500", color: colors.textPrimary }}>{nom}</Text>
-        <Pressable onPress={sauvegarder}>
-          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "500" }}>{t("produit_sauver", langue)}</Text>
+        <Pressable onPress={sauvegarder} disabled={enregistrement}>
+          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "500", opacity: enregistrement ? 0.5 : 1 }}>{t("produit_sauver", langue)}</Text>
         </Pressable>
         <Pressable onPress={() => router.push(`/produit/mouvements/${id}`)} style={{ marginLeft: 12 }}>
   <Feather name="clock" size={18} color={colors.textSecondary} />

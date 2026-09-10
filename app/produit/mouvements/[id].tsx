@@ -42,12 +42,12 @@ export default function MouvementsProduit() {
         <ScrollView>
           {mouvements.map((m) => (
             <View key={m.id} style={[styles.ligne, { borderBottomColor: colors.border }]}>
-              <Feather name={ICONES[m.type] ?? "circle"} size={16} color={m.quantite >= 0 ? colors.success : colors.danger} />
+              <Feather name={ICONES[m.type] ?? "circle"} size={16} color={m.quantite >= 0 ? colors.info : colors.danger} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{m.raison ?? m.type}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: 11 }}>{m.creeLe.toLocaleDateString()} — {m.stockAvant} → {m.stockApres}</Text>
               </View>
-              <Text style={{ color: m.quantite >= 0 ? colors.success : colors.danger, fontSize: 13, fontWeight: "500" }}>
+              <Text style={{ color: m.quantite >= 0 ? colors.info : colors.danger, fontSize: 13, fontWeight: "500" }}>
                 {m.quantite >= 0 ? "+" : ""}{m.quantite}
               </Text>
             </View>

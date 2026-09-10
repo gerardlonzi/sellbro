@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 import {
   View,
@@ -12,13 +12,16 @@ import {
   Image,
 } from "react-native";
 
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { useTheme } from "@/lib/theme/ThemeProvider";
 
+import { useToast } from "@/lib/toast/ToastProvider";
+
 import { useLangue, t } from "@/lib/i18n";
+import { peutEcrire } from "@/lib/trial/gate";
 
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 
@@ -57,8 +60,10 @@ type Produit = {
 export default function Stock() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { plan } = usePlanActuel();
   const { categories } = useCategories();
+  const { statut } = useLocalSearchParams<{ statut?: string }>();
 
   const [recherche, setRecherche] = useState("");
   const [rechercheOuverte, setRechercheOuverte] = useState(false);
@@ -69,6 +74,7 @@ export default function Stock() {
 
   const [produits, setProduits] = useState<Produit[]>([]);
   const [chargement, setChargement] = useState(true);
+  const [enregistrement, setEnregistrement] = useState(false);
 
   const [filtres, setFiltres] = useState<ValeursFiltre>(
     VALEURS_FILTRE_VIDES
@@ -81,6 +87,14 @@ export default function Stock() {
       chargerProduits();
     }, [])
   );
+
+  // Arrivée depuis l'alerte « rupture de stock » du dashboard : on applique
+  // directement le filtre pour n'afficher que les produits en rupture.
+  useEffect(() => {
+    if (statut === "rupture") {
+      setFiltres((f) => ({ ...f, statut: "rupture" }));
+    }
+  }, [statut]);
 
   async function chargerProduits() {
     setChargement(true);
@@ -417,7 +431,10 @@ export default function Stock() {
                 },
               ]}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+              <Pressable
+                onPress={() => router.push(`/produit/${p.id}`)}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
+              >
                 {p.image_uri ? (
                   <Image source={{ uri: p.image_uri }} style={styles.apercuImage} />
                 ) : null}
@@ -441,9 +458,17 @@ export default function Stock() {
                     {p.prix_vente.toLocaleString()} F
                   </Text>
                 </View>
-              </View>
+              </Pressable>
 
-              {p.quantite_stock <= p.seuil_alerte ? (
+              {p.quantite_stock === 0 ? (
+                <Badge
+                  texte={`${p.quantite_stock} ${t(
+                    "stock_en_stock",
+                    langue
+                  )}`}
+                  type="danger"
+                />
+              ) : p.quantite_stock <= p.seuil_alerte ? (
                 <Badge
                   texte={`${p.quantite_stock} ${t(
                     "stock_en_stock",
@@ -483,14 +508,21 @@ export default function Stock() {
                     icone: "trash-2",
                     destructif: true,
                     onPress: async () => {
-                      const enreg = await database
-                        .get("produits")
-                        .find(p.id);
-                      await database.write(async () => {
-                        await (enreg as any).destroyPermanently();
-                      });
-                      await enregistrerActivite("produit", "suppression", `Produit supprimé : ${p.nom}`);
-                      chargerProduits();
+                      if (enregistrement) return;
+                      if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+                      setEnregistrement(true);
+                      try {
+                        const enreg = await database
+                          .get("produits")
+                          .find(p.id);
+                        await database.write(async () => {
+                          await (enreg as any).destroyPermanently();
+                        });
+                        await enregistrerActivite("produit", "suppression", `Produit supprimé : ${p.nom}`);
+                        chargerProduits();
+                      } finally {
+                        setEnregistrement(false);
+                      }
                     },
                   },
                 ]}

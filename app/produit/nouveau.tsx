@@ -1,9 +1,10 @@
 import { useState,useEffect } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Image } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { ecouterSelectionCategorie } from "@/lib/categories/relaisSelection"
@@ -12,18 +13,20 @@ import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
+import { peutEcrire } from "@/lib/trial/gate";
 
 
 
 type TypeChamp = "texte" | "couleur" | "poids" | "image";
 
 const CHAMPS_SUGGERES: { cle: string; labelCle: string; type: TypeChamp }[] = [
+  { cle: "image", labelCle: "produit_champ_image", type: "image" },
   { cle: "remarque", labelCle: "produit_champ_remarque", type: "texte" },
   { cle: "description", labelCle: "produit_champ_description", type: "texte" },
   { cle: "reference", labelCle: "produit_champ_reference", type: "texte" },
-  { cle: "couleur", labelCle: "produit_champ_couleur", type: "couleur" },
   { cle: "poids", labelCle: "produit_champ_poids", type: "poids" },
-  { cle: "image", labelCle: "produit_champ_image", type: "image" },
+  { cle: "couleur", labelCle: "produit_champ_couleur", type: "couleur" },
 ];
 
 const PALETTE_COULEURS = ["#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#6D4C41", "#000000", "#FFFFFF", "#9E9E9E"];
@@ -32,6 +35,7 @@ const UNITES_POIDS = ["g", "kg", "L", "mL"];
 export default function NouveauProduit() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
 
 
 
@@ -49,6 +53,7 @@ export default function NouveauProduit() {
   const [poidsValeur, setPoidsValeur] = useState("");
   const [poidsUnite, setPoidsUnite] = useState("kg");
   const [images, setImages] = useState<string[]>([]);
+  const [chargement, setChargement] = useState(false);
   const {plan} = usePlanActuel();
   const { reference } = useLocalSearchParams<{ reference?: string }>();
 
@@ -59,7 +64,6 @@ export default function NouveauProduit() {
   // Si on arrive d'un scan de code-barres, on pré-remplit la référence.
   useEffect(() => {
     if (reference) {
-      setChampsActifs((a) => (a.includes("reference") ? a : [...a, "reference"]));
       setValeursTexte((v) => ({ ...v, reference }));
     }
   }, [reference]);
@@ -92,56 +96,92 @@ export default function NouveauProduit() {
 
 
   async function sauvegarder() {
-    if (!nom.trim() || !prixVente) {
-      Alert.alert(t("produit_erreur_titre", langue), t("produit_erreur_texte", langue));
+    if (chargement) return;
+    if (!(await peutEcrire())) {
+      showToast(t("essai_expire", langue), "error");
       return;
     }
-    const userId = await obtenirUserId();
-    if (!userId) return;
-
-    if (plan?.quotaProduits) {
-      const nb = await database.get("produits").query(Q.where("user_id", userId)).fetchCount();
-      if (nb >= plan.quotaProduits) { router.push("/premium"); return; }
+    if (!nom.trim() || !prixVente) {
+      showToast(t("produit_erreur_texte", langue), "error");
+      return;
     }
-  
-    const champsSupplementaires: Record<string, string> = { ...valeursTexte };
-    if (champsActifs.includes("couleur") && couleurChoisie) champsSupplementaires.couleur = couleurChoisie;
-    if (champsActifs.includes("poids") && poidsValeur) champsSupplementaires.poids = `${poidsValeur} ${poidsUnite}`;
-    if (champsActifs.includes("image") && images.length > 0) champsSupplementaires.images = JSON.stringify(images);
-  
-    await database.write(async () => {
-      await database.get("produits").create((p: any) => {
-        p.userId = userId;
-        p.nom = nom;
-        p.categorieNom = categorie || null;
-        p.prixVente = Number(prixVente);
-        p.prixAchat = Number(prixAchat) || null;
-        p.quantiteStock = Number(quantite) || 0;
-        p.seuilAlerte = Number(seuilAlerte) || 5;
-        p.champsSupplementairesJson = JSON.stringify(champsSupplementaires);
-        p.creeLe = new Date();
-        p.synchronise = false;
-      });
-    });
-    console.log("Produit sauvegardé");
+    setChargement(true);
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
 
-    await synchroniserPourUtilisateurCourant();
-    await enregistrerActivite("produit", "ajout", `Produit ajouté : ${nom}`);
-    router.back();
+    try {
+      if (plan?.quotaProduits) {
+        const nb = await database.get("produits").query(Q.where("user_id", userId)).fetchCount();
+        if (nb >= plan.quotaProduits) { router.push("/premium"); return; }
+      }
+
+      const champsSupplementaires: Record<string, string> = { ...valeursTexte };
+      if (champsActifs.includes("couleur") && couleurChoisie) champsSupplementaires.couleur = couleurChoisie;
+      if (champsActifs.includes("poids") && poidsValeur) champsSupplementaires.poids = `${poidsValeur} ${poidsUnite}`;
+      if (champsActifs.includes("image") && images.length > 0) champsSupplementaires.images = JSON.stringify(images);
+
+      let produitId = "";
+      await database.write(async () => {
+        const produit = await database.get("produits").create((p: any) => {
+          p.userId = userId;
+          p.nom = nom;
+          p.categorieNom = categorie || null;
+          p.prixVente = Number(prixVente);
+          p.prixAchat = Number(prixAchat) || null;
+          p.quantiteStock = Number(quantite) || 0;
+          p.seuilAlerte = Number(seuilAlerte) || 5;
+          p.champsSupplementairesJson = JSON.stringify(champsSupplementaires);
+          p.creeLe = new Date();
+          p.synchronise = false;
+        });
+        produitId = produit.id;
+      });
+
+      // Historique des mouvements : si le produit est créé avec du stock,
+      // on enregistre une entrée initiale pour qu'elle apparaisse dans l'historique.
+      if (produitId && Number(quantite) > 0) {
+        await enregistrerMouvementStock({
+          userId,
+          produitId,
+          type: "achat",
+          quantite: Number(quantite),
+          raison: t("mouvement_stock_initial", langue),
+        });
+      }
+
+      console.log("Produit sauvegardé");
+
+      await synchroniserPourUtilisateurCourant();
+      await enregistrerActivite("produit", "ajout", `Produit ajouté : ${nom}`);
+      showToast(t("toast_produit_ajoute", langue), "success");
+      router.back();
+    } finally {
+      setChargement(false);
+    }
   }
   
   
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.entete}>
         <Pressable onPress={() => router.back()}>
           <Feather name="x" size={20} color={colors.textSecondary} />
         </Pressable>
         <Text style={{ fontSize: 14, fontWeight: "500", color: colors.textPrimary }}>{t("produit_titre", langue)}</Text>
-        <Pressable onPress={sauvegarder}>
-          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "500" }}>{t("produit_sauver", langue)}</Text>
+        <Pressable onPress={sauvegarder} disabled={chargement}>
+          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "500", opacity: chargement ? 0.5 : 1 }}>{t("produit_sauver", langue)}</Text>
         </Pressable>
       </View>
+
+      {reference ? (
+        <ChampTexte
+          label={t("produit_champ_reference", langue)}
+          valeur={valeursTexte.reference ?? ""}
+          onChange={(v: string) => setValeursTexte((prev) => ({ ...prev, reference: v }))}
+          placeholder=""
+        />
+      ) : null}
 
       <ChampTexte label={t("produit_nom_label", langue)} valeur={nom} onChange={setNom} placeholder={t("produit_nom_placeholder", langue)} />
 
@@ -261,6 +301,7 @@ export default function NouveauProduit() {
 
 
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
