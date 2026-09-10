@@ -32,7 +32,7 @@ export async function configurerNotifications() {
 }
 
 // Scan la base locale : produits en rupture/stock faible + créances en retard.
-async function detecterAlertes() {
+export async function detecterAlertes() {
   const userId = await obtenirUserId();
   if (!userId) return { nbRuptures: 0, nbRetards: 0 };
 

@@ -5,8 +5,11 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { useFocusEffect } from "expo-router";
+import { detecterAlertes } from "@/lib/notifications/notifications";
 
 type Notification = { id: string; type: string; message: string; lu: boolean; created_at: string };
+type AlerteLocale = { id: string; type: string; message: string; creeLe: Date };
+
 const ICONES: Record<string, keyof typeof Feather.glyphMap> = {
   creance_retard: "alert-triangle",
   stock_faible: "package",
@@ -19,36 +22,72 @@ export default function Notifications() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const [liste, setListe] = useState<Notification[]>([]);
+  const [alertesLocales, setAlertesLocales] = useState<AlerteLocale[]>([]);
 
   useFocusEffect(
     useCallback(() => {
-      supabase.from("notifications").select("*").order("created_at", { ascending: false }).then(({ data }) => setListe(data ?? []));
-    }, [])
+      // Notifications distantes (Supabase)
+      supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .then(({ data }) => setListe(data ?? []));
+
+      // Alertes locales (stock faible + créances en retard), même hors ligne.
+      detecterAlertes().then(({ nbRuptures, nbRetards }) => {
+        const locales: AlerteLocale[] = [];
+        if (nbRuptures > 0) {
+          locales.push({ id: "local-rupture", type: "stock_faible", message: `${nbRuptures} — ${t("notif_stock_faible", langue)}`, creeLe: new Date() });
+        }
+        if (nbRetards > 0) {
+          locales.push({ id: "local-retard", type: "creance_retard", message: `${nbRetards} — ${t("notif_creance_retard", langue)}`, creeLe: new Date() });
+        }
+        setAlertesLocales(locales);
+      });
+    }, [langue])
   );
+
+  const vide = liste.length === 0 && alertesLocales.length === 0;
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
       <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary, marginBottom: 16 }}>
         {t("notifications_page_titre", langue)}
       </Text>
-      {liste.length === 0 ? (
+
+      {vide ? (
         <View style={styles.vide}>
           <Feather name="bell-off" size={28} color={colors.textMuted} style={{ marginBottom: 10 }} />
           <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("notifications_vide", langue)}</Text>
         </View>
       ) : (
-        liste.map((n) => (
-          <View key={n.id} style={[styles.ligne, { borderBottomColor: colors.border }]}>
-            <Feather name={ICONES[n.type] ?? "bell"} size={17} color={colors.textSecondary} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: n.lu ? colors.textSecondary : colors.textPrimary, fontSize: 13 }}>{n.message}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                {new Date(n.created_at).toLocaleString(langue === "fr" ? "fr-FR" : "en-US")}
-              </Text>
+        <>
+          {alertesLocales.map((n) => (
+            <View key={n.id} style={[styles.ligne, { borderBottomColor: colors.border }]}>
+              <Feather name={ICONES[n.type] ?? "bell"} size={17} color={colors.danger} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{n.message}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {n.creeLe.toLocaleString(langue === "fr" ? "fr-FR" : "en-US")}
+                </Text>
+              </View>
+              <View style={[styles.point, { backgroundColor: colors.danger }]} />
             </View>
-            {!n.lu && <View style={[styles.point, { backgroundColor: colors.accent }]} />}
-          </View>
-        ))
+          ))}
+
+          {liste.map((n) => (
+            <View key={n.id} style={[styles.ligne, { borderBottomColor: colors.border }]}>
+              <Feather name={ICONES[n.type] ?? "bell"} size={17} color={colors.textSecondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: n.lu ? colors.textSecondary : colors.textPrimary, fontSize: 13 }}>{n.message}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {new Date(n.created_at).toLocaleString(langue === "fr" ? "fr-FR" : "en-US")}
+                </Text>
+              </View>
+              {!n.lu && <View style={[styles.point, { backgroundColor: colors.accent }]} />}
+            </View>
+          ))}
+        </>
       )}
     </ScrollView>
   );

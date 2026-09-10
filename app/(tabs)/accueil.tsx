@@ -1,9 +1,10 @@
 import { useState, useCallback } from "react";
-import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
@@ -11,9 +12,12 @@ import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { TourGuide } from "@/components/TourGuide";
-import { AccountPopup } from "@/components/AccountPopup";
 import { useTourGuide } from "@/lib/onboarding/useTourGuide";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
+import { Skeleton } from "@/components/UI";
+import { detecterAlertes } from "@/lib/notifications/notifications";
+import { estEssaiActifLocal } from "@/lib/trial/deviceTrial";
+import { peutEcrire } from "@/lib/trial/gate";
 
 
 type VenteRecente = { nom: string; montant: number; source: "vocal" | "scan" | "manuel" };
@@ -22,6 +26,7 @@ export default function Accueil() {
   const { colors } = useTheme();
   const { formater } = useCurrency();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { planId, pret: planPret } = usePlanActuel();
   const [nomBoutique, setNomBoutique] = useState("");
   const [ca, setCa] = useState(0);
@@ -30,8 +35,9 @@ export default function Accueil() {
   const [tuDois, setTuDois] = useState(0);
   const [ventesRecentes, setVentesRecentes] = useState<VenteRecente[]>([]);
   const [chargementVentes, setChargementVentes] = useState(true);
+  const [nbNotifsNonLues, setNbNotifsNonLues] = useState(0);
+  const [essaiExpire, setEssaiExpire] = useState(false);
   const { afficherTour, terminerTour } = useTourGuide();
-  const [afficherPopupCompte, setAfficherPopupCompte] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -66,28 +72,40 @@ export default function Accueil() {
     }
     setChargementVentes(false);
 
-    verifierAffichagePopupCompte();
+    chargerNotifsNonLues();
+    verifierEssai();
   }
 
-  async function verifierAffichagePopupCompte() {
-    const dejaVu = await AsyncStorage.getItem("popup_compte_vu");
-    if (dejaVu) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) return;
-    if (nbVentes >= 2) setAfficherPopupCompte(true);
+  async function verifierEssai() {
+    if (planId === "premium") { setEssaiExpire(false); return; }
+    const actif = await estEssaiActifLocal();
+    setEssaiExpire(!actif);
+  }
+
+  async function chargerNotifsNonLues() {
+    let total = 0;
+    try {
+      const { nbRuptures, nbRetards } = await detecterAlertes();
+      total += nbRuptures + nbRetards;
+    } catch {}
+    try {
+      const { data } = await supabase.from("notifications").select("id").eq("lu", false);
+      total += (data ?? []).length;
+    } catch {}
+    setNbNotifsNonLues(total);
   }
 
   function fonctionnaliteBientotDisponible() {
-    Alert.alert(t("bientot_disponible_titre", langue), t("bientot_disponible_texte", langue));
+    showToast(t("bientot_disponible_texte", langue), "info");
   }
 
   const estPremium = planId === "premium";
   const benefice = Math.round(ca * 0.3);
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      {/* En-tête : hamburger + nom boutique, puis cloche */}
-      <View style={styles.entete}>
+    <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
+      {/* En-tête fixe */}
+      <View style={[styles.entete, { backgroundColor: colors.background }]}>
         <View style={styles.enteteGauche}>
           <Pressable onPress={() => router.push("/reglages")} hitSlop={10}>
             <Feather name="menu" size={22} color={colors.textPrimary} />
@@ -106,27 +124,46 @@ export default function Accueil() {
               </Pressable>
             )
           )}
-          <Pressable onPress={() => router.push("/notifications")}>
+          <Pressable onPress={() => router.push("/notifications")} style={{ position: "relative" }}>
             <Feather name="bell" size={20} color={colors.textSecondary} />
+            {nbNotifsNonLues > 0 && (
+              <View style={[styles.badgeNotif, { backgroundColor: colors.danger }]}>
+                <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>
+                  {nbNotifsNonLues > 9 ? "9+" : nbNotifsNonLues}
+                </Text>
+              </View>
+            )}
           </Pressable>
         </View>
       </View>
 
+      <ScrollView contentContainerStyle={styles.contenu}>
+      {essaiExpire && (
+        <Pressable onPress={() => router.push("/premium")} style={[styles.banniereEssai, { backgroundColor: colors.proBg, borderColor: colors.borderPro }]}>
+          <Feather name="lock" size={16} color={colors.pro} />
+          <Text style={{ color: colors.pro, fontSize: 13, flex: 1 }}>{t("essai_expire", langue)}</Text>
+          <Feather name="chevron-right" size={16} color={colors.pro} />
+        </Pressable>
+      )}
       {/* Chiffre d'affaires */}
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500" }}>{t("ca_aujourdhui", langue)}</Text>
-        <Text style={{ color: colors.textPrimary, fontSize: 26, fontWeight: "700", marginVertical: 4 }}>{formater(ca)}</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{ca === 0 ? t("aucune_vente_jour", langue) : ""}</Text>
+        {chargementVentes ? (
+          <Skeleton width="60%" height={26} style={{ marginVertical: 8 }} />
+        ) : (
+          <Text style={{ color: colors.textPrimary, fontSize: 26, fontWeight: "700", marginVertical: 4 }}>{formater(ca)}</Text>
+        )}
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{!chargementVentes && ca === 0 ? t("aucune_vente_jour", langue) : ""}</Text>
       </View>
 
       <View style={styles.ligneDeuxCartes}>
         <View style={[styles.cartePetite, { backgroundColor: colors.warningBg, borderColor: colors.border }]}>
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("ventes_du_jour", langue)}</Text>
-          <Text style={{ color: colors.warning, fontSize: 18, fontWeight: "700" }}>{nbVentes}</Text>
+          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.warning, fontSize: 18, fontWeight: "700" }}>{nbVentes}</Text>}
         </View>
         <View style={[styles.cartePetite, { backgroundColor: colors.successBg, borderColor: colors.border }]}>
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("benefice_estime", langue)}</Text>
-          <Text style={{ color: colors.success, fontSize: 18, fontWeight: "700" }}>{formater(benefice)}</Text>
+          {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.success, fontSize: 18, fontWeight: "700" }}>{formater(benefice)}</Text>}
         </View>
       </View>
 
@@ -194,23 +231,21 @@ export default function Accueil() {
         )}
       </View>
 
-      <TourGuide visible={afficherTour} onTerminer={terminerTour} />
-      <AccountPopup
-        visible={afficherPopupCompte}
-        onFermer={async () => {
-          setAfficherPopupCompte(false);
-          await AsyncStorage.setItem("popup_compte_vu", "true");
-        }}
-      />
-      <BoutonFlottant onPress={() => router.push("/produit/nouveau")} />
+      </ScrollView>
 
-    </ScrollView>
+      <TourGuide visible={afficherTour} onTerminer={terminerTour} />
+      <BoutonFlottant onPress={async () => {
+        if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+        router.push("/produit/nouveau");
+      }} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 14, paddingTop: 50 },
-  entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  container: { paddingHorizontal: 5, paddingTop: 50 },
+  contenu: {  paddingBottom: 90 },
+  entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 25 },
   enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
   enteteDroite: { flexDirection: "row", alignItems: "center", gap: 10 },
   carte: { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 12 },
@@ -221,6 +256,8 @@ const styles = StyleSheet.create({
   barreAction: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 24, padding: 8, paddingLeft: 16 },
   boutonRondPro: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   boutonPassePro: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  badgeNotif: { position: "absolute", top: -6, right: -8, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
+  banniereEssai: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 },
   ligneInfo: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
   boutonCirculaireAjout: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", elevation: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 },
   enTeteVentes: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },

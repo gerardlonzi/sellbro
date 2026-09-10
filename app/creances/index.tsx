@@ -3,12 +3,14 @@ import { View, Text, ScrollView, Pressable, StyleSheet, Linking, ActivityIndicat
 import { router, useFocusEffect } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { peutEcrire } from "@/lib/trial/gate";
 import { EnteteEcran } from "@/components/UI";
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
@@ -21,15 +23,18 @@ import { BoutonFlottant } from "@/components/BoutonFlottant";
 type CreanceDette = {
   id: string; type: "creance" | "dette"; personne_nom: string; telephone: string | null;
   montant_restant: number; date_echeance: string | null; statut: string;
+  date_prise: string | null; produit_concerne: string | null;
 };
 
 export default function CreancesDettes() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { showToast } = useToast();
   const { formater } = useCurrency();
   const [onglet, setOnglet] = useState<"creance" | "dette">("creance");
   const [liste, setListe] = useState<CreanceDette[]>([]);
   const [chargement, setChargement] = useState(true);
+  const [enregistrement, setEnregistrement] = useState(false);
   const [filtres, setFiltres] = useState<ValeursFiltre>(VALEURS_FILTRE_VIDES);
   const [panneauOuvert, setPanneauOuvert] = useState(false);
 
@@ -50,26 +55,42 @@ export default function CreancesDettes() {
     setListe((resultats as any[]).map((c) => ({
       id: c.id, type: c.type, personne_nom: c.personneNom, telephone: c.telephone,
       montant_restant: c.montantRestant, date_echeance: c.dateEcheance, statut: c.statut,
+      date_prise: c.creeLe ? c.creeLe.toISOString() : null,
+      produit_concerne: c.produitConcerne ?? null,
     })));
     setChargement(false);
   }
 
   async function marquerPayee(id: string) {
-    const enreg = await database.get("creances_dettes").find(id);
-    await database.write(async () => {
-      await (enreg as any).update((c: any) => { c.statut = "payee"; });
-    });
-    await enregistrerActivite("creance", "modification", "Créance marquée payée");
-    chargerListe();
+    if (enregistrement) return;
+    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+    setEnregistrement(true);
+    try {
+      const enreg = await database.get("creances_dettes").find(id);
+      await database.write(async () => {
+        await (enreg as any).update((c: any) => { c.statut = "payee"; });
+      });
+      await enregistrerActivite("creance", "modification", "Créance marquée payée");
+      chargerListe();
+    } finally {
+      setEnregistrement(false);
+    }
   }
 
   async function supprimerCreance(id: string) {
-    const enreg = await database.get("creances_dettes").find(id);
-    await database.write(async () => {
-      await (enreg as any).destroyPermanently();
-    });
-    await enregistrerActivite("creance", "suppression", "Créance supprimée");
-    chargerListe();
+    if (enregistrement) return;
+    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+    setEnregistrement(true);
+    try {
+      const enreg = await database.get("creances_dettes").find(id);
+      await database.write(async () => {
+        await (enreg as any).destroyPermanently();
+      });
+      await enregistrerActivite("creance", "suppression", "Créance supprimée");
+      chargerListe();
+    } finally {
+      setEnregistrement(false);
+    }
   }
 
   function estEnRetard(c: CreanceDette) {
@@ -124,7 +145,7 @@ export default function CreancesDettes() {
       </View>
 
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
-        <View style={[styles.onglets, { backgroundColor: colors.surface, flex: 1 }]}>
+        <View style={[styles.onglets, { backgroundColor: colors.border, flex: 1 }]}>
           <Pressable onPress={() => setOnglet("creance")} style={[styles.onglet, onglet === "creance" && { backgroundColor: colors.background }]}>
             <Text style={{ fontSize: 12, color: colors.textPrimary, fontWeight: onglet === "creance" ? "500" : "400" }}>{t("creances_on_te_doit", langue)}</Text>
           </Pressable>
@@ -147,30 +168,41 @@ export default function CreancesDettes() {
         <ScrollView>
           {filtrees.map((c) => {
             const enRetard = estEnRetard(c);
+            const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US") : "—");
             return (
               <View key={c.id} style={[styles.carteCreance, { backgroundColor: enRetard ? colors.dangerBg : colors.surface }]}>
-                <View style={styles.ligneHaut}>
-                  <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{c.personne_nom}</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formater(c.montant_restant)}</Text>
-                    <MenuContextuel
-                      actions={[
-                        { label: "Marquer payée", icone: "check-circle", onPress: async () => { await marquerPayee(c.id); } },
-                        { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { await supprimerCreance(c.id); } },
-                      ]}
-                    />
+                <Pressable onPress={() => router.push(`/creances/${c.id}`)}>
+                  <View style={styles.ligneHaut}>
+                    <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "600", flex: 1 }}>{c.personne_nom}</Text>
+                    <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "600" }}>{formater(c.montant_restant)}</Text>
                   </View>
-                </View>
-                <View style={styles.ligneActions}>
-                  <Text style={{ flex: 1, color: enRetard ? colors.danger : colors.textMuted, fontSize: 11 }}>
-                    {c.statut === "payee" ? t("creances_payee", langue) : enRetard ? t("creances_en_retard", langue) : ""}
+                  <View style={styles.ligneInfos}>
+                    <View style={styles.infoDate}>
+                      <Feather name="calendar" size={11} color={colors.textMuted} />
+                      <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("nouvelle_creance_echeance", langue)} : {fmt(c.date_echeance)}</Text>
+                    </View>
+                    <View style={styles.infoDate}>
+                      <Feather name="clock" size={11} color={colors.textMuted} />
+                      <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("creance_date_prise", langue)} : {fmt(c.date_prise)}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: enRetard ? colors.danger : colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                    {c.statut === "payee" ? t("creances_payee", langue) : enRetard ? t("creances_en_retard", langue) : t("creances_statut_a_venir", langue)}
                   </Text>
+                </Pressable>
+                <View style={styles.ligneActions}>
                   <Pressable onPress={() => appeler(c.telephone)} style={[styles.boutonAction, { borderColor: colors.border, borderWidth: 1 }]}>
                     <Feather name="phone" size={13} color={colors.textPrimary} />
                   </Pressable>
                   <Pressable onPress={() => envoyerWhatsapp(c.telephone, c.personne_nom, c.montant_restant)} style={[styles.boutonAction, { backgroundColor: "#1D9E75" }]}>
                     <MaterialCommunityIcons name="whatsapp" size={13} color="#fff" />
                   </Pressable>
+                  <MenuContextuel
+                    actions={[
+                      { label: "Marquer payée", icone: "check-circle", onPress: async () => { await marquerPayee(c.id); } },
+                      { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { await supprimerCreance(c.id); } },
+                    ]}
+                  />
                 </View>
               </View>
             );
@@ -210,7 +242,9 @@ const styles = StyleSheet.create({
   boutonFiltreIcone: { width: 42, alignItems: "center", justifyContent: "center", borderRadius: 8 },
   vide: { alignItems: "center", paddingTop: 50, flex: 1 },
   carteCreance: { borderRadius: 14, padding: 14, marginBottom: 10 },
-  ligneHaut: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2 },
-  ligneActions: { flexDirection: "row", gap: 6 },
+  ligneHaut: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
+  ligneInfos: { marginTop: 6, gap: 4 },
+  infoDate: { flexDirection: "row", alignItems: "center", gap: 5 },
+  ligneActions: { flexDirection: "row", gap: 6, marginTop: 10, justifyContent: "flex-end" },
   boutonAction: { width: 36, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 8 },
 });
