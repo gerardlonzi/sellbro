@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
-import { useAbonnement } from "@/lib/plan/useAbonnement";
+import { useEssai } from "@/lib/trial/useEssai";
 import { definirPlanTest } from "@/lib/plan/planTest";
 import { Carte, EnteteEcran } from "@/components/UI";
 
@@ -13,31 +13,38 @@ export default function Reglages() {
   const { colors, mode, setMode } = useTheme();
   const { langue } = useLangue();
   const { planId, plan } = usePlanActuel();
-  const { expire } = useAbonnement();
+  const essai = useEssai();
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
       <EnteteEcran titre={t("reglages_titre", langue)} onRetour={() => router.back()} />
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
 
       <Carte style={{ marginBottom: 12 }}>
         <View style={styles.ligneAbonnement}>
           <View>
-            <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{plan?.nom ?? "—"}</Text>
-            {plan && (
+            {essai.estPremium ? (
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{plan?.nom ?? t("version_pro", langue)}</Text>
+            ) : essai.actif ? (
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>
+                {t("essai_actif_reste", langue)(essai.joursRestants)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "500" }}>{t("essai_termine_statut", langue)}</Text>
+            )}
+            {plan && !essai.estPremium && (
               <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-                {plan.quotaVocal} {t("reglages_vocaux_mois", langue)} · {plan.quotaScan} {t("reglages_scans_mois", langue)}
+                {t("version_pro", langue)} · {plan.prix} FCFA/mois
               </Text>
             )}
           </View>
-          {expire ? (
-            <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPro, { backgroundColor: colors.danger }]}>
-              <Text style={{ color: "#fff", fontSize: 11 }}>{t("reglages_renouveler", langue)}</Text>
+          {!essai.estPremium && (
+            <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPro, { backgroundColor: essai.actif ? colors.pro : colors.danger }]}>
+              <Text style={{ color: essai.actif ? colors.onPro : "#fff", fontSize: 11 }}>
+                {essai.actif ? t("version_pro", langue) : t("reglages_upgrade", langue)}
+              </Text>
             </Pressable>
-          ) : planId !== "premium" ? (
-            <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPro, { backgroundColor: colors.pro }]}>
-              <Text style={{ color: colors.onPro, fontSize: 11 }}>{t("reglages_upgrade", langue)}</Text>
-            </Pressable>
-          ) : null}
+          )}
         </View>
       </Carte>
 
@@ -96,7 +103,8 @@ export default function Reglages() {
           </Pressable>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

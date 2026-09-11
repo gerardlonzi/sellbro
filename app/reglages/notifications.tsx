@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { EnteteEcran, Carte } from "@/components/UI";
+import { verifierAlertesEtNotifier } from "@/lib/notifications/notifications";
 
 const LIGNES = [
   { cle: "notif_creance_retard_active", labelCle: "notif_creance_retard" },
@@ -32,6 +33,8 @@ export default function ReglagesNotifications() {
     const nouvelleValeur = !etats[cle];
     setEtats((prev) => ({ ...prev, [cle]: nouvelleValeur }));
     await AsyncStorage.setItem(cle, String(nouvelleValeur));
+    // Re-planifie immédiatement les notifications selon les nouveaux réglages.
+    verifierAlertesEtNotifier().catch(() => {});
   }
 
   return (

@@ -8,6 +8,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 import { EnteteEcran } from "@/components/UI";
 import { peutEcrire } from "@/lib/trial/gate";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 export default function GestionCategories() {
   const { colors } = useTheme();
@@ -20,6 +21,7 @@ export default function GestionCategories() {
     if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
     if (!nouvelleCategorie.trim()) return;
     await ajouterCategorie(nouvelleCategorie.trim());
+    enregistrerActivite("stock", "ajout", `Catégorie ajoutée : ${nouvelleCategorie.trim()}`);
     setNouvelleCategorie("");
     showToast(t("toast_categorie_ajoutee", langue), "success");
   }
@@ -32,6 +34,7 @@ export default function GestionCategories() {
         style: "destructive",
         onPress: () => {
           supprimerCategorie(nom);
+          enregistrerActivite("stock", "suppression", `Catégorie supprimée : ${nom}`);
           showToast(t("toast_categorie_supprimee", langue), "success");
         },
       },
