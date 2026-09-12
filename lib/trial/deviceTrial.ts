@@ -40,7 +40,35 @@ export async function estEssaiActifLocal(): Promise<boolean> {
   return new Date(cache.dateFin).getTime() > Date.now();
 }
 
+// État local de l'essai, avec jours restants RECALCULÉS depuis dateFin
+// (le `joursRestants` du cache peut être périmé). Utilisé pour l'affichage
+// « Essai gratuit — X jours restants » et les rappels.
+export async function obtenirEtatEssaiLocal(): Promise<EtatEssai> {
+  const cache = await lireCache();
+  if (cache?.dateFin) {
+    const fin = new Date(cache.dateFin).getTime();
+    const joursRestants = Math.ceil((fin - Date.now()) / 86400000);
+    return {
+      actif: joursRestants > 0,
+      joursRestants: Math.max(0, joursRestants),
+      dateFin: cache.dateFin,
+    };
+  }
+  // Essai jamais démarré (ou hors ligne sans cache) → considéré actif.
+  return { actif: true, joursRestants: 0, dateFin: null };
+}
+
 // Démarre ou vérifie l'essai via le SERVEUR (autorité), puis met à jour le cache.
+// (Test/dev uniquement) Simule un essai expiré localement, pour vérifier que
+// les écritures sont bien bloquées en état « neutre » (ni essai ni Pro).
+export async function simulerEssaiExpire(): Promise<void> {
+  await ecrireCache({
+    actif: false,
+    joursRestants: 0,
+    dateFin: new Date(Date.now() - 86400000).toISOString(),
+  });
+}
+
 export async function demarrerOuVerifierEssaiGratuit(): Promise<EtatEssai> {
   const identifiant = await obtenirIdentifiantAppareil();
 

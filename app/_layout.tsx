@@ -14,6 +14,7 @@ import { CategoriesProvider } from "@/lib/categories/CategoriesProvider";
 import { LangueProvider } from "@/lib/i18n";
 import { useSynchronisation } from "@/lib/sync/useSynchronisation";
 import { verifierAlertesEtNotifier } from "@/lib/notifications/notifications";
+import { PaywallPopup } from "@/components/PaywallPopup";
 
 // ---------------------------------------------------------
 // IMPORTANT : empêcher le splash de disparaître
@@ -114,6 +115,8 @@ function AppContent() {
           animation: "fade",
         }}
       />
+
+      <PaywallPopup />
     </View>
   );
 }

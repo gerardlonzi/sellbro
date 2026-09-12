@@ -7,6 +7,8 @@ export type Plan = {
   nom: string;
   actif: boolean;
   prix: number;
+  dureeEssaiJours: number | null;
+  estEssaiGratuit: boolean;
   quotaVocal: number;
   quotaScan: number;
   quotaProduits: number | null;
@@ -28,14 +30,14 @@ depenses: boolean;
 // PAS par des quotas — d'où des fonctionnalités identiques au Premium.
 const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
   gratuit: {
-    id: "gratuit", nom: "Essai gratuit", actif: true, prix: 0,
+    id: "gratuit", nom: "Essai gratuit", actif: true, prix: 3000, dureeEssaiJours: 3, estEssaiGratuit: true,
     quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
     historiqueJours: null, rapportsMax: "annee",
     exportComptable: true, sauvegardeCloud: true, multiEmployes: true, supportPrioritaire: true,
     factures: true, fournisseurs: true, depenses: true,
   },
   premium: {
-    id: "premium", nom: "Premium", actif: true, prix: 2000,
+    id: "premium", nom: "Premium", actif: true, prix: 2000, dureeEssaiJours: null, estEssaiGratuit: false,
     quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
     historiqueJours: null, rapportsMax: "annee",
     exportComptable: true, sauvegardeCloud: true, multiEmployes: true, supportPrioritaire: true,
@@ -62,6 +64,8 @@ export async function chargerPlans(): Promise<Record<PlanId, Plan>> {
       nom: ligne.nom,
       actif: ligne.actif,
       prix: ligne.prix,
+      dureeEssaiJours: ligne.duree_essai_jours ?? null,
+      estEssaiGratuit: ligne.est_essai_gratuit ?? false,
       quotaVocal: ligne.quota_vocal,
       quotaScan: ligne.quota_scan,
       quotaProduits: ligne.quota_produits,

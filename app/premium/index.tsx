@@ -6,12 +6,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
+import { useEssai } from "@/lib/trial/useEssai";
 
 type PlanId = "premium";
 
 export default function OnboardingPlan() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const essai = useEssai();
   const [planChoisi, setPlanChoisi] = useState<PlanId>("premium");
   const [chargement, setChargement] = useState(false);
 
@@ -48,6 +50,12 @@ export default function OnboardingPlan() {
         </Pressable>
         <Text style={{ fontSize: 21, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>{t("plan_titre", langue)}</Text>
         <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 22 }}>{t("plan_sous_titre", langue)}</Text>
+
+        {!essai.estPremium && essai.actif && (
+          <View style={{ backgroundColor: colors.proBg, borderColor: colors.borderPro, borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 18 }}>
+            <Text style={{ color: colors.pro, fontSize: 13, textAlign: "center" }}>{t("plan_essai_actif", langue)}</Text>
+          </View>
+        )}
 
         {PLANS.map((plan) => {
           const selectionne = planChoisi === plan.id;
