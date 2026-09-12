@@ -6,11 +6,13 @@ import { database } from "@/lib/database";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { BoutonPrimaire, BoutonSecondaire, Carte } from "@/components/UI";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
 // Écran commun au vocal ET au scan — obligatoire avant toute validation,
 // comme décidé : jamais d'enregistrement automatique sans confirmation.
 export default function Confirmation() {
   const { colors } = useTheme();
+  const { formater } = useCurrency();
   const { source } = useLocalSearchParams<{ source: string }>();
 
 
@@ -47,7 +49,7 @@ export default function Confirmation() {
         });
       });
 
-      await synchroniserPourUtilisateurCourant();
+      synchroniserPourUtilisateurCourant().catch(() => {});
       router.replace("/(tabs)/accueil");
     } finally {
       setChargement(false);
@@ -74,7 +76,7 @@ export default function Confirmation() {
 
       <View style={[styles.bandeauTotal, { backgroundColor: colors.accentBg }]}>
         <Text style={{ color: colors.accent, fontSize: 12 }}>
-          Total : {total.toLocaleString()} FCFA
+          Total : {formater(total)}
         </Text>
       </View>
 

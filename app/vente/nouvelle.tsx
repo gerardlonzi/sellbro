@@ -17,6 +17,11 @@ import { enregistrerActivite } from "@/lib/audit/journal";
 import { creerFactureDepuisVentes } from "@/lib/factures/creerFacture";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
+import { formaterDateSeule } from "@/lib/formatDate";
+import { usePays } from "@/lib/pays/PaysProvider";
+import { validerTelephone } from "@/lib/pays/validation";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
 type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number };
 type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number };
@@ -26,6 +31,8 @@ export default function NouvelleVente() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const { showToast } = useToast();
+  const { pays } = usePays();
+  const { formater } = useCurrency();
   const [panier, setPanier] = useState<LigneVente[]>([]);
   const [client, setClient] = useState("");
   const [clientTelephone, setClientTelephone] = useState("");
@@ -40,6 +47,7 @@ export default function NouvelleVente() {
   const [selectionProduits, setSelectionProduits] = useState<Set<string>>(new Set());
   const [scannerOuvert, setScannerOuvert] = useState(false);
   const [verrouilleScan, setVerrouilleScan] = useState(false);
+  const [resultatScan, setResultatScan] = useState<{ type: "trouve"; produit: Produit & { reference: string } } | { type: "introuvable"; reference: string } | null>(null);
   const [catalogue, setCatalogue] = useState<(Produit & { reference: string | null })[]>([]);
   const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
 
@@ -90,18 +98,34 @@ export default function NouvelleVente() {
   }
 
   function surBarcodeScanne({ data }: { data: string }) {
-    if (verrouilleScan) return;
+    if (verrouilleScan || resultatScan) return;
     setVerrouilleScan(true);
 
     const produit = catalogue.find((p) => p.reference === data);
     if (produit) {
-      ajouterAuPanier(produit);
+      setResultatScan({ type: "trouve", produit: produit as Produit & { reference: string } });
     } else {
-      showToast(t("vente_scan_introuvable", langue), "error");
+      setResultatScan({ type: "introuvable", reference: data });
     }
+  }
 
-    // Réarme le scan après un court délai pour enchaîner plusieurs produits.
-    setTimeout(() => setVerrouilleScan(false), 1200);
+  function ajouterResultatAuPanier() {
+    if (resultatScan?.type === "trouve") {
+      ajouterAuPanier(resultatScan.produit);
+    }
+    setResultatScan(null);
+    setVerrouilleScan(false);
+  }
+
+  function reanalyser() {
+    setResultatScan(null);
+    setVerrouilleScan(false);
+  }
+
+  function quitterScanner() {
+    setScannerOuvert(false);
+    setResultatScan(null);
+    setVerrouilleScan(false);
   }
 
   function modifierQuantite(index: number, delta: number) {
@@ -115,6 +139,15 @@ export default function NouvelleVente() {
     }
     setPanier((actuel) =>
       actuel.map((l, i) => (i === index ? { ...l, quantite: Math.max(1, l.quantite + delta) } : l))
+    );
+  }
+
+  // Saisie manuelle de la quantité (clavier), en complément des boutons +/-.
+  function modifierQuantiteManuelle(index: number, valeur: string) {
+    const n = parseInt(valeur, 10);
+    if (isNaN(n)) return;
+    setPanier((actuel) =>
+      actuel.map((l, i) => (i === index ? { ...l, quantite: Math.max(1, n) } : l))
     );
   }
 
@@ -145,7 +178,7 @@ export default function NouvelleVente() {
   async function sauvegarder(genererFacture = false) {
     if (chargement) return;
     if (!(await peutEcrire())) {
-      showToast(t("essai_expire", langue), "error");
+      afficherPaywall(langue, () => router.push("/premium"));
       return;
     }
     if (panier.length === 0) {
@@ -158,11 +191,22 @@ export default function NouvelleVente() {
       return;
     }
 
+    if (clientTelephone.trim()) {
+      const validation = validerTelephone(clientTelephone.trim(), pays);
+      if (!validation.valide) {
+        showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
+        return;
+      }
+    }
+
     setChargement(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setChargement(false); return; }
 
     const venteIds: string[] = [];
+    // Identifiant de « transaction » commun à toutes les lignes du panier :
+    // permet de compter les VENTES (transactions) séparément des UNITÉS vendues.
+    const transactionId = `tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await database.write(async () => {
       for (const ligne of panier) {
         const vente = await database.get("ventes").create((v: any) => {
@@ -172,10 +216,10 @@ export default function NouvelleVente() {
           v.quantite = ligne.quantite;
           v.prixUnitaire = ligne.prixUnitaire;
           v.clientNom = client.trim() || null;
-          v.clientTelephone = clientTelephone.trim() || null;
+          v.clientTelephone = clientTelephone.trim() ? `${pays.indicatif}${clientTelephone.replace(/\s/g, "")}` : null;
           v.modePaiement = modePaiement;
           v.source = "manuel";
-          v.donneesSupplementairesJson = "{}";
+          v.donneesSupplementairesJson = JSON.stringify({ transactionId });
           v.creeLe = new Date();
           v.synchronise = false;
         });
@@ -189,7 +233,7 @@ export default function NouvelleVente() {
           c.userId = user.id;
           c.type = "creance";
           c.personneNom = client.trim();
-          c.telephone = clientTelephone.trim() || null;
+          c.telephone = clientTelephone.trim() ? `${pays.indicatif}${clientTelephone.replace(/\s/g, "")}` : null;
           c.montantInitial = totalVente;
           c.montantRestant = totalVente;
           c.dateEcheance = dateEcheance || null;
@@ -216,8 +260,8 @@ export default function NouvelleVente() {
       }
     }
 
-    await synchroniserPourUtilisateurCourant();
-    await enregistrerActivite("vente", "ajout", "Nouvelle vente");
+    synchroniserPourUtilisateurCourant().catch(() => {});
+    await enregistrerActivite("vente", "ajout", `Vente enregistrée : ${panier.map((l) => `${l.quantite} × ${l.nom}`).join(", ")}`);
 
     // Génération de facture : on regroupe les ventes en une facture puis on
     // ouvre son écran (où se trouve le bouton Imprimer direct).
@@ -233,22 +277,32 @@ export default function NouvelleVente() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
       <EnteteEcran titre={t("vente_nouvelle_titre", langue)} onRetour={() => router.back()} />
 
-      <Text style={styles.label}>{t("vente_produits", langue)}</Text>
+      {panier.length === 0 && (
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 10, textAlign:"center",marginTop:5 }}>
+          {t("vente_pas_de_produit", langue)}
+        </Text>
+      )}
       {panier.map((ligne, i) => (
         <View key={i} style={[styles.lignePanier, { borderColor: colors.border }]}>
           <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{ligne.nom}</Text>
-          <Pressable onPress={() => modifierQuantite(i, -1)} style={styles.boutonQte}>
-            <Feather name="minus" size={14} color={colors.textPrimary} />
+          <Pressable onPress={() => modifierQuantite(i, -1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
+            <Feather name="minus" size={16} color={colors.textPrimary} />
           </Pressable>
-          <Text style={{ width: 24, textAlign: "center", color: colors.textPrimary, fontSize: 13 }}>{ligne.quantite}</Text>
-          <Pressable onPress={() => modifierQuantite(i, 1)} style={styles.boutonQte}>
-            <Feather name="plus" size={14} color={colors.textPrimary} />
+          <TextInput
+            value={String(ligne.quantite)}
+            onChangeText={(v) => modifierQuantiteManuelle(i, v)}
+            keyboardType="numeric"
+            style={{ width: 40, textAlign: "center", color: colors.textPrimary, fontSize: 15, fontWeight: "700", borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 2 }}
+          />
+          <Pressable onPress={() => modifierQuantite(i, 1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
+            <Feather name="plus" size={16} color={colors.textPrimary} />
           </Pressable>
-          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", width: 70, textAlign: "right" }}>
-            {(ligne.quantite * ligne.prixUnitaire).toLocaleString()}
+          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "700", width: 70, textAlign: "right" }}>
+            {formater(ligne.quantite * ligne.prixUnitaire)}
           </Text>
           <Pressable onPress={() => retirerDuPanier(i)} hitSlop={8}>
             <Feather name="x" size={16} color={colors.danger} />
@@ -269,7 +323,7 @@ export default function NouvelleVente() {
 
       {panier.length > 0 && (
         <View style={[styles.bandeauTotal, { backgroundColor: colors.accentBg }]}>
-          <Text style={{ color: colors.accent, fontSize: 14, fontWeight: "600" }}>{t("vente_total", langue)} : {total.toLocaleString()} F</Text>
+          <Text style={{ color: colors.accent, fontSize: 14, fontWeight: "600" }}>{t("vente_total", langue)} : {formater(total)}</Text>
         </View>
       )}
 
@@ -287,14 +341,20 @@ export default function NouvelleVente() {
         </Pressable>
       </View>
 
-      <TextInput
-        value={clientTelephone}
-        onChangeText={setClientTelephone}
-        placeholder={t("vente_client_telephone", langue)}
-        placeholderTextColor={colors.textMuted}
-        keyboardType="phone-pad"
-        style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, marginBottom: 14 }]}
-      />
+      <View style={[styles.ligneNumero, { marginBottom: 14 }]}>
+        <Pressable onPress={() => router.push("/pays")} style={[styles.indicatif, { borderColor: colors.border }]}>
+          <Text style={{ fontSize: 14, color: colors.textPrimary }}>{pays.drapeau} {pays.indicatif}</Text>
+          <Feather name="chevron-down" size={12} color={colors.textMuted} />
+        </Pressable>
+        <TextInput
+          value={clientTelephone}
+          onChangeText={setClientTelephone}
+          placeholder={t("vente_client_telephone", langue)}
+          placeholderTextColor={colors.textMuted}
+          keyboardType="phone-pad"
+          style={[styles.input, { flex: 1, borderColor: colors.border, color: colors.textPrimary }]}
+        />
+      </View>
 
       <Text style={[styles.label, { marginTop: 4 }]}>{t("vente_mode_paiement", langue)}</Text>
       <View style={styles.ligneDeux}>
@@ -326,23 +386,12 @@ export default function NouvelleVente() {
               mode="date"
               onChange={(event: any, date?: Date) => {
                 setAfficherDateEcheance(false);
-                if (event.type === "set" && date) setDateEcheance(date.toISOString().split("T")[0]);
+                if (event.type === "set" && date) setDateEcheance(formaterDateSeule(date));
               }}
             />
           )}
         </>
       )}
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <Pressable onPress={() => sauvegarder(false)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.accent, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
-          <Feather name="check" size={16} color="#fff" />
-          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_enregistrer", langue)}</Text>
-        </Pressable>
-        <Pressable onPress={() => sauvegarder(true)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.proFill, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
-          <Feather name="file-text" size={16} color="#fff" />
-          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_generer_facture", langue)}</Text>
-        </Pressable>
-      </View>
 
       <Modal visible={selecteurProduitOuvert} transparent animationType="slide">
         <Pressable style={styles.fondModal} onPress={() => setSelecteurProduitOuvert(false)}>
@@ -361,7 +410,7 @@ export default function NouvelleVente() {
                         <Text style={{ color: colors.textMuted, fontSize: 11 }}>{t("vente_en_stock_court", langue)} {p.quantiteStock}</Text>
                       </View>
                     </View>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{p.prixVente.toLocaleString()} F</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(p.prixVente)}</Text>
                   </Pressable>
                 );
               })}
@@ -405,7 +454,7 @@ export default function NouvelleVente() {
               />
               <View style={styles.scannerOverlay}>
                 <View style={styles.scannerEntete}>
-                  <Pressable onPress={() => setScannerOuvert(false)}>
+                  <Pressable onPress={quitterScanner}>
                     <Feather name="x" size={22} color="#fff" />
                   </Pressable>
                   <Text style={{ color: "#fff", fontSize: 13, fontWeight: "500" }}>{t("vente_scanner", langue)}</Text>
@@ -414,6 +463,34 @@ export default function NouvelleVente() {
                 <View style={styles.scannerCadre} />
                 <Text style={styles.scannerAide}>{t("vente_scan_aide", langue)}</Text>
               </View>
+
+              {resultatScan && (
+                <View style={styles.overlayResultatScan}>
+                  <View style={[styles.carteResultatScan, { backgroundColor: colors.surface }]}>
+                    <Feather name={resultatScan.type === "trouve" ? "check-circle" : "alert-circle"} size={32} color={resultatScan.type === "trouve" ? colors.success : colors.warning} />
+                    <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "600", marginTop: 8, textAlign: "center" }}>
+                      {resultatScan.type === "trouve" ? resultatScan.produit.nom : t("vente_scan_produit_introuvable", langue)}
+                    </Text>
+                    {resultatScan.type === "trouve" ? (
+                      <>
+                        <Pressable onPress={ajouterResultatAuPanier} style={[styles.boutonResultatScan, { backgroundColor: colors.accent }]}>
+                          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{t("vente_scan_ajouter_vente", langue)}</Text>
+                        </Pressable>
+                        <Pressable onPress={reanalyser} style={[styles.boutonResultatScan, { borderColor: colors.border, borderWidth: 1 }]}>
+                          <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("vente_scan_reanalyser", langue)}</Text>
+                        </Pressable>
+                      </>
+                    ) : (
+                      <Pressable onPress={reanalyser} style={[styles.boutonResultatScan, { borderColor: colors.border, borderWidth: 1 }]}>
+                        <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("vente_scan_reanalyser", langue)}</Text>
+                      </Pressable>
+                    )}
+                    <Pressable onPress={quitterScanner} style={{ marginTop: 12 }}>
+                      <Text style={{ color: colors.textMuted, fontSize: 13 }}>{t("scan_quitter", langue)}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
             </>
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -426,6 +503,18 @@ export default function NouvelleVente() {
         </View>
       </Modal>
     </ScrollView>
+
+      <View style={{ flexDirection: "row", gap: 10, padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+        <Pressable onPress={() => sauvegarder(false)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.accent, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
+          <Feather name="check" size={16} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_enregistrer", langue)}</Text>
+        </Pressable>
+        <Pressable onPress={() => sauvegarder(true)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.proFill, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
+          <Feather name="file-text" size={16} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_generer_facture", langue)}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -433,10 +522,12 @@ const styles = StyleSheet.create({
   container: { padding: 16, paddingTop: 50 },
   label: { fontSize: 12, marginBottom: 8, color: "#888" },
   lignePanier: { flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: 1, paddingVertical: 8 },
-  boutonQte: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
-  boutonAjouterProduit: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderStyle: "dashed", borderRadius: 8, paddingVertical: 11, marginTop: 8, marginBottom: 14 },
+  boutonQte: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
+  boutonAjouterProduit: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderStyle: "dashed", borderRadius: 8, paddingVertical: 11, marginTop: 20, marginBottom: 14 },
   bandeauTotal: { padding: 12, borderRadius: 10, marginBottom: 16, alignItems: "center" },
   ligneChampBouton: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  ligneNumero: { flexDirection: "row", gap: 8 },
+  indicatif: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14 },
   boutonImporter: { width: 42, alignItems: "center", justifyContent: "center", borderRadius: 8 },
   selecteurDate: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 14 },
@@ -452,4 +543,7 @@ const styles = StyleSheet.create({
   scannerEntete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   scannerCadre: { width: 280, height: 160, borderWidth: 2, borderColor: "#fff", borderRadius: 8, borderStyle: "dashed", alignSelf: "center" },
   scannerAide: { color: "#fff", fontSize: 12, marginTop: 12, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, alignSelf: "center" },
+  overlayResultatScan: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", padding: 24 },
+  carteResultatScan: { width: "100%", maxWidth: 340, borderRadius: 16, padding: 20, alignItems: "center" },
+  boutonResultatScan: { alignSelf: "stretch", paddingVertical: 12, borderRadius: 8, alignItems: "center", justifyContent: "center", marginTop: 10 },
 });
