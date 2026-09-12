@@ -1,8 +1,9 @@
-import { useState,useEffect } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform } from "react-native";
+import { useState,useEffect,useRef } from "react";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform, Modal } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
@@ -15,6 +16,7 @@ import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 
 
 
@@ -54,6 +56,9 @@ export default function NouveauProduit() {
   const [poidsUnite, setPoidsUnite] = useState("kg");
   const [images, setImages] = useState<string[]>([]);
   const [chargement, setChargement] = useState(false);
+  const [cameraOuverte, setCameraOuverte] = useState(false);
+  const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
   const {plan} = usePlanActuel();
   const { reference } = useLocalSearchParams<{ reference?: string }>();
 
@@ -85,20 +90,39 @@ export default function NouveauProduit() {
     }
   }
 
-  async function prendrePhoto() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) return;
-    const resultat = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!resultat.canceled) {
-      setImages((actuel) => [...actuel, resultat.assets[0].uri]);
+  // Capture in-app via expo-camera (fiable sur Android, contrairement à
+// ImagePicker.launchCameraAsync qui ouvre une app externe parfois absente).
+async function prendrePhoto() {
+    if (!permissionCamera?.granted) {
+      const res = await demanderPermissionCamera();
+      if (!res.granted) {
+        // Fallback : on tente quand même l'appareil photo système.
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) return;
+        const resultat = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+        if (!resultat.canceled) {
+          setImages((actuel) => [...actuel, resultat.assets[0].uri]);
+        }
+        return;
+      }
     }
+    setCameraOuverte(true);
+  }
+
+  async function capturerPhoto() {
+    if (!cameraRef.current) return;
+    const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+    if (photo?.uri) {
+      setImages((actuel) => [...actuel, photo.uri]);
+    }
+    setCameraOuverte(false);
   }
 
 
   async function sauvegarder() {
     if (chargement) return;
     if (!(await peutEcrire())) {
-      showToast(t("essai_expire", langue), "error");
+      afficherPaywall(langue, () => router.push("/premium"));
       return;
     }
     if (!nom.trim() || !prixVente) {
@@ -151,8 +175,8 @@ export default function NouveauProduit() {
 
       console.log("Produit sauvegardé");
 
-      await synchroniserPourUtilisateurCourant();
-      await enregistrerActivite("produit", "ajout", `Produit ajouté : ${nom}`);
+      synchroniserPourUtilisateurCourant().catch(() => {});
+      await enregistrerActivite("produit", "ajout", `Produit ajouté : ${nom} — stock initial : ${Number(quantite) || 0}`);
       showToast(t("toast_produit_ajoute", langue), "success");
       router.back();
     } finally {
@@ -301,6 +325,21 @@ export default function NouveauProduit() {
 
 
     </ScrollView>
+
+      <Modal visible={cameraOuverte} animationType="slide" onRequestClose={() => setCameraOuverte(false)}>
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          {permissionCamera?.granted && (
+            <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+          )}
+          <View style={styles.overlayCamera}>
+            <Pressable onPress={() => setCameraOuverte(false)} style={styles.boutonFermerCamera}>
+              <Feather name="x" size={22} color="#fff" />
+            </Pressable>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={capturerPhoto} style={styles.boutonCaptureCamera} />
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -339,4 +378,7 @@ const styles = StyleSheet.create({
   ligneImages: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   miniatureImage: { width: 80, height: 80, borderRadius: 8 },
   zoneImage: { width: 80, height: 80, borderWidth: 1, borderStyle: "dashed", borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  overlayCamera: { flex: 1, justifyContent: "space-between", padding: 16, paddingTop: 50, paddingBottom: 40 },
+  boutonFermerCamera: { alignSelf: "flex-start" },
+  boutonCaptureCamera: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#fff", borderWidth: 4, borderColor: "rgba(255,255,255,0.3)", alignSelf: "center" },
 });
