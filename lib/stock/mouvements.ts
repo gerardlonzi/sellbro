@@ -1,5 +1,6 @@
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
+import { enregistrerActivite } from "@/lib/audit/journal";
 
 type TypeMouvement = "achat" | "vente" | "retour" | "casse" | "ajustement" | "peremption";
 
@@ -19,6 +20,9 @@ export async function enregistrerMouvementStock(params: {
   await database.write(async () => {
     await (produit as any).update((p: any) => {
       p.quantiteStock = stockApres;
+      // Marque le produit comme modifié pour que la nouvelle quantité soit
+      // poussée au cloud (sinon le pull restaure l'ancienne valeur).
+      p.synchronise = false;
     });
 
     await database.get("mouvements_stock").create((m: any) => {
