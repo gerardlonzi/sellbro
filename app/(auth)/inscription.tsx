@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
+import { usePays } from "@/lib/pays/PaysProvider";
+import { validerTelephone } from "@/lib/pays/validation";
 
 // IMPORTANT : pas d'OTP envoyé ici. Le compte est créé immédiatement avec
 // le numéro non vérifié. La vérification par SMS n'arrive que plus tard,
@@ -13,18 +15,20 @@ export default function Inscription() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const { showToast } = useToast();
+  const { pays } = usePays();
   const [numero, setNumero] = useState("");
   const [chargement, setChargement] = useState(false);
 
   async function creerCompte() {
     if (chargement) return;
-    if (numero.trim().length < 9) {
-      showToast(t("inscription_verifie_numero", langue), "error");
+    const validation = validerTelephone(numero.trim(), pays);
+    if (!validation.valide) {
+      showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
       return;
     }
 
     setChargement(true);
-    const telephoneComplet = `+237${numero.replace(/\s/g, "")}`;
+    const telephoneComplet = `${pays.indicatif}${numero.replace(/\s/g, "")}`;
 
     // Connexion anonyme : crée une session sécurisée sans mot de passe.
     // Le trigger SQL crée automatiquement la ligne profiles associée.
@@ -66,7 +70,7 @@ export default function Inscription() {
       </Text>
       <View style={styles.ligneNumero}>
         <View style={[styles.indicatif, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textPrimary }}>🇨🇲 +237</Text>
+          <Text style={{ color: colors.textPrimary }}>{pays.drapeau} {pays.indicatif}</Text>
         </View>
         <TextInput
           style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]}

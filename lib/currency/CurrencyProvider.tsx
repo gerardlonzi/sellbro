@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { convertirDepuisFcfa, DEVISES_PAR_PAYS, chargerTauxDepuisConfig } from "./taux";
 
 export type Devise = { code: string; symbole: string; nom: string };
 
@@ -58,10 +59,24 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [devise, setDeviseState] = useState<Devise>(DEVISES[0]); // FCFA par défaut
 
   useEffect(() => {
-    AsyncStorage.getItem(CLE_STOCKAGE).then((code) => {
-      const trouvee = DEVISES.find((d) => d.code === code);
-      if (trouvee) setDeviseState(trouvee);
-    });
+    (async () => {
+      // Charge les taux depuis la base (ou le cache local) avant tout affichage.
+      await chargerTauxDepuisConfig();
+
+      // 1) Devise explicitement choisie par l'utilisateur.
+      const code = await AsyncStorage.getItem(CLE_STOCKAGE);
+      if (code) {
+        const trouvee = DEVISES.find((d) => d.code === code);
+        if (trouvee) { setDeviseState(trouvee); return; }
+      }
+      // 2) Sinon, devise déduite du pays sélectionné (jamais FCFA hors zone CFA).
+      const codePays = await AsyncStorage.getItem("boutika_pays");
+      const deviseCode = codePays ? DEVISES_PAR_PAYS[codePays] : undefined;
+      if (deviseCode) {
+        const trouvee = DEVISES.find((d) => d.code === deviseCode);
+        if (trouvee) setDeviseState(trouvee);
+      }
+    })();
   }, []);
 
   async function setDevise(d: Devise) {
@@ -76,7 +91,10 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   }
 
   function formater(montant: number) {
-    return `${montant.toLocaleString()} ${devise.symbole}`;
+    // Les montants sont stockés en FCFA (XAF) ; on convertit vers la devise
+    // locale de l'utilisateur pour ne jamais afficher de FCFA hors zone CFA.
+    const converti = convertirDepuisFcfa(montant, devise.code);
+    return `${converti.toLocaleString()} ${devise.symbole}`;
   }
 
   return (

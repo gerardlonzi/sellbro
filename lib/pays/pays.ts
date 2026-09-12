@@ -1,4 +1,4 @@
-export type Pays = { code: string; indicatif: string; drapeau: string; nom: string };
+export type Pays = { code: string; indicatif: string; drapeau: string; nom: string; longueurs?: number[] };
 
 export const PAYS: Pays[] = [
     // 🌍 Afrique francophone (priorité)
