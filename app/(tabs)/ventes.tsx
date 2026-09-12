@@ -12,6 +12,7 @@ import { Q } from "@nozbe/watermelondb";
 import { MenuContextuel } from "@/components/MenuContextuel";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 import { creerFactureDepuisVentes } from "@/lib/factures/creerFacture";
+import { supprimerEnregistrement } from "@/lib/database/supprimer";
 
 type Vente = { id: string; quantite: number; prixUnitaire: number; produitNom: string | null; clientNom: string | null; source: string; creeLe: Date };
 const ICONES_SOURCE: Record<string, any> = { vocal: "mic", scan: "camera", manuel: "edit-3" };
@@ -32,6 +33,12 @@ export default function Ventes() {
   useFocusEffect(
     useCallback(() => {
       charger();
+      // En quittant la page, on réinitialise le mode sélection (icône carrée)
+      // pour ne pas rester « coincé » sur la sélection précédente au retour.
+      return () => {
+        setModeSelection(false);
+        setSelectionnees(new Set());
+      };
     }, [])
   );
 
@@ -107,7 +114,11 @@ export default function Ventes() {
           </Pressable>
         ) : (
           <Pressable onPress={() => setModeSelection(true)}>
-            <Text style={{ color: colors.accent, fontSize: 13 }}>{t("ventes_selection_activer", langue)}</Text>
+            <Feather
+              name="square"
+              size={17}
+              color={colors.textSecondary}
+            />
           </Pressable>
         )}
         </View>
@@ -198,7 +209,7 @@ export default function Ventes() {
                     label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true,
                     onPress: async () => {
                       const enreg = await database.get("ventes").find(v.id);
-                      await database.write(async () => { await (enreg as any).destroyPermanently(); });
+                      await database.write(async () => { await supprimerEnregistrement("ventes", enreg as any); });
                       charger();
                     },
                   }]} />

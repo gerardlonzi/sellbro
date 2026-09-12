@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -11,6 +11,8 @@ import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
 import { dansPlageMontant } from "@/lib/filtres/appliquerFiltres";
 import { MenuContextuel } from "@/components/MenuContextuel";
 import { router, useFocusEffect } from "expo-router";
+import { versionDonnees } from "@/lib/dataVersion";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
 
 type Client = { nom: string; total: number; nbAchats: number; aCreance: boolean };
@@ -18,6 +20,7 @@ type Client = { nom: string; total: number; nbAchats: number; aCreance: boolean 
 export default function Clients() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const { formater } = useCurrency();
   const [recherche, setRecherche] = useState("");
   const [rechercheOuverte, setRechercheOuverte] = useState(false);
 
@@ -26,9 +29,14 @@ export default function Clients() {
   const [filtres, setFiltres] = useState<ValeursFiltre>(VALEURS_FILTRE_VIDES);
   const [panneauOuvert, setPanneauOuvert] = useState(false);
 
+  const derniereVersion = useRef<number | null>(null);
+
   useFocusEffect(
     useCallback(() => {
-      chargerClients();
+      if (derniereVersion.current === null || versionDonnees() !== derniereVersion.current) {
+        derniereVersion.current = versionDonnees();
+        chargerClients();
+      }
     }, [])
   );
 
@@ -153,7 +161,7 @@ export default function Clients() {
                 </View>
                 {c.aCreance && <View style={[styles.pointCreance, { backgroundColor: colors.danger }]} />}
               </Pressable>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10 }}>{c.total.toLocaleString()} F</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10 }}>{formater(c.total)}</Text>
               <MenuContextuel actions={[{ label: "Voir historique", icone: "list", onPress: () => router.push({ pathname: "/commandes", params: { client: c.nom } }) }]} />
             </View>
           ))}

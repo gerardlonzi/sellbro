@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -14,10 +14,15 @@ import { Q } from "@nozbe/watermelondb";
 import { TourGuide } from "@/components/TourGuide";
 import { useTourGuide } from "@/lib/onboarding/useTourGuide";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
-import { Skeleton } from "@/components/UI";
+import { Skeleton, Badge } from "@/components/UI";
+import { WelcomeTrial } from "@/components/WelcomeTrial";
 import { detecterAlertes } from "@/lib/notifications/notifications";
-import { estEssaiActifLocal } from "@/lib/trial/deviceTrial";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
+import { versionDonnees } from "@/lib/dataVersion";
+import { useEssai } from "@/lib/trial/useEssai";
+
+
 
 
 type VenteRecente = { nom: string; montant: number; source: "vocal" | "scan" | "manuel" };
@@ -31,26 +36,49 @@ export default function Accueil() {
   const [nomBoutique, setNomBoutique] = useState("");
   const [ca, setCa] = useState(0);
   const [nbVentes, setNbVentes] = useState(0);
+  const [nbProduitsVendus, setNbProduitsVendus] = useState(0);
   const [onTeDoit, setOnTeDoit] = useState(0);
   const [tuDois, setTuDois] = useState(0);
   const [ventesRecentes, setVentesRecentes] = useState<VenteRecente[]>([]);
   const [chargementVentes, setChargementVentes] = useState(true);
   const [nbNotifsNonLues, setNbNotifsNonLues] = useState(0);
-  const [essaiExpire, setEssaiExpire] = useState(false);
   const { afficherTour, terminerTour } = useTourGuide();
+
+  const derniereVersion = useRef<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      chargerDonnees();
+      if (derniereVersion.current === null || versionDonnees() !== derniereVersion.current) {
+        derniereVersion.current = versionDonnees();
+        chargerDonnees();
+      }
+    }, [])
+  );
+
+  // Le badge de notifications se rafraîchit à chaque focus (léger),
+  // pour diminuer dès qu'une notification a été marquée « lue ».
+  useFocusEffect(
+    useCallback(() => {
+      chargerNotifsNonLues();
     }, [])
   );
 
   async function chargerDonnees() {
-    const nom = await AsyncStorage.getItem("boutika_nom_boutique");
-    if (nom) setNomBoutique(nom);
+    let nom = await AsyncStorage.getItem("boutika_nom_boutique");
 
     setChargementVentes(true);
     const { data: { user } } = await supabase.auth.getUser();
+    // Si le nom n'est pas en cache local, on le récupère depuis le profil
+    // Supabase (ex: renseigné à l'inscription via config-boutique).
+    if (!nom && user) {
+      const { data } = await supabase.from("profiles").select("nom_boutique").eq("id", user.id).single();
+      if (data?.nom_boutique) {
+        nom = data.nom_boutique;
+        await AsyncStorage.setItem("boutika_nom_boutique", data.nom_boutique);
+      }
+    }
+    if (nom) setNomBoutique(nom);
+
     if (user) {
       const debutJour = new Date();
       debutJour.setHours(0, 0, 0, 0);
@@ -59,7 +87,16 @@ export default function Accueil() {
       const ventesAujourdhui = (toutesLesVentes as any[]).filter((v) => v.creeLe >= debutJour);
 
       setCa(ventesAujourdhui.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0));
-      setNbVentes(ventesAujourdhui.length);
+      // « Ventes du jour » = nombre de TRANSACTIONS (regroupées par transactionId).
+      // « Produits vendus » = total des unités.
+      const transactions = new Set(
+        (ventesAujourdhui as any[]).map((v) => {
+          try { return JSON.parse(v.donneesSupplementairesJson || "{}").transactionId ?? v.id; }
+          catch { return v.id; }
+        })
+      );
+      setNbVentes(transactions.size);
+      setNbProduitsVendus((ventesAujourdhui as any[]).reduce((s, v) => s + (v.quantite || 0), 0));
       setVentesRecentes((toutesLesVentes as any[]).slice(0, 5).map((v) => ({
         nom: v.produitNom ?? v.clientNom ?? "—",
         montant: v.quantite * v.prixUnitaire,
@@ -73,13 +110,6 @@ export default function Accueil() {
     setChargementVentes(false);
 
     chargerNotifsNonLues();
-    verifierEssai();
-  }
-
-  async function verifierEssai() {
-    if (planId === "premium") { setEssaiExpire(false); return; }
-    const actif = await estEssaiActifLocal();
-    setEssaiExpire(!actif);
   }
 
   async function chargerNotifsNonLues() {
@@ -100,6 +130,7 @@ export default function Accueil() {
   }
 
   const estPremium = planId === "premium";
+  const essai = useEssai();
   const benefice = Math.round(ca * 0.3);
 
   return (
@@ -117,12 +148,12 @@ export default function Accueil() {
         <View style={styles.enteteDroite}>
           {!planPret ? (
             <ActivityIndicator size="small" color={colors.textMuted} />
+          ) : (estPremium || essai.actif) ? (
+            <Badge texte={t("version_pro", langue)} type="pro" />
           ) : (
-            !estPremium && (
-              <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPassePro, { backgroundColor: colors.proFill }]}>
-                <Text style={{ color: colors.onPro, fontSize: 11 }}>{t("passer_pro", langue)}</Text>
-              </Pressable>
-            )
+            <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPassePro, { backgroundColor: colors.proBg }]}>
+              <Text style={{ color: colors.onPro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
+            </Pressable>
           )}
           <Pressable onPress={() => router.push("/notifications")} style={{ position: "relative" }}>
             <Feather name="bell" size={20} color={colors.textSecondary} />
@@ -138,7 +169,7 @@ export default function Accueil() {
       </View>
 
       <ScrollView contentContainerStyle={styles.contenu}>
-      {essaiExpire && (
+      {!estPremium && !essai.actif && (
         <Pressable onPress={() => router.push("/premium")} style={[styles.banniereEssai, { backgroundColor: colors.proBg, borderColor: colors.borderPro }]}>
           <Feather name="lock" size={16} color={colors.pro} />
           <Text style={{ color: colors.pro, fontSize: 13, flex: 1 }}>{t("essai_expire", langue)}</Text>
@@ -147,7 +178,10 @@ export default function Accueil() {
       )}
       {/* Chiffre d'affaires */}
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500" }}>{t("ca_aujourdhui", langue)}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Feather name="dollar-sign" size={14} color={colors.textSecondary} />
+          <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500" }}>{t("ca_aujourdhui", langue)}</Text>
+        </View>
         {chargementVentes ? (
           <Skeleton width="60%" height={26} style={{ marginVertical: 8 }} />
         ) : (
@@ -158,13 +192,27 @@ export default function Accueil() {
 
       <View style={styles.ligneDeuxCartes}>
         <View style={[styles.cartePetite, { backgroundColor: colors.warningBg, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("ventes_du_jour", langue)}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Feather name="shopping-bag" size={13} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize:12, fontWeight: "500" }}>{t("ventes_du_jour", langue)}</Text>
+          </View>
           {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.warning, fontSize: 18, fontWeight: "700" }}>{nbVentes}</Text>}
         </View>
-        <View style={[styles.cartePetite, { backgroundColor: colors.successBg, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("benefice_estime", langue)}</Text>
-          {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.success, fontSize: 18, fontWeight: "700" }}>{formater(benefice)}</Text>}
+        <View style={[styles.cartePetite, { backgroundColor: colors.accentBg, borderColor: colors.border }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Feather name="package" size={13} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("produits_vendus", langue)}</Text>
+          </View>
+          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.accent, fontSize: 18, fontWeight: "700" }}>{nbProduitsVendus}</Text>}
         </View>
+      </View>
+
+      <View style={[styles.cartePetite, { backgroundColor: colors.successBg, borderColor: colors.border, marginTop: 12 }]}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+          <Feather name="trending-up" size={13} color={colors.textSecondary} />
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("benefice_estime", langue)}</Text>
+        </View>
+        {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.success, fontSize: 18, fontWeight: "700" }}>{formater(benefice)}</Text>}
       </View>
 
       {/* Créances et dettes */}
@@ -233,9 +281,10 @@ export default function Accueil() {
 
       </ScrollView>
 
+      <WelcomeTrial />
       <TourGuide visible={afficherTour} onTerminer={terminerTour} />
       <BoutonFlottant onPress={async () => {
-        if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+        if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
         router.push("/produit/nouveau");
       }} />
     </View>

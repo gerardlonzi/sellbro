@@ -1,23 +1,25 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
+import { useEssai } from "@/lib/trial/useEssai";
+import { afficherPaywall } from "@/lib/trial/paywall";
 import { PeriodeId, plageDates, plagePrecedente } from "@/lib/periode/periodes";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
-import { Carte, Skeleton } from "@/components/UI";
+import { Carte, Skeleton, Badge } from "@/components/UI";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 type Stats = {
   ca: number;
   ventes: number;
+  produitsVendus: number;
   benefice: number;
   parPaiement: Record<string, number>;
   parCategorie: { nom: string; montant: number }[];
@@ -26,7 +28,7 @@ type Stats = {
   topClients: { nom: string; montant: number }[];
 };
 
-const STATS_VIDES: Stats = { ca: 0, ventes: 0, benefice: 0, parPaiement: {}, parCategorie: [], topProduits: [], topRevenus: [], topClients: [] };
+const STATS_VIDES: Stats = { ca: 0, ventes: 0, produitsVendus: 0, benefice: 0, parPaiement: {}, parCategorie: [], topProduits: [], topRevenus: [], topClients: [] };
 
 // Valeurs de la période précédente, pour les flèches de tendance.
 type Tendance = { ca: number; ventes: number; benefice: number };
@@ -51,9 +53,9 @@ function Medaille({ rang }: { rang: number }) {
 export default function Dashboard() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { showToast } = useToast();
   const { formater } = useCurrency();
-  const { plan } = usePlanActuel();
+  const { plan, planId } = usePlanActuel();
+  const essai = useEssai();
   const [periode, setPeriode] = useState<PeriodeId>("semaine");
   const [stats, setStats] = useState<Stats>(STATS_VIDES);
   const [precedente, setPrecedente] = useState<Tendance>(TENDANCE_VIDE);
@@ -66,6 +68,15 @@ export default function Dashboard() {
   const [afficherDatePicker, setAfficherDatePicker] = useState<"debut" | "fin" | null>(null);
   const [chargement, setChargement] = useState(true);
 
+  // Si l'essai expire (passage en « free mode »), on réinitialise le filtre
+  // personnalisé pour masquer les cartes de dates.
+  useEffect(() => {
+    if (!essai.estPremium && !essai.actif) {
+      setPersonnalise(false);
+      setAfficherDatePicker(null);
+    }
+  }, [essai.estPremium, essai.actif]);
+
   useFocusEffect(
     useCallback(() => {
       calculerStats();
@@ -74,8 +85,14 @@ export default function Dashboard() {
 
   async function calculerStats() {
     setChargement(true);
-    const debut = personnalise ? debutPerso : plageDates(periode).debut;
-    const fin = personnalise ? finPerso : new Date();
+    // Bornes du filtre personnalisé : la date de début à minuit, la date de fin
+    // à 23:59:59 (sinon un filtre « du 11 au 11 » exclut toute la journée du 11).
+    const debut = personnalise
+      ? new Date(debutPerso.getFullYear(), debutPerso.getMonth(), debutPerso.getDate(), 0, 0, 0, 0)
+      : plageDates(periode).debut;
+    const fin = personnalise
+      ? new Date(finPerso.getFullYear(), finPerso.getMonth(), finPerso.getDate(), 23, 59, 59, 999)
+      : new Date();
     const userId = await obtenirUserId();
     if (!userId) { setChargement(false); return; }
 
@@ -150,7 +167,17 @@ export default function Dashboard() {
     const topRevenus = Object.entries(parProduitMap).map(([nom, d]) => ({ nom, ...d })).sort((a, b) => b.montant - a.montant).slice(0, 5);
     const topClients = Object.entries(parClientMap).map(([nom, montant]) => ({ nom, montant })).sort((a, b) => b.montant - a.montant).slice(0, 5);
 
-    setStats({ ca, ventes: ventes.length, benefice: Math.round(ca * 0.3), parPaiement, parCategorie, topProduits, topRevenus, topClients });
+    // « Ventes » = nombre de transactions (regroupées par transactionId) ;
+    // « Produits vendus » = total des unités.
+    const transactions = new Set(
+      (ventes as any[]).map((v) => {
+        try { return JSON.parse(v.donneesSupplementairesJson || "{}").transactionId ?? v.id; }
+        catch { return v.id; }
+      })
+    );
+    const produitsVendus = ventes.reduce((s, v) => s + (v.quantite || 0), 0);
+
+    setStats({ ca, ventes: transactions.size, produitsVendus, benefice: Math.round(ca * 0.3), parPaiement, parCategorie, topProduits, topRevenus, topClients });
     setChargement(false);
   }
 
@@ -160,22 +187,11 @@ export default function Dashboard() {
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
       <View style={styles.entete}>
         <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          <Pressable
-            onPress={() => {
-              if (plan && plan.rapportsMax !== "annee") {
-                showToast(t("dashboard_intervalle_perso_reserve", langue), "info");
-                return;
-              }
-              setPersonnalise(!personnalise);
-            }}
-            style={[styles.boutonPersonnalise, { borderColor: personnalise ? colors.accent : colors.border, borderWidth: personnalise ? 1.5 : 1 }]}
-          >
-            <Feather name="calendar" size={14} color={personnalise ? colors.accent : colors.textSecondary} />
-            <Text style={{ color: personnalise ? colors.accent : colors.textSecondary, fontSize: 12 }}>Personnalisé</Text>
-          </Pressable>
-
-          {plan?.exportComptable && (
+        <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+        {(planId === "premium" || essai.actif) && (
+            <Badge texte={t("version_pro", langue)} type="pro" />
+          )}
+        {plan?.exportComptable && (
             <Pressable onPress={() => router.push("/export")} style={[styles.boutonExport, { borderColor: colors.border }]}>
               <Feather name="download" size={14} color={colors.textSecondary} />
             </Pressable>
@@ -187,7 +203,19 @@ export default function Dashboard() {
 
       <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
       <View>
-        <SelecteurPeriode periode={periode} onChange={setPeriode} plan={plan} />
+        <SelecteurPeriode
+          periode={periode}
+          onChange={setPeriode}
+          plan={plan}
+          personnalise={personnalise}
+          onPersonnalise={() => {
+            if (plan && plan.rapportsMax !== "annee") {
+              afficherPaywall(langue, () => router.push("/premium"));
+              return;
+            }
+            setPersonnalise(!personnalise);
+          }}
+        />
 
 
         {personnalise && (
@@ -262,10 +290,18 @@ export default function Dashboard() {
             </View>
 
             <Carte style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("dashboard_ventes", langue)}</Text>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: "500" }}>{stats.ventes}</Text>
-                <Fleche actuel={stats.ventes} precedent={precedente.ventes} />
+              <View style={{ flexDirection: "row" }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("dashboard_ventes", langue)}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                    <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: "500" }}>{stats.ventes}</Text>
+                    <Fleche actuel={stats.ventes} precedent={precedente.ventes} />
+                  </View>
+                </View>
+                <View style={{ flex: 1, borderLeftWidth: 1, borderLeftColor: colors.border, paddingLeft: 14 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("produits_vendus", langue)}</Text>
+                  <Text style={{ color: colors.accent, fontSize: 20, fontWeight: "500", marginTop: 4 }}>{stats.produitsVendus}</Text>
+                </View>
               </View>
             </Carte>
 
@@ -273,20 +309,27 @@ export default function Dashboard() {
               <Pressable onPress={() => router.push({ pathname: "/stock", params: { statut: "rupture" } })} style={{ flex: 1 }}>
                 <Carte style={{ backgroundColor: ruptures > 0 ? colors.dangerBg : colors.surface }}>
                   <View style={{ alignItems: "center", gap: 4 }}>
-                    <Text style={{ color: ruptures > 0 ? colors.danger : colors.textSecondary, fontSize: 22, fontWeight: "700" }}>{ruptures}</Text>
-                    <Text style={{ color: ruptures > 0 ? colors.danger : colors.textSecondary, fontSize: 11, textAlign: "center" }}>
+                    <Text style={{ color: ruptures > 0 ? colors.danger : colors.textSecondary, fontSize: 11 }}>
                       {t("stock_statut_rupture", langue)}
                     </Text>
+                    <View style={{ flexDirection:"row", alignItems:"center", gap:10}}>
+                    <Text style={{ color: ruptures > 0 ? colors.danger : colors.textSecondary, fontSize: 22, fontWeight: "700" }}>{ruptures}</Text>
+                    <Feather name="alert-triangle" size={16} color={ruptures > 0 ? colors.danger : colors.textMuted} />
+
+                    </View>
                   </View>
                 </Carte>
               </Pressable>
               <Pressable onPress={() => router.push({ pathname: "/stock", params: { statut: "faible" } })} style={{ flex: 1 }}>
                 <Carte style={{ backgroundColor: alertes > 0 ? colors.warningBg : colors.surface }}>
-                  <View style={{ alignItems: "center", gap: 4 }}>
-                    <Text style={{ color: alertes > 0 ? colors.warning : colors.textSecondary, fontSize: 22, fontWeight: "700" }}>{alertes}</Text>
-                    <Text style={{ color: alertes > 0 ? colors.warning : colors.textSecondary, fontSize: 11, textAlign: "center" }}>
-                      {t("stock_statut_faible", langue)}
-                    </Text>
+                  <View style={{  gap: 4, }}>
+                        <Text style={{ color: alertes > 0 ? colors.warning : colors.textSecondary, fontSize: 11,  }}>
+                          {t("stock_statut_faible", langue)}
+                        </Text>
+                      <View style={{ flexDirection:"row", alignItems:"center", gap:10}}>
+                        <Text style={{ color: alertes > 0 ? colors.warning : colors.textSecondary, fontSize: 22, fontWeight: "700" }}>{alertes}</Text>
+                        <Feather name="trending-down" size={16} color={alertes > 0 ? colors.warning : colors.textMuted} />
+                      </View>
                   </View>
                 </Carte>
               </Pressable>
@@ -313,35 +356,43 @@ export default function Dashboard() {
             {/* Top produits */}
             <Carte style={{ marginTop: 12 }}>
               <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Produits les plus vendus</Text>
-              {stats.topProduits.map((p, i) => (
-                <View key={p.nom} style={[styles.ligneTop, i < stats.topProduits.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                  <Medaille rang={i} />
-                  <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{p.nom}</Text>
-                  <Text style={{ fontSize: 11, color: colors.textMuted, marginRight: 10 }}>{p.ventes} ventes</Text>
-                  <Text style={{ fontSize: 12, fontWeight: "500", color: colors.textPrimary }}>{formater(p.montant)}</Text>
-                </View>
-              ))}
+              {stats.topProduits.length === 0 ? (
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
+              ) : (
+                stats.topProduits.map((p, i) => (
+                  <View key={p.nom} style={[styles.ligneTop, i < stats.topProduits.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                    <Medaille rang={i} />
+                    <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{p.nom}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginRight: 10 }}>{p.ventes} ventes</Text>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: colors.textPrimary }}>{formater(p.montant)}</Text>
+                  </View>
+                ))
+              )}
             </Carte>
 
             {/* Produits générant le plus de revenus */}
-            {stats.topRevenus.length > 0 && (
-              <Carte style={{ marginTop: 12 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Produits générant le plus de revenus</Text>
-                {stats.topRevenus.map((p, i) => (
+            <Carte style={{ marginTop: 12 }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Produits générant le plus de revenus</Text>
+              {stats.topRevenus.length === 0 ? (
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
+              ) : (
+                stats.topRevenus.map((p, i) => (
                   <View key={p.nom} style={[styles.ligneTop, i < stats.topRevenus.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                     <Medaille rang={i} />
                     <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{p.nom}</Text>
                     <Text style={{ fontSize: 12, fontWeight: "600", color: colors.accent }}>{formater(p.montant)}</Text>
                   </View>
-                ))}
-              </Carte>
-            )}
+                ))
+              )}
+            </Carte>
 
             {/* Top clients */}
-            {stats.topClients.length > 0 && (
-              <Carte style={{ marginTop: 12 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Meilleurs clients</Text>
-                {stats.topClients.map((c, i) => (
+            <Carte style={{ marginTop: 12 }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Meilleurs clients</Text>
+              {stats.topClients.length === 0 ? (
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
+              ) : (
+                stats.topClients.map((c, i) => (
                   <View key={c.nom} style={[styles.ligneTop, i < stats.topClients.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                     <View style={[styles.avatar, { backgroundColor: i === 0 ? colors.accent : colors.accentBg }]}>
                       <Text style={{ color: i === 0 ? "#fff" : colors.accent, fontSize: 11, fontWeight: "600" }}>{c.nom.slice(0, 2).toUpperCase()}</Text>
@@ -349,9 +400,9 @@ export default function Dashboard() {
                     <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{c.nom}</Text>
                     <Text style={{ fontSize: 12, fontWeight: "600", color: colors.accent }}>{formater(c.montant)}</Text>
                   </View>
-                ))}
-              </Carte>
-            )}
+                ))
+              )}
+            </Carte>
 
             {/* Par mode de paiement */}
             {Object.keys(stats.parPaiement).length > 0 && (

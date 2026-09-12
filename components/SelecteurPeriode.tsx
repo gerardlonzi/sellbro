@@ -15,7 +15,7 @@ const PERIODES: { id: PeriodeId; cle: string }[] = [
   { id: "annee", cle: "periode_annee" },
 ];
 
-export function SelecteurPeriode({ periode, onChange, plan }: { periode: PeriodeId; onChange: (p: PeriodeId) => void; plan: Plan | undefined }) {
+export function SelecteurPeriode({ periode, onChange, plan, personnalise, onPersonnalise }: { periode: PeriodeId; onChange: (p: PeriodeId) => void; plan: Plan | undefined; personnalise?: boolean; onPersonnalise?: () => void }) {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const autorisees = periodesAutorisees(plan);
@@ -27,8 +27,17 @@ export function SelecteurPeriode({ periode, onChange, plan }: { periode: Periode
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.conteneur}
-        contentContainerStyle={{ alignItems: "center",justifyContent: "space-between",width: "100%" }}
+        contentContainerStyle={{ alignItems: "center", gap: 8 }}
       >
+        {onPersonnalise && (
+          <Pressable
+            onPress={onPersonnalise}
+            style={[styles.puce, { flexDirection:"row", alignItems:"center" ,borderColor: personnalise ? colors.accent : colors.border, borderWidth: personnalise ? 1.5 : 1 }]}
+          >
+            <Feather name="calendar" size={12} color={personnalise ? colors.accent : colors.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 12, color: personnalise ? colors.accent : colors.textSecondary }}>{t("dashboard_personnalise", langue)}</Text>
+          </Pressable>
+        )}
         {PERIODES.map((p) => {
           const actif = periode === p.id;
           const verrouille = !autorisees.includes(p.id);

@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 import {
   View,
@@ -22,6 +22,7 @@ import { useToast } from "@/lib/toast/ToastProvider";
 
 import { useLangue, t } from "@/lib/i18n";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 
@@ -39,6 +40,7 @@ import { MenuContextuel } from "@/components/MenuContextuel";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
 import { database } from "@/lib/database";
 
@@ -46,6 +48,8 @@ import { Q } from "@nozbe/watermelondb";
 
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { supprimerEnregistrement } from "@/lib/database/supprimer";
+import { versionDonnees } from "@/lib/dataVersion";
 
 type Produit = {
   id: string;
@@ -62,6 +66,7 @@ export default function Stock() {
   const { langue } = useLangue();
   const { showToast } = useToast();
   const { plan } = usePlanActuel();
+  const { formater } = useCurrency();
   const { categories } = useCategories();
   const { statut } = useLocalSearchParams<{ statut?: string }>();
 
@@ -82,17 +87,27 @@ export default function Stock() {
 
   const [panneauOuvert, setPanneauOuvert] = useState(false);
 
+  const derniereVersion = useRef<number | null>(null);
+
   useFocusEffect(
     useCallback(() => {
-      chargerProduits();
+      if (derniereVersion.current === null || versionDonnees() !== derniereVersion.current) {
+        derniereVersion.current = versionDonnees();
+        chargerProduits();
+      }
+      // En quittant la page, on réinitialise le filtre (ex: arrivée depuis
+      // l'alerte « stock faible / rupture » du dashboard).
+      return () => {
+        setFiltres(VALEURS_FILTRE_VIDES);
+      };
     }, [])
   );
 
-  // Arrivée depuis l'alerte « rupture de stock » du dashboard : on applique
-  // directement le filtre pour n'afficher que les produits en rupture.
+  // Arrivée depuis une alerte du dashboard : on applique directement le filtre
+  // pour n'afficher que les produits concernés (« rupture » ou « faible »).
   useEffect(() => {
-    if (statut === "rupture") {
-      setFiltres((f) => ({ ...f, statut: "rupture" }));
+    if (statut === "rupture" || statut === "faible") {
+      setFiltres((f) => ({ ...f, statut }));
     }
   }, [statut]);
 
@@ -455,7 +470,7 @@ export default function Stock() {
                       fontSize: 11,
                     }}
                   >
-                    {p.prix_vente.toLocaleString()} F
+                    {formater(p.prix_vente)}
                   </Text>
                 </View>
               </Pressable>
@@ -509,14 +524,14 @@ export default function Stock() {
                     destructif: true,
                     onPress: async () => {
                       if (enregistrement) return;
-                      if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+                      if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
                       setEnregistrement(true);
                       try {
                         const enreg = await database
                           .get("produits")
                           .find(p.id);
                         await database.write(async () => {
-                          await (enreg as any).destroyPermanently();
+                          await supprimerEnregistrement("produits", enreg as any);
                         });
                         await enregistrerActivite("produit", "suppression", `Produit supprimé : ${p.nom}`);
                         chargerProduits();
