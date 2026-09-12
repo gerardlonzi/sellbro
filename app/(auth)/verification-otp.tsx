@@ -88,6 +88,9 @@ export default function VerificationOtp() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.icone, { backgroundColor: colors.accentBg }]}>
+        <Text style={{ fontSize: 28 }}>🏪</Text>
+      </View>
       <Text style={{ fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: 8, textAlign: "center" }}>
         {t("otp_titre", langue)}
       </Text>
@@ -151,6 +154,7 @@ export default function VerificationOtp() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, justifyContent: "center" },
+  icone: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 14 },
   input: { borderWidth: 1, borderRadius: 8, paddingVertical: 14, marginBottom: 20, paddingHorizontal: 2, fontSize: 15 },
   bouton: { paddingVertical: 14, borderRadius: 8, alignItems: "center" },
   boutonTexte: { color: "#fff", fontSize: 15, fontWeight: "500" },

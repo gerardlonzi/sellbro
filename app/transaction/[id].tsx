@@ -9,6 +9,8 @@ import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
+import { supprimerEnregistrement } from "@/lib/database/supprimer";
 import { EnteteEcran } from "@/components/UI";
 
 type Vente = {
@@ -49,12 +51,14 @@ export default function DetailTransaction() {
         style: "destructive",
         onPress: async () => {
           if (enregistrement) return;
-          if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+          if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
           setEnregistrement(true);
           try {
             const enreg = await database.get("ventes").find(id);
-            await database.write(async () => { await (enreg as any).destroyPermanently(); });
-            await enregistrerActivite("vente", "suppression", "Vente supprimée");
+            const nomProduit = (enreg as any).produitNom ?? "produit";
+            const quantite = (enreg as any).quantite ?? 1;
+            await database.write(async () => { await supprimerEnregistrement("ventes", enreg as any); });
+            await enregistrerActivite("vente", "suppression", `Vente supprimée : ${quantite} × ${nomProduit}`);
             showToast(t("toast_supprime", langue), "success");
             router.back();
           } finally {
@@ -96,7 +100,7 @@ export default function DetailTransaction() {
 
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Ligne label="Produit" valeur={vente.produit_nom ?? "—"} colors={colors} />
-        <Ligne label={t("nouvelle_creance_montant", langue)} valeur={`${vente.quantite} × ${vente.prix_unitaire.toLocaleString()} F`} colors={colors} />
+        <Ligne label={t("nouvelle_creance_montant", langue)} valeur={`${vente.quantite} × ${formater(vente.prix_unitaire)}`} colors={colors} />
         <Ligne label={t("nouvelle_creance_personne", langue)} valeur={vente.client_nom ?? "—"} colors={colors} dernier />
       </View>
 

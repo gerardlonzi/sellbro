@@ -6,7 +6,8 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { useEssai } from "@/lib/trial/useEssai";
-import { definirPlanTest } from "@/lib/plan/planTest";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
+import { definirPlanTest, definirEtatNeutreTest } from "@/lib/plan/planTest";
 import { Carte, EnteteEcran } from "@/components/UI";
 
 export default function Reglages() {
@@ -14,6 +15,7 @@ export default function Reglages() {
   const { langue } = useLangue();
   const { planId, plan } = usePlanActuel();
   const essai = useEssai();
+  const { formater } = useCurrency();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
@@ -24,7 +26,15 @@ export default function Reglages() {
         <View style={styles.ligneAbonnement}>
           <View>
             {essai.estPremium ? (
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{plan?.nom ?? t("version_pro", langue)}</Text>
+              <>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Feather name="check-circle" size={16} color={colors.pro} />
+                  <Text style={{ color: colors.pro, fontSize: 13, fontWeight: "600" }}>{t("premium_mode", langue)}</Text>
+                </View>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>
+                  {t("premium_expire_dans", langue)(essai.joursRestants)}
+                </Text>
+              </>
             ) : essai.actif ? (
               <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>
                 {t("essai_actif_reste", langue)(essai.joursRestants)}
@@ -34,12 +44,12 @@ export default function Reglages() {
             )}
             {plan && !essai.estPremium && (
               <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-                {t("version_pro", langue)} · {plan.prix} FCFA/mois
+                {t("version_pro", langue)} · {formater(plan.prix)}/mois
               </Text>
             )}
           </View>
           {!essai.estPremium && (
-            <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPro, { backgroundColor: essai.actif ? colors.pro : colors.danger }]}>
+            <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPro, { backgroundColor: essai.actif ? colors.proFill : colors.danger }]}>
               <Text style={{ color: essai.actif ? colors.onPro : "#fff", fontSize: 11 }}>
                 {essai.actif ? t("version_pro", langue) : t("reglages_upgrade", langue)}
               </Text>
@@ -85,7 +95,7 @@ export default function Reglages() {
             {(["gratuit", "premium"] as const).map((p) => (
               <Pressable
                 key={p}
-                onPress={() => definirPlanTest(p)}
+                onPress={() => (p === "gratuit" ? definirEtatNeutreTest() : definirPlanTest(p))}
                 style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: planId === p ? 2 : 1, borderColor: planId === p ? colors.accent : colors.border, alignItems: "center" }}
               >
                 <Text style={{ fontSize: 11, color: planId === p ? colors.accent : colors.textPrimary }}>{p}</Text>

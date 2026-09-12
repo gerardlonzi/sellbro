@@ -1,5 +1,6 @@
 import { database } from "@/lib/database";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { signalerModificationDonnees } from "@/lib/dataVersion";
 
 export type ActionType = "ajout" | "modification" | "suppression" | "alerte";
 
@@ -19,6 +20,7 @@ export async function enregistrerActivite(type: string, action: ActionType, desc
         j.synchronise = false;
       });
     });
+    signalerModificationDonnees();
   } catch {
     // Silencieux : le journal ne doit pas bloquer l'utilisateur.
   }

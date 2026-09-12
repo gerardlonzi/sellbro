@@ -11,6 +11,7 @@ import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 
 const CATEGORIES = ["loyer", "electricite", "transport", "salaire", "internet", "autre"];
 
@@ -26,7 +27,7 @@ export default function NouvelleDepense() {
   async function sauvegarder() {
     if (chargement) return;
     if (!(await peutEcrire())) {
-      showToast(t("essai_expire", langue), "error");
+      afficherPaywall(langue, () => router.push("/premium"));
       return;
     }
     if (!montant) {
@@ -47,7 +48,7 @@ export default function NouvelleDepense() {
       });
     });
 
-    await synchroniserPourUtilisateurCourant();
+    synchroniserPourUtilisateurCourant().catch(() => {});
     await enregistrerActivite("depense", "ajout", "Nouvelle dépense");
     setChargement(false);
     showToast(t("toast_enregistre", langue), "success");
@@ -55,7 +56,8 @@ export default function NouvelleDepense() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
       <EnteteEcran titre={t("depenses_ajouter", langue)} onRetour={() => router.back()} />
 
       <Text style={styles.label}>{t("depenses_categorie", langue)}</Text>
@@ -73,12 +75,15 @@ export default function NouvelleDepense() {
 
       <Champ label={t("depenses_montant", langue)} valeur={montant} onChange={setMontant} numerique colors={colors} />
       <Champ label={t("depenses_description", langue)} valeur={description} onChange={setDescription} colors={colors} />
-
-      <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
-        <Feather name="check" size={16} color="#fff" />
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("nouvelle_creance_sauver", langue)}</Text>
-      </Pressable>
     </ScrollView>
+
+      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+        <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
+          <Feather name="check" size={16} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("nouvelle_creance_sauver", langue)}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 

@@ -6,10 +6,13 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
+import { enregistrerActivite } from "@/lib/audit/journal";
+import { supprimerEnregistrement } from "@/lib/database/supprimer";
 import { EnteteEcran } from "@/components/UI";
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
@@ -20,6 +23,7 @@ import { BoutonFlottant } from "@/components/BoutonFlottant";
 
 type Vente = {
   id: string; quantite: number; prix_unitaire: number; client_nom: string | null;
+  produit_nom: string | null;
   source: string; mode_paiement: string | null; created_at: string;
 };
 const ICONES_SOURCE: Record<string, any> = { vocal: "mic", scan: "camera", manuel: "edit-3" };
@@ -51,6 +55,7 @@ export default function Commandes() {
     const resultats = await database.get("ventes").query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc)).fetch();
     setVentes((resultats as any[]).map((v) => ({
       id: v.id, quantite: v.quantite, prix_unitaire: v.prixUnitaire, client_nom: v.clientNom,
+      produit_nom: v.produitNom,
       source: v.source, mode_paiement: v.modePaiement,
       created_at: v.creeLe ? v.creeLe.toISOString() : new Date().toISOString(),
     })));
@@ -137,7 +142,7 @@ export default function Commandes() {
             <MenuContextuel
               actions={[
                 { label: "Voir détail", icone: "eye", onPress: () => router.push(`/transaction/${v.id}`) },
-                { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { if (enregistrement) return; if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; } setEnregistrement(true); try { const enreg = await database.get("ventes").find(v.id); await database.write(async () => { await (enreg as any).destroyPermanently(); }); chargerVentes(); } finally { setEnregistrement(false); } } },
+                { label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true, onPress: async () => { if (enregistrement) return; if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; } setEnregistrement(true); try { const enreg = await database.get("ventes").find(v.id); await database.write(async () => { await supprimerEnregistrement("ventes", enreg as any); }); enregistrerActivite("vente", "suppression", `Vente supprimée : ${v.quantite} × ${v.produit_nom ?? "produit"}`); chargerVentes(); } finally { setEnregistrement(false); } } },
               ]}
             />
           </View>

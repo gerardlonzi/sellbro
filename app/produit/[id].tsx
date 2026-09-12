@@ -9,11 +9,15 @@ import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
+import { supprimerEnregistrement } from "@/lib/database/supprimer";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
 export default function DetailProduit() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const { showToast } = useToast();
+  const { formater } = useCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [chargement, setChargement] = useState(true);
   const [enregistrement, setEnregistrement] = useState(false);
@@ -59,22 +63,38 @@ export default function DetailProduit() {
   async function sauvegarder() {
     if (enregistrement) return;
     if (!(await peutEcrire())) {
-      showToast(t("essai_expire", langue), "error");
+      afficherPaywall(langue, () => router.push("/premium"));
       return;
     }
     setEnregistrement(true);
     try {
       const p = await database.get("produits").find(id);
+      const ancien = (p as any);
+      const ancienPrix = ancien.prixVente;
+      const ancienStock = ancien.quantiteStock;
+      const nouveauPrix = Number(prixVente);
+      const nouveauStock = Number(quantite) || 0;
+
       await database.write(async () => {
         await (p as any).update((x: any) => {
           x.nom = nom;
-          x.prixVente = Number(prixVente);
+          x.prixVente = nouveauPrix;
           x.prixAchat = Number(prixAchat) || null;
-          x.quantiteStock = Number(quantite) || 0;
+          x.quantiteStock = nouveauStock;
           x.seuilAlerte = Number(seuilAlerte) || 5;
+          x.synchronise = false;
         });
       });
-      await enregistrerActivite("produit", "modification", `Produit modifié : ${nom}`);
+
+      // Description détaillée de ce qui a changé.
+      const changements: string[] = [];
+      if (nouveauPrix !== ancienPrix) changements.push(`prix changé de ${ancienPrix} à ${nouveauPrix}`);
+      if (nouveauStock !== ancienStock) changements.push(`stock changé de ${ancienStock} à ${nouveauStock}`);
+      const description = changements.length > 0
+        ? `Produit modifié : ${nom} — ${changements.join(", ")}`
+        : `Produit modifié : ${nom}`;
+
+      await enregistrerActivite("produit", "modification", description);
       showToast(t("toast_produit_modifie", langue), "success");
       router.back();
     } finally {
@@ -93,7 +113,7 @@ export default function DetailProduit() {
           setEnregistrement(true);
           try {
             const p = await database.get("produits").find(id);
-            await database.write(async () => { await (p as any).destroyPermanently(); });
+            await database.write(async () => { await supprimerEnregistrement("produits", p as any); });
             await enregistrerActivite("produit", "suppression", `Produit supprimé : ${nom}`);
             showToast(t("toast_produit_supprime", langue), "success");
             router.back();
@@ -137,11 +157,11 @@ export default function DetailProduit() {
         </View>
         <View style={styles.ligneChamp}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Chiffre d'affaires</Text>
-          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{stats.ca.toLocaleString()} F</Text>
+          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formater(stats.ca)}</Text>
         </View>
         <View style={styles.ligneChamp}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Bénéfice estimé</Text>
-          <Text style={{ color: colors.success, fontSize: 13, fontWeight: "500" }}>{stats.benefice.toLocaleString()} F</Text>
+          <Text style={{ color: colors.success, fontSize: 13, fontWeight: "500" }}>{formater(stats.benefice)}</Text>
         </View>
         {stats.topClients.length > 0 && (
           <View style={{ marginTop: 6 }}>
@@ -149,7 +169,7 @@ export default function DetailProduit() {
             {stats.topClients.map((c) => (
               <View key={c.nom} style={styles.ligneChamp}>
                 <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{c.nom}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{c.montant.toLocaleString()} F</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(c.montant)}</Text>
               </View>
             ))}
           </View>

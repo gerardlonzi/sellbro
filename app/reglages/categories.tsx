@@ -8,6 +8,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 import { EnteteEcran } from "@/components/UI";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 import { enregistrerActivite } from "@/lib/audit/journal";
 
 export default function GestionCategories() {
@@ -18,7 +19,7 @@ export default function GestionCategories() {
   const [nouvelleCategorie, setNouvelleCategorie] = useState("");
 
   async function ajouter() {
-    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+    if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
     if (!nouvelleCategorie.trim()) return;
     await ajouterCategorie(nouvelleCategorie.trim());
     enregistrerActivite("stock", "ajout", `Catégorie ajoutée : ${nouvelleCategorie.trim()}`);

@@ -13,7 +13,10 @@ import { Q } from "@nozbe/watermelondb";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 import { usePays } from "@/lib/pays/PaysProvider";
+import { validerTelephone } from "@/lib/pays/validation";
+import { formaterDateSeule } from "@/lib/formatDate";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 const CHAMPS_SUGGERES = [
@@ -62,12 +65,21 @@ export default function NouvelleCreance() {
   async function sauvegarder() {
     if (chargement) return;
     if (!(await peutEcrire())) {
-      showToast(t("essai_expire", langue), "error");
+      afficherPaywall(langue, () => router.push("/premium"));
       return;
     }
     if (!personne.trim() || !montant) {
       showToast(t("nouvelle_creance_erreur", langue), "error");
       return;
+    }
+
+    // Téléphone facultatif, mais si renseigné il doit être valide pour le pays.
+    if (telephone.trim()) {
+      const validation = validerTelephone(telephone.trim(), pays);
+      if (!validation.valide) {
+        showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
+        return;
+      }
     }
 
     const userId = await obtenirUserId();
@@ -107,7 +119,7 @@ export default function NouvelleCreance() {
       });
     });
 
-    await synchroniserPourUtilisateurCourant();
+    synchroniserPourUtilisateurCourant().catch(() => {});
     await enregistrerActivite("creance", "ajout", type === "creance" ? "Nouvelle créance" : "Nouvelle dette");
     setChargement(false);
     showToast(t("toast_enregistre", langue), "success");
@@ -115,7 +127,8 @@ export default function NouvelleCreance() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
       <EnteteEcran
         titre={type === "creance" ? t("nouvelle_creance_titre", langue) : t("nouvelle_dette_titre", langue)}
         onRetour={() => router.back()}
@@ -168,7 +181,7 @@ export default function NouvelleCreance() {
           mode="date"
           onChange={(event: any, date?: Date) => {
             setAfficherDatePicker(false);
-            if (event.type === "set" && date) setEcheance(date.toISOString().split("T")[0]);
+            if (event.type === "set" && date) setEcheance(formaterDateSeule(date));
           }}
         />
       )}
@@ -213,16 +226,6 @@ export default function NouvelleCreance() {
         );
       })}
 
-      <Pressable
-        onPress={sauvegarder}
-        disabled={chargement}
-        style={[styles.boutonSauver, { backgroundColor: colors.accent, marginTop: 20, opacity: chargement ? 0.6 : 1 }]}
-      >
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>
-          {chargement ? "..." : t("nouvelle_creance_sauver", langue)}
-        </Text>
-      </Pressable>
-
       <Modal visible={selecteurProduitOuvert} transparent animationType="slide">
         <Pressable style={styles.fondModal} onPress={() => setSelecteurProduitOuvert(false)}>
           <View style={[styles.feuilleModal, { backgroundColor: colors.surface }]}>
@@ -245,6 +248,19 @@ export default function NouvelleCreance() {
         </Pressable>
       </Modal>
     </ScrollView>
+
+      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+        <Pressable
+          onPress={sauvegarder}
+          disabled={chargement}
+          style={[styles.boutonSauver, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
+        >
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>
+            {chargement ? "..." : t("nouvelle_creance_sauver", langue)}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 

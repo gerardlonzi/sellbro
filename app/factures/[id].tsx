@@ -7,6 +7,7 @@ import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran, Badge } from "@/components/UI";
@@ -38,7 +39,7 @@ export default function DetailFacture() {
 
   async function marquerPayee() {
     if (enregistrement) return;
-    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+    if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
     setEnregistrement(true);
     try {
       await database.write(async () => {
@@ -82,7 +83,7 @@ export default function DetailFacture() {
         {lignes.map((l) => (
           <View key={l.id} style={styles.ligneFacture}>
             <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{l.produitNom} x{l.quantite}</Text>
-            <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{(l.quantite * l.prixUnitaire).toLocaleString()} F</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{formater(l.quantite * l.prixUnitaire)}</Text>
           </View>
         ))}
         <View style={[styles.ligneFacture, { borderTopWidth: 1, borderTopColor: colors.border, marginTop: 8, paddingTop: 10 }]}>

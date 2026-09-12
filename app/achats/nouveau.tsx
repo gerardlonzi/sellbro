@@ -14,6 +14,7 @@ import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
 
 type Produit = { id: string; nom: string };
 
@@ -48,7 +49,7 @@ export default function NouvelAchat() {
   async function sauvegarder() {
     if (chargement) return;
     if (!(await peutEcrire())) {
-      showToast(t("essai_expire", langue), "error");
+      afficherPaywall(langue, () => router.push("/premium"));
       return;
     }
     if (!montant) {
@@ -83,15 +84,19 @@ export default function NouvelAchat() {
       });
     }
 
-    await synchroniserPourUtilisateurCourant();
-    await enregistrerActivite("achat", "ajout", "Nouvel achat");
+    synchroniserPourUtilisateurCourant().catch(() => {});
+    const libelleAchat = quantiteRecue && nomProduitLie
+      ? `Achat enregistré : ${quantiteRecue} × ${nomProduitLie}`
+      : `Achat enregistré : ${description.trim() || fournisseur.trim() || "—"}`;
+    await enregistrerActivite("achat", "ajout", libelleAchat);
     setChargement(false);
     showToast(t("toast_enregistre", langue), "success");
     router.back();
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
       <EnteteEcran titre={t("achats_titre", langue)} onRetour={() => router.back()} />
 
       <Champ label={t("achats_fournisseur", langue)} valeur={fournisseur} onChange={setFournisseur} colors={colors} />
@@ -110,11 +115,6 @@ export default function NouvelAchat() {
         <Champ label={t("achats_quantite_recue", langue)} valeur={quantiteRecue} onChange={setQuantiteRecue} numerique colors={colors} />
       )}
 
-      <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
-        <Feather name="check" size={16} color="#fff" />
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("achats_enregistrer", langue)}</Text>
-      </Pressable>
-
       <Modal visible={selecteurOuvert} transparent animationType="slide">
         <Pressable style={styles.fondModal} onPress={() => setSelecteurOuvert(false)}>
           <View style={[styles.feuille, { backgroundColor: colors.surface }]}>
@@ -129,6 +129,14 @@ export default function NouvelAchat() {
         </Pressable>
       </Modal>
     </ScrollView>
+
+      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+        <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
+          <Feather name="check" size={16} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("achats_enregistrer", langue)}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 

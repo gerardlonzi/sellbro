@@ -53,7 +53,11 @@ export default function Connexion() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.icone, { backgroundColor: colors.accentBg }]}>
+        <Text style={{ fontSize: 28 }}>🏪</Text>
+      </View>
       <Text style={[styles.titre, { color: colors.textPrimary }]}>{t("connexion_titre", langue)}</Text>
+      <Text style={[styles.sousTitre, { color: colors.textSecondary }]}>{t("connexion_sous_titre", langue)}</Text>
 
       {etape === "email" ? (
         <>
@@ -107,7 +111,9 @@ export default function Connexion() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, justifyContent: "center" },
-  titre: { fontSize: 18, fontWeight: "500", marginBottom: 24, textAlign: "center" },
+  icone: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 14 },
+  titre: { fontSize: 18, fontWeight: "500", marginBottom: 6, textAlign: "center" },
+  sousTitre: { fontSize: 13, marginBottom: 24, textAlign: "center" },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 16 },
   bouton: { paddingVertical: 13, borderRadius: 8, alignItems: "center" },
   boutonTexte: { color: "#fff", fontSize: 14, fontWeight: "500" },

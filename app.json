@@ -1,12 +1,13 @@
 {
   "expo": {
-    "name": "CIKAP",
+    "name": "Cikap",
     "slug": "cikap",
     "scheme": "cikap",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
+    "icon": "./assets/splash-logo.png",
 
     "ios": {
       "supportsTablet": false,
@@ -14,7 +15,11 @@
     },
 
     "android": {
-      "package": "com.eyetech.cikap"
+      "package": "com.eyetech.cikap",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/splash-logo.png",
+        "backgroundColor": "#FFFFFF"
+      }
     },
 
     "plugins": [
@@ -28,7 +33,7 @@
             "image": "./assets/splash-logo.png",
             "backgroundColor": "#121212"
           },
-          "imageWidth": 160
+          "imageWidth": 64
         }
       ],
       "expo-audio",
