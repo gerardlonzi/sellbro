@@ -3,11 +3,12 @@ import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useLangue } from "@/lib/i18n";
+import { useLangue, t, Langue } from "@/lib/i18n";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { EnteteEcran } from "@/components/UI";
+import { formaterDateHeure } from "@/lib/formatDate";
 
 type Entree = { id: string; type: string; action: string; description: string; creeLe: Date };
 
@@ -18,8 +19,19 @@ const ICONES: Record<string, keyof typeof Feather.glyphMap> = {
   produit: "package",
   depense: "credit-card",
   fournisseur: "users",
+  facture: "file-text",
   stock: "box",
 };
+
+// Libellés traduits pour les actions et les types (avec repli sur la valeur brute).
+function libelleAction(action: string, langue: Langue): string {
+  const cle = `journal_action_${action}` as any;
+  return t(cle, langue) ?? action;
+}
+function libelleType(type: string, langue: Langue): string {
+  const cle = `journal_type_${type}` as any;
+  return t(cle, langue) ?? type;
+}
 
 export default function Journal() {
   const { colors } = useTheme();
@@ -48,12 +60,12 @@ export default function Journal() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
-      <EnteteEcran titre="Journal d'activité" onRetour={() => router.back()} />
+      <EnteteEcran titre={t("journal_titre", langue)} onRetour={() => router.back()} />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, maxHeight: 34 }}>
-        <FiltrePuce label="Tous" actif={!filtreType} onPress={() => setFiltreType(null)} colors={colors} />
+        <FiltrePuce label={t("journal_tous", langue)} actif={!filtreType} onPress={() => setFiltreType(null)} colors={colors} />
         {types.map((type) => (
-          <FiltrePuce key={type} label={type} actif={filtreType === type} onPress={() => setFiltreType(type)} colors={colors} />
+          <FiltrePuce key={type} label={libelleType(type, langue)} actif={filtreType === type} onPress={() => setFiltreType(type)} colors={colors} />
         ))}
       </ScrollView>
 
@@ -62,7 +74,7 @@ export default function Journal() {
       ) : filtrees.length === 0 ? (
         <View style={{ alignItems: "center", paddingTop: 40 }}>
           <Feather name="list" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Aucune activité enregistrée</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("journal_vide", langue)}</Text>
         </View>
       ) : (
         <ScrollView>
@@ -74,10 +86,10 @@ export default function Journal() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{e.description}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                  {e.creeLe ? e.creeLe.toLocaleString(langue === "fr" ? "fr-FR" : "en-US") : ""}
+                  {formaterDateHeure(e.creeLe, langue)}
                 </Text>
               </View>
-              <Text style={{ color: colors.textMuted, fontSize: 11 }}>{e.action}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11 }}>{libelleAction(e.action, langue)}</Text>
             </View>
           ))}
         </ScrollView>

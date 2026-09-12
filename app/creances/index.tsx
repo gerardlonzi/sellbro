@@ -3,7 +3,6 @@ import { View, Text, ScrollView, Pressable, StyleSheet, Linking, ActivityIndicat
 import { router, useFocusEffect } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
@@ -11,6 +10,9 @@ import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
+import { afficherPaywall } from "@/lib/trial/paywall";
+import { formaterDate, parserDateSeule } from "@/lib/formatDate";
+import { supprimerEnregistrement } from "@/lib/database/supprimer";
 import { EnteteEcran } from "@/components/UI";
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 import { ValeursFiltre, VALEURS_FILTRE_VIDES } from "@/lib/filtres/types";
@@ -29,7 +31,6 @@ type CreanceDette = {
 export default function CreancesDettes() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { showToast } = useToast();
   const { formater } = useCurrency();
   const [onglet, setOnglet] = useState<"creance" | "dette">("creance");
   const [liste, setListe] = useState<CreanceDette[]>([]);
@@ -50,7 +51,8 @@ export default function CreancesDettes() {
     if (!userId) { setChargement(false); return; }
     const resultats = await database.get("creances_dettes").query(
       Q.where("user_id", userId),
-      Q.where("type", onglet)
+      Q.where("type", onglet),
+      Q.sortBy("cree_le", Q.desc)
     ).fetch();
     setListe((resultats as any[]).map((c) => ({
       id: c.id, type: c.type, personne_nom: c.personneNom, telephone: c.telephone,
@@ -63,7 +65,7 @@ export default function CreancesDettes() {
 
   async function marquerPayee(id: string) {
     if (enregistrement) return;
-    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+    if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
     setEnregistrement(true);
     try {
       const enreg = await database.get("creances_dettes").find(id);
@@ -79,12 +81,12 @@ export default function CreancesDettes() {
 
   async function supprimerCreance(id: string) {
     if (enregistrement) return;
-    if (!(await peutEcrire())) { showToast(t("essai_expire", langue), "error"); return; }
+    if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
     setEnregistrement(true);
     try {
       const enreg = await database.get("creances_dettes").find(id);
       await database.write(async () => {
-        await (enreg as any).destroyPermanently();
+        await supprimerEnregistrement("creances_dettes", enreg as any);
       });
       await enregistrerActivite("creance", "suppression", "Créance supprimée");
       chargerListe();
@@ -94,14 +96,15 @@ export default function CreancesDettes() {
   }
 
   function estEnRetard(c: CreanceDette) {
-    return !!c.date_echeance && new Date(c.date_echeance) < new Date() && c.statut !== "payee";
+    return !!c.date_echeance && parserDateSeule(c.date_echeance) < new Date() && c.statut !== "payee";
   }
 
   function estAVenir(c: CreanceDette) {
     if (!c.date_echeance || c.statut === "payee") return false;
     const dansSeptJours = new Date();
     dansSeptJours.setDate(dansSeptJours.getDate() + 7);
-    return new Date(c.date_echeance) >= new Date() && new Date(c.date_echeance) <= dansSeptJours;
+    const echeance = parserDateSeule(c.date_echeance);
+    return echeance >= new Date() && echeance <= dansSeptJours;
   }
 
   let filtrees = liste.filter((c) => {
@@ -130,7 +133,7 @@ export default function CreancesDettes() {
 
   function envoyerWhatsapp(telephone: string | null, nom: string, montant: number) {
     if (!telephone) return;
-    const message = `Bonjour ${nom}, petit rappel : vous avez un solde de ${montant} FCFA. Merci de régulariser quand vous pourrez.`;
+    const message = `Bonjour ${nom}, petit rappel : vous avez un solde de ${formater(montant)}. Merci de régulariser quand vous pourrez.`;
     Linking.openURL(`https://wa.me/${telephone.replace("+", "")}?text=${encodeURIComponent(message)}`);
   }
 
@@ -168,7 +171,7 @@ export default function CreancesDettes() {
         <ScrollView>
           {filtrees.map((c) => {
             const enRetard = estEnRetard(c);
-            const fmt = (d: string | null) => (d ? new Date(d).toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US") : "—");
+            const fmt = (d: string | null) => (d ? formaterDate(d, langue) : "—");
             return (
               <View key={c.id} style={[styles.carteCreance, { backgroundColor: enRetard ? colors.dangerBg : colors.surface }]}>
                 <Pressable onPress={() => router.push(`/creances/${c.id}`)}>
@@ -245,6 +248,6 @@ const styles = StyleSheet.create({
   ligneHaut: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 },
   ligneInfos: { marginTop: 6, gap: 4 },
   infoDate: { flexDirection: "row", alignItems: "center", gap: 5 },
-  ligneActions: { flexDirection: "row", gap: 6, marginTop: 10, justifyContent: "flex-end" },
+  ligneActions: { flexDirection: "row", gap: 6, marginTop: 10, justifyContent: "flex-end", alignItems:"center" },
   boutonAction: { width: 36, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 8 },
 });

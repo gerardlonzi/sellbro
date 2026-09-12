@@ -6,6 +6,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { EnteteEcran, Carte, Badge } from "@/components/UI";
+import { formaterDate, parserDateSeule } from "@/lib/formatDate";
 
 export default function DetailCreance() {
   const { colors } = useTheme();
@@ -46,8 +47,8 @@ export default function DetailCreance() {
     );
   }
 
-  const enRetard = creance.statut !== "payee" && creance.dateEcheance && new Date(creance.dateEcheance) < new Date();
-  const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US") : "—");
+  const enRetard = creance.statut !== "payee" && creance.dateEcheance && parserDateSeule(creance.dateEcheance) < new Date();
+  const fmtDate = (d: string | null) => (d ? formaterDate(d, langue) : "—");
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
