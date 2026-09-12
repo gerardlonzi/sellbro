@@ -504,3 +504,30 @@ end;
 $$;
 
 grant execute on function public.sauvegarder_profil_inscription(text, text, text, text, text, text) to anon, authenticated;
+-- ------------------------------------------------------------
+-- 23. JOURNAL D'ACTIVITÉ — audit local synchronisé dans le cloud
+-- ------------------------------------------------------------
+create table if not exists journal_activite (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  type text not null,     -- 'produit' | 'vente' | 'achat' | 'creance' | 'depense' | 'fournisseur' | 'facture' | 'stock' | ...
+  action text not null,   -- 'ajout' | 'modification' | 'suppression' | 'alerte'
+  description text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_journal_user on journal_activite(user_id, created_at desc);
+
+alter table journal_activite enable row level security;
+drop policy if exists "Chacun voit ses propres données" on journal_activite;
+create policy "Chacun voit ses propres données" on journal_activite
+  for all using (auth.uid() = user_id);
+
+-- ------------------------------------------------------------
+-- 24. TAUX DE CONVERSION (source unique pour les devises)
+--     JSON : { "NGN": 0.42, ... } où la valeur = unités de la devise
+--     pour 1 FCFA (XAF). Pilotable depuis Supabase (app_config), sans
+--     republier l'app.
+-- ------------------------------------------------------------
+insert into app_config (cle, valeur, type) values
+  ('taux_conversion', '{"XAF":1,"XOF":1,"NGN":0.42,"GHS":0.015,"ZAR":0.032,"KES":0.21,"UGX":6.1,"TZS":4.4,"RWF":2.2,"BIF":5.0,"CDF":4.8,"EGP":0.082,"MAD":0.017,"DZD":0.23,"TND":0.0054,"LYD":0.0082,"SDG":1.0,"SSP":0.22,"ETB":0.19,"SOS":0.95,"DJF":0.30,"ERN":0.025,"MWK":2.9,"ZMW":0.045,"BWP":0.023,"NAD":0.032,"SZL":0.032,"LSL":0.032,"MZN":0.11,"AOA":1.5,"SCR":0.024,"MUR":0.077,"KMF":0.82,"CVE":0.17,"GMD":0.11,"SLL":0.037,"LRD":0.31,"GNF":14.7}', 'string')
+on conflict (cle) do update set valeur = excluded.valeur;
