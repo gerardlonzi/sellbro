@@ -8,6 +8,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";
 import { MenuContextuel } from "@/components/MenuContextuel";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
@@ -44,10 +45,10 @@ export default function Ventes() {
 
   async function charger() {
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setChargement(false); return; }
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
 
-    const resultats = await database.get("ventes").query(Q.where("user_id", user.id), Q.sortBy("cree_le", Q.desc)).fetch();
+    const resultats = await database.get("ventes").query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc)).fetch();
     setVentes((resultats as any[]).map((v) => ({
       id: v.id, quantite: v.quantite, prixUnitaire: v.prixUnitaire,
       produitNom: v.produitNom, clientNom: v.clientNom, source: v.source, creeLe: v.creeLe,
@@ -75,10 +76,10 @@ export default function Ventes() {
       return;
     }
     setCreationEnCours(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await obtenirUserId();
+    if (!userId) return;
 
-    const factureId = await creerFactureDepuisVentes(user.id, Array.from(selectionnees));
+    const factureId = await creerFactureDepuisVentes(userId, Array.from(selectionnees));
     setCreationEnCours(false);
     quitterModeSelection();
     router.push(`/factures/${factureId}`);
@@ -176,7 +177,8 @@ export default function Ventes() {
           <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: "center" }}>{t("commandes_vide", langue)}</Text>
         </View>
       ) : (
-        <ScrollView>
+        <ScrollView   contentContainerStyle={styles.contenu}
+>
           {filtrees.map((v) => {
             const selectionnee = selectionnees.has(v.id);
             return (
@@ -281,5 +283,8 @@ const styles = StyleSheet.create({
     position: "absolute", bottom: 24, left: 20, right: 20, flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 8, paddingVertical: 14, borderRadius: 12, elevation: 4,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4,
+
   },
+  contenu: {  paddingBottom: 70 },
+
 });

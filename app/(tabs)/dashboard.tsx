@@ -56,6 +56,9 @@ export default function Dashboard() {
   const { formater } = useCurrency();
   const { plan, planId } = usePlanActuel();
   const essai = useEssai();
+  // Plan « effectif » : pendant l'essai (TRIAL) ou en PRO, l'utilisateur a un
+  // accès complet aux périodes (rapportsMax = annee). En FREE, on applique le plan réel.
+  const planEffectif = plan && essai.statut !== "FREE" ? { ...plan, rapportsMax: "annee" as const } : plan;
   const [periode, setPeriode] = useState<PeriodeId>("semaine");
   const [stats, setStats] = useState<Stats>(STATS_VIDES);
   const [precedente, setPrecedente] = useState<Tendance>(TENDANCE_VIDE);
@@ -188,8 +191,12 @@ export default function Dashboard() {
       <View style={styles.entete}>
         <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-        {(planId === "premium" || essai.actif) && (
+        {(planId === "premium" || essai.actif) ? (
             <Badge texte={t("version_pro", langue)} type="pro" />
+          ) : (
+            <Pressable onPress={() => router.push("/premium")} style={{ backgroundColor: colors.proBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+              <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
+            </Pressable>
           )}
         {plan?.exportComptable && (
             <Pressable onPress={() => router.push("/export")} style={[styles.boutonExport, { borderColor: colors.border }]}>
@@ -206,10 +213,10 @@ export default function Dashboard() {
         <SelecteurPeriode
           periode={periode}
           onChange={setPeriode}
-          plan={plan}
+          plan={planEffectif}
           personnalise={personnalise}
           onPersonnalise={() => {
-            if (plan && plan.rapportsMax !== "annee") {
+            if (essai.statut === "FREE") {
               afficherPaywall(langue, () => router.push("/premium"));
               return;
             }

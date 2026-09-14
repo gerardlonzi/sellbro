@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -11,15 +11,15 @@ import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { TourGuide } from "@/components/TourGuide";
 import { useTourGuide } from "@/lib/onboarding/useTourGuide";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 import { Skeleton, Badge } from "@/components/UI";
 import { WelcomeTrial } from "@/components/WelcomeTrial";
-import { detecterAlertes } from "@/lib/notifications/notifications";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
-import { versionDonnees } from "@/lib/dataVersion";
+import { versionDonnees, sAbonnerModifications } from "@/lib/dataVersion";
 import { useEssai } from "@/lib/trial/useEssai";
 
 
@@ -55,6 +55,15 @@ export default function Accueil() {
     }, [])
   );
 
+  // Recharge aussi l'accueil dès qu'une sync/écriture modifie les données
+  // (sinon il fallait naviguer ailleurs puis revenir pour voir les données).
+  useEffect(() => {
+    return sAbonnerModifications(() => {
+      derniereVersion.current = versionDonnees();
+      chargerDonnees();
+    });
+  }, []);
+
   // Le badge de notifications se rafraîchit à chaque focus (léger),
   // pour diminuer dès qu'une notification a été marquée « lue ».
   useFocusEffect(
@@ -67,23 +76,27 @@ export default function Accueil() {
     let nom = await AsyncStorage.getItem("boutika_nom_boutique");
 
     setChargementVentes(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    // `obtenirUserId` lit le token local (hors ligne), pas getUser() qui fait
+    // un appel réseau et bloquait l'accueil sans connexion.
+    const userId = await obtenirUserId();
     // Si le nom n'est pas en cache local, on le récupère depuis le profil
     // Supabase (ex: renseigné à l'inscription via config-boutique).
-    if (!nom && user) {
-      const { data } = await supabase.from("profiles").select("nom_boutique").eq("id", user.id).single();
-      if (data?.nom_boutique) {
-        nom = data.nom_boutique;
-        await AsyncStorage.setItem("boutika_nom_boutique", data.nom_boutique);
-      }
+    if (!nom && userId) {
+      try {
+        const { data } = await supabase.from("profiles").select("nom_boutique").eq("id", userId).single();
+        if (data?.nom_boutique) {
+          nom = data.nom_boutique;
+          await AsyncStorage.setItem("boutika_nom_boutique", data.nom_boutique);
+        }
+      } catch {}
     }
     if (nom) setNomBoutique(nom);
 
-    if (user) {
+    if (userId) {
       const debutJour = new Date();
       debutJour.setHours(0, 0, 0, 0);
 
-      const toutesLesVentes = await database.get("ventes").query(Q.where("user_id", user.id), Q.sortBy("cree_le", Q.desc)).fetch();
+      const toutesLesVentes = await database.get("ventes").query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc)).fetch();
       const ventesAujourdhui = (toutesLesVentes as any[]).filter((v) => v.creeLe >= debutJour);
 
       setCa(ventesAujourdhui.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0));
@@ -103,7 +116,7 @@ export default function Accueil() {
         source: v.source,
       })));
 
-      const creances = await database.get("creances_dettes").query(Q.where("user_id", user.id), Q.where("statut", Q.notEq("payee"))).fetch();
+      const creances = await database.get("creances_dettes").query(Q.where("user_id", userId), Q.where("statut", Q.notEq("payee"))).fetch();
       setOnTeDoit((creances as any[]).filter((c) => c.type === "creance").reduce((s, c) => s + c.montantRestant, 0));
       setTuDois((creances as any[]).filter((c) => c.type === "dette").reduce((s, c) => s + c.montantRestant, 0));
     }
@@ -113,11 +126,10 @@ export default function Accueil() {
   }
 
   async function chargerNotifsNonLues() {
+    // Les alertes (stock faible / créances en retard) sont persistées dans la
+    // table `notifications` ; le badge ne compte donc que les non-lues de cette
+    // table (elles diminuent au fur et à mesure des lectures).
     let total = 0;
-    try {
-      const { nbRuptures, nbRetards } = await detecterAlertes();
-      total += nbRuptures + nbRetards;
-    } catch {}
     try {
       const { data } = await supabase.from("notifications").select("id").eq("lu", false);
       total += (data ?? []).length;
@@ -151,9 +163,9 @@ export default function Accueil() {
           ) : (estPremium || essai.actif) ? (
             <Badge texte={t("version_pro", langue)} type="pro" />
           ) : (
-            <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPassePro, { backgroundColor: colors.proBg }]}>
-              <Text style={{ color: colors.onPro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
-            </Pressable>
+            <Pressable onPress={() => router.push("/premium")} style={{ backgroundColor: colors.proBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+            <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
+          </Pressable>
           )}
           <Pressable onPress={() => router.push("/notifications")} style={{ position: "relative" }}>
             <Feather name="bell" size={20} color={colors.textSecondary} />
@@ -207,7 +219,7 @@ export default function Accueil() {
         </View>
       </View>
 
-      <View style={[styles.cartePetite, { backgroundColor: colors.successBg, borderColor: colors.border, marginTop: 12 }]}>
+      <View style={[styles.cartePetite, { backgroundColor:colors.surface, borderColor: colors.border, marginTop: 12 }]}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
           <Feather name="trending-up" size={13} color={colors.textSecondary} />
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("benefice_estime", langue)}</Text>
@@ -226,14 +238,14 @@ export default function Accueil() {
             <Feather name="arrow-down-left" size={15} color={colors.success} />
             <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("on_te_doit", langue)}</Text>
           </View>
-          <Text style={{ color: colors.success, fontSize: 14, fontWeight: "700" }}>{formater(onTeDoit)}</Text>
+          {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.success, fontSize: 14, fontWeight: "700" }}>{formater(onTeDoit)}</Text>}
         </Pressable>
         <Pressable style={styles.ligneCreance} onPress={() => router.push("/creances")}>
           <View style={styles.ligneGauche}>
             <Feather name="arrow-up-right" size={15} color={colors.danger} />
             <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("tu_dois", langue)}</Text>
           </View>
-          <Text style={{ color: colors.danger, fontSize: 14, fontWeight: "700" }}>{formater(tuDois)}</Text>
+          {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.danger, fontSize: 14, fontWeight: "700" }}>{formater(tuDois)}</Text>}
         </Pressable>
       </View>
 
@@ -282,7 +294,7 @@ export default function Accueil() {
       </ScrollView>
 
       <WelcomeTrial />
-      <TourGuide visible={afficherTour} onTerminer={terminerTour} />
+      {/* <TourGuide visible={afficherTour} onTerminer={terminerTour} /> */}
       <BoutonFlottant onPress={async () => {
         if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
         router.push("/produit/nouveau");

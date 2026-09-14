@@ -145,7 +145,7 @@ export default function Clients() {
           )}
         </View>
       ) : (
-        <ScrollView>
+        <ScrollView contentContainerStyle={styles.contenu}>
           {filtrees.map((c) => (
             <View key={c.nom} style={[styles.ligne, { borderBottomColor: colors.border }]}>
               <Pressable
@@ -226,6 +226,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  contenu: {  paddingBottom: 70 },
+
 
 
 });

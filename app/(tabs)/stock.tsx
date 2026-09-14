@@ -435,7 +435,8 @@ export default function Stock() {
           )}
         </View>
       ) : (
-        <ScrollView>
+        <ScrollView contentContainerStyle={styles.contenu}
+>
           {produitsFiltres.map((p) => (
             <View
               key={p.id}
@@ -632,6 +633,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  contenu: {  paddingBottom: 70 },
+
 
   boutonAjoutPetit: {
     flexDirection: "row",
