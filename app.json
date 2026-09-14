@@ -33,7 +33,7 @@
             "image": "./assets/splash-logo.png",
             "backgroundColor": "#121212"
           },
-          "imageWidth": 64
+          "imageWidth": 32
         }
       ],
       "expo-audio",
