@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
+import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
@@ -53,6 +54,9 @@ export default function Connexion() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Pressable onPress={() => router.back()} hitSlop={10} style={styles.boutonRetour}>
+        <Feather name="arrow-left" size={22} color={colors.textPrimary} />
+      </Pressable>
       <View style={[styles.icone, { backgroundColor: colors.accentBg }]}>
         <Text style={{ fontSize: 28 }}>🏪</Text>
       </View>
@@ -97,20 +101,22 @@ export default function Connexion() {
           >
             <Text style={styles.boutonTexte}>{chargement ? "..." : t("otp_confirmer", langue)}</Text>
           </Pressable>
+
+          <Pressable onPress={() => setEtape("email")} style={{ marginTop: 16, alignItems: "center" }}>
+            <Text style={{ color: colors.accent, fontSize: 13, textDecorationLine: "underline" }}>
+              {t("otp_changer_email", langue)}
+            </Text>
+          </Pressable>
         </>
       )}
 
-      <Pressable onPress={() => router.back()} style={{ marginTop: 16 }}>
-        <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: "center" }}>
-          {t("connexion_pas_de_compte", langue)}
-        </Text>
-      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, justifyContent: "center" },
+  boutonRetour: { position: "absolute", top: 50, left: 24, zIndex: 1 },
   icone: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 14 },
   titre: { fontSize: 18, fontWeight: "500", marginBottom: 6, textAlign: "center" },
   sousTitre: { fontSize: 13, marginBottom: 24, textAlign: "center" },
