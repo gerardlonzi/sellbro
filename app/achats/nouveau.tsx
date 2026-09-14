@@ -57,12 +57,12 @@ export default function NouvelAchat() {
       return;
     }
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await obtenirUserId();
+    if (!userId) return;
 
     await database.write(async () => {
       await database.get("achats").create((a: any) => {
-        a.userId = user.id;
+        a.userId = userId;
         a.fournisseurNom = fournisseur.trim() || null;
         a.description = description.trim() || null;
         a.montant = Number(montant);
@@ -76,7 +76,7 @@ export default function NouvelAchat() {
     // Si l'achat est lié à un produit du stock, on augmente le stock automatiquement.
     if (produitId && quantiteRecue) {
       await enregistrerMouvementStock({
-        userId: user.id,
+        userId: userId,
         produitId,
         type: "achat",
         quantite: Number(quantiteRecue),

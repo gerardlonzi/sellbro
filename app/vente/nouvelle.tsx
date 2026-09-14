@@ -49,6 +49,7 @@ export default function NouvelleVente() {
   const [verrouilleScan, setVerrouilleScan] = useState(false);
   const [resultatScan, setResultatScan] = useState<{ type: "trouve"; produit: Produit & { reference: string } } | { type: "introuvable"; reference: string } | null>(null);
   const [catalogue, setCatalogue] = useState<(Produit & { reference: string | null })[]>([]);
+  const [quantitesBrouillon, setQuantitesBrouillon] = useState<Record<number, string>>({});
   const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
 
   async function ouvrirSelecteurProduit() {
@@ -143,11 +144,28 @@ export default function NouvelleVente() {
   }
 
   // Saisie manuelle de la quantité (clavier), en complément des boutons +/-.
+  // On utilise un « brouillon » local pour permettre d'effacer puis retaper,
+  // et on ne valide qu'un nombre ≥ 1 à la fin de l'édition.
   function modifierQuantiteManuelle(index: number, valeur: string) {
-    const n = parseInt(valeur, 10);
+    setQuantitesBrouillon((prev) => ({ ...prev, [index]: valeur }));
+  }
+
+  function validerQuantiteManuelle(index: number) {
+    const brouillon = quantitesBrouillon[index];
+    setQuantitesBrouillon((prev) => {
+      const copie = { ...prev };
+      delete copie[index];
+      return copie;
+    });
+    if (brouillon == null) return;
+    const n = parseInt(brouillon, 10);
     if (isNaN(n)) return;
+    if (n < 1) {
+      showToast(t("vente_quantite_minimum", langue), "error");
+      return;
+    }
     setPanier((actuel) =>
-      actuel.map((l, i) => (i === index ? { ...l, quantite: Math.max(1, n) } : l))
+      actuel.map((l, i) => (i === index ? { ...l, quantite: n } : l))
     );
   }
 
@@ -156,9 +174,9 @@ export default function NouvelleVente() {
   }
 
   async function ouvrirSelecteurClient() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const ventes = await database.get("ventes").query(Q.where("user_id", user.id)).fetch();
+    const userId = await obtenirUserId();
+    if (!userId) return;
+    const ventes = await database.get("ventes").query(Q.where("user_id", userId)).fetch();
     const nomsVus = new Map<string, Client>();
     (ventes as any[]).forEach((v) => {
       if (v.clientNom && !nomsVus.has(v.clientNom)) nomsVus.set(v.clientNom, { nom: v.clientNom, telephone: v.clientTelephone });
@@ -186,6 +204,12 @@ export default function NouvelleVente() {
       return;
     }
 
+    // La quantité d'aucun produit ne doit être inférieure à 1.
+    if (panier.some((l) => l.quantite < 1)) {
+      showToast(t("vente_quantite_minimum", langue), "error");
+      return;
+    }
+
     if (modePaiement === "credit" && !client.trim()) {
       showToast(t("vente_credit_nom_requis", langue), "error");
       return;
@@ -200,8 +224,8 @@ export default function NouvelleVente() {
     }
 
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setChargement(false); return; }
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
 
     const venteIds: string[] = [];
     // Identifiant de « transaction » commun à toutes les lignes du panier :
@@ -210,7 +234,7 @@ export default function NouvelleVente() {
     await database.write(async () => {
       for (const ligne of panier) {
         const vente = await database.get("ventes").create((v: any) => {
-          v.userId = user.id;
+          v.userId = userId;
           v.produitId = ligne.produitId;
           v.produitNom = ligne.nom;
           v.quantite = ligne.quantite;
@@ -230,7 +254,7 @@ export default function NouvelleVente() {
       if (modePaiement === "credit") {
         const totalVente = panier.reduce((s, l) => s + l.quantite * l.prixUnitaire, 0);
         await database.get("creances_dettes").create((c: any) => {
-          c.userId = user.id;
+          c.userId = userId;
           c.type = "creance";
           c.personneNom = client.trim();
           c.telephone = clientTelephone.trim() ? `${pays.indicatif}${clientTelephone.replace(/\s/g, "")}` : null;
@@ -251,7 +275,7 @@ export default function NouvelleVente() {
     for (const ligne of panier) {
       if (ligne.produitId) {
         await enregistrerMouvementStock({
-          userId: user.id,
+          userId: userId,
           produitId: ligne.produitId,
           type: "vente",
           quantite: -ligne.quantite,
@@ -266,7 +290,7 @@ export default function NouvelleVente() {
     // Génération de facture : on regroupe les ventes en une facture puis on
     // ouvre son écran (où se trouve le bouton Imprimer direct).
     if (genererFacture && venteIds.length > 0) {
-      const factureId = await creerFactureDepuisVentes(user.id, venteIds);
+      const factureId = await creerFactureDepuisVentes(userId, venteIds);
       setChargement(false);
       router.replace(`/factures/${factureId}`);
       return;
@@ -293,8 +317,10 @@ export default function NouvelleVente() {
             <Feather name="minus" size={16} color={colors.textPrimary} />
           </Pressable>
           <TextInput
-            value={String(ligne.quantite)}
+            value={quantitesBrouillon[i] ?? String(ligne.quantite)}
             onChangeText={(v) => modifierQuantiteManuelle(i, v)}
+            onEndEditing={() => validerQuantiteManuelle(i)}
+            onBlur={() => validerQuantiteManuelle(i)}
             keyboardType="numeric"
             style={{ width: 40, textAlign: "center", color: colors.textPrimary, fontSize: 15, fontWeight: "700", borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 2 }}
           />
