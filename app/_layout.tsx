@@ -15,6 +15,9 @@ import { LangueProvider } from "@/lib/i18n";
 import { useSynchronisation } from "@/lib/sync/useSynchronisation";
 import { verifierAlertesEtNotifier } from "@/lib/notifications/notifications";
 import { PaywallPopup } from "@/components/PaywallPopup";
+import { SyncBanner } from "@/components/SyncBanner";
+import { supabase } from "@/lib/supabase/client";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 
 // ---------------------------------------------------------
 // IMPORTANT : empêcher le splash de disparaître
@@ -29,6 +32,17 @@ function AppContent() {
 
   // Synchronise local <-> Supabase au démarrage et à chaque retour de connexion.
   useSynchronisation();
+
+  // Synchronise automatiquement dès qu'un utilisateur se connecte (login sur
+  // un nouvel appareil) — évite de devoir forcer la fermeture/réouverture.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        synchroniserPourUtilisateurCourant().catch(() => {});
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   // Vérifie les alertes (stock faible / créances en retard) et planifie
   // une notification locale quotidienne — délivrée même app fermée.
@@ -117,6 +131,7 @@ function AppContent() {
       />
 
       <PaywallPopup />
+      <SyncBanner />
     </View>
   );
 }

@@ -199,7 +199,7 @@ function AperçuCreances({ colors, langue }: any) {
 const styles = StyleSheet.create({
   slide: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28 },
 
-  carteTelephone: { width: "100%", borderRadius: 20, borderWidth: 1, padding: 16 },
+  carteTelephone: { width: "100%", maxWidth: 340, alignSelf: "center", borderRadius: 20, borderWidth: 1, padding: 16 },
   ligneEnTeteApercu: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   badgeApercu: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   blocApercu: { borderRadius: 12, padding: 12, marginBottom: 10 },

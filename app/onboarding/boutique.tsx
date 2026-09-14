@@ -172,7 +172,7 @@ const [telephone, setTelephone] = useState("");
 </Pressable>
 
       <Pressable onPress={() => router.push("/(auth)/connexion")} style={{ marginTop: 16 }}>
-        <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: "center" }}>
+        <Text style={{ color: colors.accent, fontSize: 12, textAlign: "center" }}>
           {t("deja_compte", langue)}
         </Text>
       </Pressable>
