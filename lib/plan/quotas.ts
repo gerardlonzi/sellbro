@@ -33,7 +33,9 @@ export const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
   gratuit: {
     id: "gratuit", nom: "Essai gratuit", actif: true, prix: 3000, dureeEssaiJours: 3, estEssaiGratuit: true,
     quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
-    historiqueJours: null, rapportsMax: "annee",
+    // Version gratuite : rapports limités à jour/semaine ; mois, semestre et
+    // année affichent le paywall dans le dashboard.
+    historiqueJours: null, rapportsMax: "semaine",
     exportComptable: true, sauvegardeCloud: true, multiEmployes: true, supportPrioritaire: true,
     factures: true, fournisseurs: true, depenses: true,
   },

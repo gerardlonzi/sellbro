@@ -15,7 +15,7 @@ const PERIODES: { id: PeriodeId; cle: string }[] = [
   { id: "annee", cle: "periode_annee" },
 ];
 
-export function SelecteurPeriode({ periode,onChange, plan, personnalise, onPersonnalise }: {  periode: PeriodeId; onChange: (p: PeriodeId) => void; plan: Plan | undefined; personnalise?: boolean; onPersonnalise?: () => void }) {
+export function SelecteurPeriode({ periode,onChange, plan, personnalise, onPersonnalise, onVerrouille }: {  periode: PeriodeId; onChange: (p: PeriodeId) => void; plan: Plan | undefined; personnalise?: boolean; onPersonnalise?: () => void; onVerrouille?: () => void }) {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const autorisees = periodesAutorisees(plan);
@@ -44,7 +44,9 @@ export function SelecteurPeriode({ periode,onChange, plan, personnalise, onPerso
           return (
             <Pressable
               key={p.id}
-              onPress={() => (verrouille ? setAfficherLimite(true) : onChange(p.id))}
+              // Période verrouillée (version gratuite) : `onVerrouille` permet
+              // d'afficher le paywall ; sinon on retombe sur la LimitePopup.
+              onPress={() => (verrouille ? (onVerrouille ? onVerrouille() : setAfficherLimite(true)) : onChange(p.id))}
               style={[styles.puce, { borderColor: actif ? colors.accent : colors.border, borderWidth: actif ? 1.5 : 1, opacity: verrouille ? 0.6 : 1 }]}
             >
               <Text style={{ fontSize: 12, color: actif ? colors.accent : colors.textSecondary }}>{t(p.cle as any, langue)}</Text>

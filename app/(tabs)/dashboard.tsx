@@ -222,6 +222,7 @@ export default function Dashboard() {
           onChange={setPeriode}
           plan={planEffectif}
           personnalise={personnalise}
+          onVerrouille={() => afficherPaywall(langue, () => router.push("/premium"))}
           onPersonnalise={() => {
             if (essai.statut === "FREE") {
               afficherPaywall(langue, () => router.push("/premium"));
