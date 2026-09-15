@@ -21,6 +21,7 @@ import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { versionDonnees, sAbonnerModifications } from "@/lib/dataVersion";
 import { useEssai } from "@/lib/trial/useEssai";
+import { nombreNotificationsNonLues } from "@/lib/notifications/notifications";
 
 
 
@@ -126,14 +127,9 @@ export default function Accueil() {
   }
 
   async function chargerNotifsNonLues() {
-    // Les alertes (stock faible / créances en retard) sont persistées dans la
-    // table `notifications` ; le badge ne compte donc que les non-lues de cette
-    // table (elles diminuent au fur et à mesure des lectures).
-    let total = 0;
-    try {
-      const { data } = await supabase.from("notifications").select("id").eq("lu", false);
-      total += (data ?? []).length;
-    } catch {}
+    // Compte les non-lues via le helper qui fonctionne aussi hors ligne
+    // (cache local + alertes détectées dans la base locale).
+    const total = await nombreNotificationsNonLues();
     setNbNotifsNonLues(total);
   }
 

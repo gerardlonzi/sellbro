@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -70,6 +70,10 @@ export default function Dashboard() {
   const [finPerso, setFinPerso] = useState(new Date());
   const [afficherDatePicker, setAfficherDatePicker] = useState<"debut" | "fin" | null>(null);
   const [chargement, setChargement] = useState(true);
+  const {pret: planPret } = usePlanActuel();
+  const estPremium = planId === "premium";
+
+
 
   // Si l'essai expire (passage en « free mode »), on réinitialise le filtre
   // personnalisé pour masquer les cartes de dates.
@@ -191,17 +195,19 @@ export default function Dashboard() {
       <View style={styles.entete}>
         <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-        {(planId === "premium" || essai.actif) ? (
+        {!planPret ? (
+            <ActivityIndicator size="small" color={colors.textMuted} />
+          ) : (estPremium || essai.actif) ? (
+            <>
             <Badge texte={t("version_pro", langue)} type="pro" />
+            <Pressable onPress={() => router.push("/export")} style={[styles.boutonExport, { borderColor: colors.border }]}>
+               <Feather name="download" size={14} color={colors.textSecondary} />
+            </Pressable>
+            </>
           ) : (
             <Pressable onPress={() => router.push("/premium")} style={{ backgroundColor: colors.proBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-              <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
-            </Pressable>
-          )}
-        {plan?.exportComptable && (
-            <Pressable onPress={() => router.push("/export")} style={[styles.boutonExport, { borderColor: colors.border }]}>
-              <Feather name="download" size={14} color={colors.textSecondary} />
-            </Pressable>
+            <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
+          </Pressable>
           )}
         </View>
       </View>
@@ -211,6 +217,7 @@ export default function Dashboard() {
       <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
       <View>
         <SelecteurPeriode
+        
           periode={periode}
           onChange={setPeriode}
           plan={planEffectif}

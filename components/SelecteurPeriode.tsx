@@ -15,7 +15,7 @@ const PERIODES: { id: PeriodeId; cle: string }[] = [
   { id: "annee", cle: "periode_annee" },
 ];
 
-export function SelecteurPeriode({ periode, onChange, plan, personnalise, onPersonnalise }: { periode: PeriodeId; onChange: (p: PeriodeId) => void; plan: Plan | undefined; personnalise?: boolean; onPersonnalise?: () => void }) {
+export function SelecteurPeriode({ periode,onChange, plan, personnalise, onPersonnalise }: {  periode: PeriodeId; onChange: (p: PeriodeId) => void; plan: Plan | undefined; personnalise?: boolean; onPersonnalise?: () => void }) {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const autorisees = periodesAutorisees(plan);
