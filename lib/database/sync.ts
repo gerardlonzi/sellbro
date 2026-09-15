@@ -5,6 +5,7 @@ import { etatPlanActuel, rafraichirPlan } from "@/lib/plan/planStore";
 import { estEssaiActifLocal } from "@/lib/trial/deviceTrial";
 import { signalerModificationDonnees } from "@/lib/dataVersion";
 import { lireSuppressions, effacerSuppression } from "@/lib/sync/tombstones";
+import { setEtatSync } from "@/lib/sync/syncStatus";
 
 // La sync cloud est active dès le PREMIER jour (pendant l'essai gratuit),
 // puis en permanence pour les abonnés Premium. Elle s'arrête si l'essai
@@ -269,6 +270,45 @@ export async function tirerDonneesDistantes(userId: string) {
   await tirerJournal(journal.data ?? []);
 }
 
+// Upsert par `remote_id` : met à jour les enregistrements existants (en
+// préservant leur id local, pour ne pas casser les références de l'UI) et crée
+// les nouveaux. Supprime ceux dont le remote_id n'existe plus côté serveur.
+// Retourne la map remoteId → id local.
+async function upsertParRemoteId(
+  nomTable: string,
+  lignesDistantes: any[],
+  mapper: (r: any) => any
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const collection = database.get(nomTable);
+  const existants = (await collection.query(Q.where("synchronise", true)).fetch()) as any[];
+  const parRemoteId = new Map(existants.map((e: any) => [e.remoteId, e]));
+  const remoteIdsVus = new Set<string>();
+
+  for (const ligne of lignesDistantes) {
+    const data = mapper(ligne);
+    remoteIdsVus.add(ligne.id);
+    const existant = parRemoteId.get(ligne.id);
+    if (existant) {
+      await existant.update((rec: any) => {
+        Object.assign(rec, data);
+      });
+      map.set(ligne.id, existant.id);
+    } else {
+      const nouveau = await collection.create((rec: any) => Object.assign(rec, data));
+      map.set(ligne.id, nouveau.id);
+    }
+  }
+
+  for (const e of existants) {
+    if (e.remoteId && !remoteIdsVus.has(e.remoteId)) {
+      await e.destroyPermanently();
+    }
+  }
+
+  return map;
+}
+
 // Remplace une table déjà synchronisée par les lignes distantes, sans erreur
 // bloquante : en cas d'échec on conserve le cache local existant.
 async function remplacerTable(
@@ -278,13 +318,7 @@ async function remplacerTable(
 ) {
   try {
     await database.write(async () => {
-      const collection = database.get(nomTable);
-      const existants = await collection.query(Q.where("synchronise", true)).fetch();
-      await Promise.all(existants.map((e: any) => e.destroyPermanently()));
-
-      for (const ligne of lignesDistantes) {
-        await collection.create((nouveau: any) => Object.assign(nouveau, mapper(ligne)));
-      }
+      await upsertParRemoteId(nomTable, lignesDistantes, mapper);
     });
   } catch (err) {
     console.warn(`Sync : échec de restauration de "${nomTable}" (ignoré)`, err);
@@ -292,27 +326,22 @@ async function remplacerTable(
 }
 
 async function tirerProduits(lignes: any[], produitLocal: Map<string, string>) {
-  const collection = database.get("produits");
   try {
     await database.write(async () => {
-      const existants = await collection.query(Q.where("synchronise", true)).fetch();
-      await Promise.all(existants.map((e: any) => e.destroyPermanently()));
-      for (const r of lignes) {
-        const nouveau = await collection.create((p: any) => {
-          p.remoteId = r.id;
-          p.userId = r.user_id;
-          p.categorieNom = r.champs_supplementaires?.categorie_nom ?? null;
-          p.nom = r.nom;
-          p.prixVente = r.prix_vente;
-          p.prixAchat = r.prix_achat;
-          p.quantiteStock = r.quantite_stock;
-          p.seuilAlerte = r.seuil_alerte;
-          p.champsSupplementairesJson = JSON.stringify(r.champs_supplementaires ?? {});
-          p.creeLe = new Date(r.created_at);
-          p.synchronise = true;
-        });
-        produitLocal.set(r.id, nouveau.id);
-      }
+      const map = await upsertParRemoteId("produits", lignes, (r) => ({
+        remoteId: r.id,
+        userId: r.user_id,
+        categorieNom: r.champs_supplementaires?.categorie_nom ?? null,
+        nom: r.nom,
+        prixVente: r.prix_vente,
+        prixAchat: r.prix_achat,
+        quantiteStock: r.quantite_stock,
+        seuilAlerte: r.seuil_alerte,
+        champsSupplementairesJson: JSON.stringify(r.champs_supplementaires ?? {}),
+        creeLe: new Date(r.created_at),
+        synchronise: true,
+      }));
+      map.forEach((localId, remoteId) => produitLocal.set(remoteId, localId));
     });
   } catch (err) {
     console.warn("Sync : échec de restauration des produits (ignoré)", err);
@@ -334,33 +363,27 @@ async function tirerFournisseurs(lignes: any[]) {
 }
 
 async function tirerVentes(lignes: any[], produitLocal: Map<string, string>, venteLocal: Map<string, string>) {
-  const collection = database.get("ventes");
   try {
     await database.write(async () => {
-      const existants = await collection.query(Q.where("synchronise", true)).fetch();
-      await Promise.all(existants.map((e: any) => e.destroyPermanently()));
-      for (const r of lignes) {
+      const map = await upsertParRemoteId("ventes", lignes, (r) => ({
+        remoteId: r.id,
+        userId: r.user_id,
         // produit_id distant → id local (la jointure locale doit rester valide).
-        const produitIdLocal = r.produit_id ? produitLocal.get(r.produit_id) ?? null : null;
-        const nouveau = await collection.create((v: any) => {
-          v.remoteId = r.id;
-          v.userId = r.user_id;
-          v.produitId = produitIdLocal;
-          v.produitNom = r.donnees_supplementaires?.produit_nom ?? null;
-          v.quantite = r.quantite;
-          v.prixUnitaire = r.prix_unitaire;
-          v.clientNom = r.client_nom;
-          v.clientTelephone = r.client_telephone;
-          v.modePaiement = r.mode_paiement;
-          v.source = r.source;
-          v.audioUrl = r.audio_url;
-          v.imageFactureUrl = r.image_facture_url;
-          v.donneesSupplementairesJson = JSON.stringify(r.donnees_supplementaires ?? {});
-          v.creeLe = new Date(r.created_at);
-          v.synchronise = true;
-        });
-        venteLocal.set(r.id, nouveau.id);
-      }
+        produitId: r.produit_id ? produitLocal.get(r.produit_id) ?? null : null,
+        produitNom: r.donnees_supplementaires?.produit_nom ?? null,
+        quantite: r.quantite,
+        prixUnitaire: r.prix_unitaire,
+        clientNom: r.client_nom,
+        clientTelephone: r.client_telephone,
+        modePaiement: r.mode_paiement,
+        source: r.source,
+        audioUrl: r.audio_url,
+        imageFactureUrl: r.image_facture_url,
+        donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}),
+        creeLe: new Date(r.created_at),
+        synchronise: true,
+      }));
+      map.forEach((localId, remoteId) => venteLocal.set(remoteId, localId));
     });
   } catch (err) {
     console.warn("Sync : échec de restauration des ventes (ignoré)", err);
@@ -413,26 +436,20 @@ async function tirerDepenses(lignes: any[]) {
 }
 
 async function tirerMouvements(lignes: any[], produitLocal: Map<string, string>) {
-  const collection = database.get("mouvements_stock");
   try {
     await database.write(async () => {
-      const existants = await collection.query(Q.where("synchronise", true)).fetch();
-      await Promise.all(existants.map((e: any) => e.destroyPermanently()));
-      for (const r of lignes) {
-        const produitIdLocal = r.produit_id ? produitLocal.get(r.produit_id) ?? null : null;
-        await collection.create((m: any) => {
-          m.remoteId = r.id;
-          m.userId = r.user_id;
-          m.produitId = produitIdLocal;
-          m.type = r.type;
-          m.quantite = r.quantite;
-          m.stockAvant = r.stock_avant;
-          m.stockApres = r.stock_apres;
-          m.raison = r.raison;
-          m.creeLe = new Date(r.created_at);
-          m.synchronise = true;
-        });
-      }
+      await upsertParRemoteId("mouvements_stock", lignes, (r) => ({
+        remoteId: r.id,
+        userId: r.user_id,
+        produitId: r.produit_id ? produitLocal.get(r.produit_id) ?? null : null,
+        type: r.type,
+        quantite: r.quantite,
+        stockAvant: r.stock_avant,
+        stockApres: r.stock_apres,
+        raison: r.raison,
+        creeLe: new Date(r.created_at),
+        synchronise: true,
+      }));
     });
   } catch (err) {
     console.warn("Sync : échec de restauration des mouvements (ignoré)", err);
@@ -440,28 +457,23 @@ async function tirerMouvements(lignes: any[], produitLocal: Map<string, string>)
 }
 
 async function tirerFactures(lignes: any[], factureLocal: Map<string, string>) {
-  const collection = database.get("factures");
   try {
     await database.write(async () => {
-      const existants = await collection.query(Q.where("synchronise", true)).fetch();
-      await Promise.all(existants.map((e: any) => e.destroyPermanently()));
-      for (const r of lignes) {
-        const nouveau = await collection.create((f: any) => {
-          f.remoteId = r.id;
-          f.userId = r.user_id;
-          f.numero = r.numero;
-          f.clientNom = r.client_nom;
-          f.clientTelephone = r.client_telephone;
-          f.sousTotal = r.sous_total;
-          f.remise = r.remise;
-          f.total = r.total;
-          f.statut = r.statut;
-          f.montantPaye = r.montant_paye;
-          f.creeLe = new Date(r.created_at);
-          f.synchronise = true;
-        });
-        factureLocal.set(r.id, nouveau.id);
-      }
+      const map = await upsertParRemoteId("factures", lignes, (r) => ({
+        remoteId: r.id,
+        userId: r.user_id,
+        numero: r.numero,
+        clientNom: r.client_nom,
+        clientTelephone: r.client_telephone,
+        sousTotal: r.sous_total,
+        remise: r.remise,
+        total: r.total,
+        statut: r.statut,
+        montantPaye: r.montant_paye,
+        creeLe: new Date(r.created_at),
+        synchronise: true,
+      }));
+      map.forEach((localId, remoteId) => factureLocal.set(remoteId, localId));
     });
   } catch (err) {
     console.warn("Sync : échec de restauration des factures (ignoré)", err);
@@ -510,11 +522,30 @@ async function tirerJournal(lignes: any[]) {
   }));
 }
 
+// Verrou anti-concurrence : empêche deux synchronisations simultanées de
+// s'entrelacer (ce qui causait des doublons de produits et l'erreur
+// « Record not found »). Une seule sync à la fois.
+let syncEnCours = false;
+
 export async function synchroniserTout(userId: string) {
-  if (!(await peutSynchroniser())) return;
-  await pousserDonneesLocales();
-  await tirerDonneesDistantes(userId);
-  signalerModificationDonnees();
+  if (syncEnCours) return;
+  syncEnCours = true;
+  setEtatSync("syncing");
+  try {
+    if (!(await peutSynchroniser())) {
+      setEtatSync("complete");
+      return;
+    }
+    await pousserDonneesLocales();
+    await tirerDonneesDistantes(userId);
+    signalerModificationDonnees();
+    setEtatSync("complete");
+  } catch (err) {
+    setEtatSync("error");
+    console.warn("Sync échouée", err);
+  } finally {
+    syncEnCours = false;
+  }
 }
 
 // Synchro complète pour l'utilisateur courant (récupère l'id depuis la session).

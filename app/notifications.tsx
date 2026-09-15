@@ -5,15 +5,14 @@ import { router, useFocusEffect } from "expo-router";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
-import { detecterAlertes } from "@/lib/notifications/notifications";
-import { parserDateSeule } from "@/lib/formatDate";
+import { chargerNotifications, marquerLueLocale, NotificationItem } from "@/lib/notifications/notifications";
 
-type Notification = { id: string; type: string; message: string; lu: boolean; created_at: string; lien?: string | null };
-type AlerteLocale = { id: string; type: string; message: string; route: string; creeLe: Date };
+type Notification = NotificationItem;
 
 const ICONES: Record<string, keyof typeof Feather.glyphMap> = {
   creance_retard: "alert-triangle",
   stock_faible: "package",
+  rupture_stock: "package",
   sync_ok: "check-circle",
   sync_echec: "x-circle",
   echeance_proche: "clock",
@@ -23,60 +22,50 @@ export default function Notifications() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const [liste, setListe] = useState<Notification[]>([]);
-  const [alertesLocales, setAlertesLocales] = useState<AlerteLocale[]>([]);
   const [chargement, setChargement] = useState(true);
 
+  // Charge via le helper : en ligne depuis Supabase (mis en cache), hors ligne
+  // depuis le cache + les alertes détectées localement.
   useFocusEffect(
     useCallback(() => {
       setChargement(true);
-
-      Promise.all([
-        supabase
-          .from("notifications")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .then(({ data }) => setListe(data ?? [])),
-        // Alertes locales détaillées (produit/créance précis), même hors ligne.
-        detecterAlertes().then(({ produitsFaibles, creancesRetard }) => {
-          const locales: AlerteLocale[] = [];
-          for (const p of produitsFaibles) {
-            locales.push({
-              id: `stock-${p.id}`,
-              type: "stock_faible",
-              message: `${t("notif_stock_faible", langue)} : ${p.nom}`,
-              route: `/produit/${p.id}`,
-              creeLe: new Date(),
-            });
-          }
-          for (const c of creancesRetard) {
-            locales.push({
-              id: `creance-${c.id}`,
-              type: "creance_retard",
-              message: `${t("notif_creance_retard", langue)} : ${c.nom}`,
-              route: `/creances/${c.id}`,
-              creeLe: c.dateEcheance ? parserDateSeule(c.dateEcheance) : new Date(),
-            });
-          }
-          setAlertesLocales(locales);
-        }),
-      ]).finally(() => setChargement(false));
-    }, [langue])
+      chargerNotifications()
+        .then(setListe)
+        .finally(() => setChargement(false));
+    }, [])
   );
 
-  async function marquerLue(id: string) {
-    await supabase.from("notifications").update({ lu: true }).eq("id", id);
-    setListe((prev) => prev.map((n) => (n.id === id ? { ...n, lu: true } : n)));
+  // Compose le libellé localisé : les alertes stockent seulement le nom de
+  // l'item, le préfixe est ajouté ici selon la langue de l'utilisateur.
+  function libelle(n: Notification): string {
+    if (n.type === "rupture_stock") return `${t("notif_rupture_stock", langue)} : ${n.message}`;
+    if (n.type === "stock_faible") return `${t("notif_stock_faible", langue)} : ${n.message}`;
+    if (n.type === "creance_retard") return `${t("notif_creance_retard", langue)} : ${n.message}`;
+    return n.message;
   }
 
-  // Fusionne alertes locales + notifications distantes, triées par date
-  // (plus récentes en haut).
-  type EntreeNotif = { id: string; type: string; message: string; date: Date; route?: string; lu: boolean; local: boolean };
-  const combinees: EntreeNotif[] = [
-    ...alertesLocales.map((a) => ({ id: a.id, type: a.type, message: a.message, date: a.creeLe, route: a.route, lu: false, local: true })),
-    ...liste.map((n) => ({ id: n.id, type: n.type, message: n.message, date: new Date(n.created_at), route: n.lien ?? undefined, lu: n.lu, local: false })),
-  ].sort((a, b) => b.date.getTime() - a.date.getTime());
+  // Couleur d'icône différente selon le type d'alerte.
+  function couleurIcone(n: Notification): string {
+    if (n.lu) return colors.textMuted;
+    if (n.type === "rupture_stock" || n.type === "creance_retard") return colors.danger;
+    if (n.type === "stock_faible") return colors.warning;
+    return colors.textSecondary;
+  }
 
-  const vide = combinees.length === 0;
+  async function marquerLue(id: string) {
+    // Local d'abord (fonctionne hors ligne), puis le serveur si possible.
+    await marquerLueLocale(id);
+    setListe((prev) => prev.map((n) => (n.id === id ? { ...n, lu: true } : n)));
+    if (!id.startsWith("local|")) {
+      try {
+        await supabase.from("notifications").update({ lu: true }).eq("id", id);
+      } catch {
+        // Hors ligne : l'état local suffit jusqu'à la prochaine connexion.
+      }
+    }
+  }
+
+  const vide = liste.length === 0;
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
@@ -89,40 +78,38 @@ export default function Notifications() {
         </Text>
       </View>
 
-      {vide ? (
+      {chargement ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+      ) : vide ? (
         <View style={styles.vide}>
           <Feather name="bell-off" size={28} color={colors.textMuted} style={{ marginBottom: 10 }} />
           <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("notifications_vide", langue)}</Text>
         </View>
       ) : (
-        <>
-          {combinees.map((n) => (
-            <Pressable
-              key={n.id}
-              onPress={() => {
-                if (!n.local && !n.lu) marquerLue(n.id);
-                if (n.route) router.push(n.route as any);
-              }}
-              style={[styles.ligne, { borderBottomColor: colors.border, backgroundColor: n.local || !n.lu ? colors.surface : colors.background }]}
-            >
-              <Feather name={ICONES[n.type] ?? "bell"} size={17} color={n.local ? colors.danger : n.lu ? colors.textMuted : colors.textSecondary} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: !n.local && n.lu ? colors.textSecondary : colors.textPrimary, fontSize: 13 }}>{n.message}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                  {n.date.toLocaleString(langue === "fr" ? "fr-FR" : "en-US")}
-                </Text>
-              </View>
-              {!n.local ? (
-                <View style={[styles.badgeLu, { backgroundColor: n.lu ? colors.border : colors.accentBg }]}>
-                  <Text style={{ color: n.lu ? colors.textSecondary : colors.accent, fontSize: 10 }}>
-                    {n.lu ? t("notif_lu", langue) : t("notif_non_lu", langue)}
-                  </Text>
-                </View>
-              ) : null}
-              {n.route ? <Feather name="chevron-right" size={16} color={colors.textMuted} /> : null}
-            </Pressable>
-          ))}
-        </>
+        liste.map((n) => (
+          <Pressable
+            key={n.id}
+            onPress={() => {
+              if (!n.lu) marquerLue(n.id);
+              if (n.lien) router.push(n.lien as any);
+            }}
+            style={[styles.ligne, { borderBottomColor: colors.border, backgroundColor: n.lu ? colors.background : colors.surface }]}
+          >
+            <Feather name={ICONES[n.type] ?? "bell"} size={17} color={couleurIcone(n)} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: n.lu ? colors.textSecondary : colors.textPrimary, fontSize: 13 }}>{libelle(n)}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                {new Date(n.created_at).toLocaleString(langue === "fr" ? "fr-FR" : "en-US")}
+              </Text>
+            </View>
+            <View style={[styles.badgeLu, { backgroundColor: n.lu ? colors.border : colors.accentBg }]}>
+              <Text style={{ color: n.lu ? colors.textSecondary : colors.accent, fontSize: 10 }}>
+                {n.lu ? t("notif_lu", langue) : t("notif_non_lu", langue)}
+              </Text>
+            </View>
+            {n.lien ? <Feather name="chevron-right" size={16} color={colors.textMuted} /> : null}
+          </Pressable>
+        ))
       )}
     </ScrollView>
   );
@@ -134,6 +121,5 @@ const styles = StyleSheet.create({
   boutonRetour: { paddingVertical: 2 },
   vide: { alignItems: "center", paddingTop: 40 },
   ligne: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, borderBottomWidth: 1, paddingHorizontal: 10 },
-  point: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
   badgeLu: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
 });
