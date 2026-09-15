@@ -2,6 +2,8 @@ import * as Application from "expo-application";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { obtenirUserId } from "@/lib/auth/userCache";
+import { avecTimeout } from "@/lib/timeout";
 
 const CLE_ESSAI = "essai_gratuit_cache";
 
@@ -69,23 +71,35 @@ export async function simulerEssaiExpire(): Promise<void> {
   });
 }
 
-export async function demarrerOuVerifierEssaiGratuit(): Promise<EtatEssai> {
-  const identifiant = await obtenirIdentifiantAppareil();
+// (Test/dev uniquement) Simule un essai gratuit ACTIF localement (état TRIAL).
+export async function simulerEssaiActif(): Promise<void> {
+  await ecrireCache({
+    actif: true,
+    joursRestants: 3,
+    dateFin: new Date(Date.now() + 3 * 86400000).toISOString(),
+  });
+}
 
-  try {
-    const { data, error } = await supabase.rpc("demarrer_essai", { identifiant });
-    if (!error && Array.isArray(data) && data.length > 0) {
-      const r = data[0];
-      const etat: EtatEssai = {
-        actif: r.jours_restants > 0,
-        joursRestants: r.jours_restants,
-        dateFin: r.date_fin,
-      };
-      await ecrireCache(etat);
-      return etat;
+export async function demarrerOuVerifierEssaiGratuit(): Promise<EtatEssai> {
+  // Anti-abus : l'essai est lié au COMPTE (user_id), pas à l'appareil.
+  const userId = await obtenirUserId();
+  if (userId) {
+    try {
+      // Timeout : hors ligne l'appel peut rester pendu et geler l'écran.
+      const { data, error } = await avecTimeout(supabase.rpc("demarrer_essai_user", { p_user_id: userId }), 6000);
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const r = data[0];
+        const etat: EtatEssai = {
+          actif: r.jours_restants > 0,
+          joursRestants: r.jours_restants,
+          dateFin: r.date_fin,
+        };
+        await ecrireCache(etat);
+        return etat;
+      }
+    } catch {
+      // Hors ligne : on retombe sur le cache local.
     }
-  } catch {
-    // Hors ligne : on retombe sur le cache local.
   }
 
   const cache = await lireCache();

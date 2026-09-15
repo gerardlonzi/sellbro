@@ -7,6 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useEssai } from "@/lib/trial/useEssai";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
 type PlanId = "premium";
 
@@ -14,6 +15,7 @@ export default function OnboardingPlan() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const essai = useEssai();
+  const { formater } = useCurrency();
   const [planChoisi, setPlanChoisi] = useState<PlanId>("premium");
   const [chargement, setChargement] = useState(false);
 
@@ -51,7 +53,7 @@ export default function OnboardingPlan() {
         <Text style={{ fontSize: 21, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>{t("plan_titre", langue)}</Text>
         <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 22 }}>{t("plan_sous_titre", langue)}</Text>
 
-        {!essai.estPremium && essai.actif && (
+        {essai.pret && !essai.estPremium && essai.actif && (
           <View style={{ backgroundColor: colors.proBg, borderColor: colors.borderPro, borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 18 }}>
             <Text style={{ color: colors.pro, fontSize: 13, textAlign: "center" }}>{t("plan_essai_actif", langue)}</Text>
           </View>
@@ -81,8 +83,8 @@ export default function OnboardingPlan() {
                 {selectionne && <Feather name="check-circle" size={18} color={couleurAccentCarte} />}
               </View>
               <View style={styles.ligneBase}>
-                <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>{t(plan.prixCle as any, langue)}</Text>
-                {plan.prixJourCle && <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>({t(plan.prixJourCle as any, langue)})</Text>}
+                <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>{formater(essai.prix)} / {t("mois_title",langue)}</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>(≈ {formater(Math.round(essai.prix / 30))} / {t("jour_title",langue)})</Text>
               </View>
               <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 6, marginBottom: 10, lineHeight: 18 }}>{t(plan.descCle as any, langue)}</Text>
               {(t(plan.fonctionnalitesCle as any, langue) as unknown as string[]).map((f) => (

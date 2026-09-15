@@ -6,6 +6,7 @@ import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useEssai } from "@/lib/trial/useEssai";
+import { useAbonnement } from "@/lib/plan/useAbonnement";
 
 const CLE_BIENVENUE = "bienvenue_essai_vue";
 const CLE_RAPPELS_VUS = "essai_rappels_vus";
@@ -33,10 +34,11 @@ export function WelcomeTrial() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const essai = useEssai();
+  const { expire: abonnementExpire } = useAbonnement();
   const [popup, setPopup] = useState<EtatPopup>({ type: "aucun" });
 
   useEffect(() => {
-    if (essai.estPremium) return;
+    if (essai.estPremium || !essai.pret) return;
 
     (async () => {
       const [bienvenue, rappelsVus, expirationVue] = await Promise.all([
@@ -45,24 +47,26 @@ export function WelcomeTrial() {
         AsyncStorage.getItem(CLE_EXPIRATION_VUE),
       ]);
 
-      if (bienvenue !== "true") {
-        setPopup({ type: "bienvenue" });
+      // En essai actif (TRIAL) : popup de bienvenue (une fois) puis rappels.
+      if (essai.statut === "TRIAL") {
+        if (bienvenue !== "true") {
+          setPopup({ type: "bienvenue" });
+          return;
+        }
+        const vus: number[] = rappelsVus ? JSON.parse(rappelsVus) : [];
+        const prochain = seuilsRappels(essai.dureeTotale).find(
+          (seuil) => essai.joursRestants <= seuil && !vus.includes(seuil)
+        );
+        if (prochain != null) setPopup({ type: "rappel", jours: essai.joursRestants });
         return;
       }
 
-      if (!essai.actif) {
+      // En FREE (essai expiré) : popup d'expiration (une fois).
+      if (essai.statut === "FREE") {
         if (expirationVue !== "true") setPopup({ type: "expiration" });
-        return;
       }
-
-      // Rappels : on montre le prochain seuil atteint et non encore affiché.
-      const vus: number[] = rappelsVus ? JSON.parse(rappelsVus) : [];
-      const prochain = seuilsRappels(essai.dureeTotale).find(
-        (seuil) => essai.joursRestants <= seuil && !vus.includes(seuil)
-      );
-      if (prochain != null) setPopup({ type: "rappel", jours: essai.joursRestants });
     })();
-  }, [essai.estPremium, essai.actif, essai.joursRestants, essai.dureeTotale]);
+  }, [essai.estPremium, essai.pret, essai.statut, essai.joursRestants, essai.dureeTotale]);
 
   async function fermer() {
     if (popup.type === "bienvenue") await AsyncStorage.setItem(CLE_BIENVENUE, "true");
@@ -92,13 +96,13 @@ export function WelcomeTrial() {
   const titre = estBienvenue
     ? t("bienvenue_essai_titre", langue)
     : estExpiration
-    ? t("essai_termine_titre", langue)
+    ? abonnementExpire ? t("abonnement_termine_statut", langue) : t("essai_termine_titre", langue)
     : t("bienvenue_essai_titre", langue);
 
   const corps = estBienvenue
     ? t("bienvenue_essai_ligne1", langue)(essai.dureeTotale)
     : estExpiration
-    ? t("essai_termine_texte", langue)
+    ? abonnementExpire ? t("paywall_message_abonnement", langue) : t("essai_termine_texte", langue)
     : t("rappel_essai_ligne1", langue)(popup.jours);
 
   const sousCorps = estBienvenue ? t("bienvenue_essai_ligne2", langue)(essai.prix) : estExpiration ? "" : t("rappel_essai_ligne2", langue);

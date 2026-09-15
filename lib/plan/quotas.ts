@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { avecTimeout } from "@/lib/timeout";
 
 export type PlanId = "gratuit" | "premium";
 
@@ -28,7 +29,7 @@ depenses: boolean;
 // limité dans le temps par le gate) et « Premium » (illimité).
 // Le blocage temporel de l'essai est géré par peutEcrire() / l'expiration,
 // PAS par des quotas — d'où des fonctionnalités identiques au Premium.
-const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
+export const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
   gratuit: {
     id: "gratuit", nom: "Essai gratuit", actif: true, prix: 3000, dureeEssaiJours: 3, estEssaiGratuit: true,
     quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
@@ -50,7 +51,17 @@ let planCache: Record<PlanId, Plan> | null = null;
 export async function chargerPlans(): Promise<Record<PlanId, Plan>> {
   if (planCache) return planCache;
 
-  const { data, error } = await supabase.from("plans").select("*");
+  // Hors ligne, l'appel peut rester pendu : timeout pour retomber vite sur
+  // les valeurs par défaut au lieu de bloquer tout l'affichage du plan.
+  let data: any[] | null = null;
+  let error: any = null;
+  try {
+    const res = await avecTimeout(supabase.from("plans").select("*"), 5000);
+    data = res.data;
+    error = res.error;
+  } catch (e) {
+    error = e;
+  }
 
   if (error || !data) {
     console.warn("Impossible de lire les plans depuis Supabase, utilisation des valeurs par défaut.");

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { rafraichirPlan, CLE_OVERRIDE } from "./planStore";
-import { simulerEssaiExpire } from "@/lib/trial/deviceTrial";
+import { simulerEssaiExpire, simulerEssaiActif } from "@/lib/trial/deviceTrial";
 
 export { lireOverrideTest } from "./planStore";
 
@@ -10,8 +10,14 @@ export async function definirPlanTest(planId: "gratuit" | "premium" | null) {
   await rafraichirPlan();
 }
 
-// État « neutre » : ni essai actif ni Pro → les écritures sont bloquées.
+// État « neutre » (FREE) : ni essai actif ni Pro → les écritures sont bloquées.
 export async function definirEtatNeutreTest() {
   await definirPlanTest("gratuit");
   await simulerEssaiExpire();
+}
+
+// État « essai gratuit » (TRIAL) : accès complet temporaire.
+export async function definirEtatTrialTest() {
+  await definirPlanTest("gratuit");
+  await simulerEssaiActif();
 }

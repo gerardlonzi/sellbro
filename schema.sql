@@ -531,3 +531,50 @@ create policy "Chacun voit ses propres données" on journal_activite
 insert into app_config (cle, valeur, type) values
   ('taux_conversion', '{"XAF":1,"XOF":1,"NGN":0.42,"GHS":0.015,"ZAR":0.032,"KES":0.21,"UGX":6.1,"TZS":4.4,"RWF":2.2,"BIF":5.0,"CDF":4.8,"EGP":0.082,"MAD":0.017,"DZD":0.23,"TND":0.0054,"LYD":0.0082,"SDG":1.0,"SSP":0.22,"ETB":0.19,"SOS":0.95,"DJF":0.30,"ERN":0.025,"MWK":2.9,"ZMW":0.045,"BWP":0.023,"NAD":0.032,"SZL":0.032,"LSL":0.032,"MZN":0.11,"AOA":1.5,"SCR":0.024,"MUR":0.077,"KMF":0.82,"CVE":0.17,"GMD":0.11,"SLL":0.037,"LRD":0.31,"GNF":14.7}', 'string')
 on conflict (cle) do update set valeur = excluded.valeur;
+
+-- ------------------------------------------------------------
+-- 25. ANTI-ABUS : essai gratuit PAR COMPTE (pas par appareil)
+--     Un utilisateur ayant déjà épuisé son essai sur un appareil ne doit pas
+--     obtenir un nouvel essai en se connectant sur un autre appareil.
+-- ------------------------------------------------------------
+alter table essais_gratuits add column if not exists user_id uuid references auth.users(id);
+
+-- ADD CONSTRAINT IF NOT EXISTS n'existe pas en PostgreSQL : on vérifie d'abord.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'essais_gratuits_user_unique') then
+    alter table essais_gratuits add constraint essais_gratuits_user_unique unique (user_id);
+  end if;
+end $$;
+
+create or replace function demarrer_essai_user(p_user_id uuid)
+returns table (date_debut timestamptz, date_fin timestamptz, jours_restants integer)
+language plpgsql security definer as $$
+declare
+  duree integer;
+  debut timestamptz;
+  fin timestamptz;
+begin
+  select coalesce((select valeur::integer from app_config where cle = 'duree_essai_jours'), 3)
+    into duree;
+
+  select date_debut, date_fin into debut, fin
+    from essais_gratuits where user_id = p_user_id;
+
+  if fin is not null then
+    return query select debut, fin,
+      greatest(0, ceil(extract(epoch from (fin - now())) / 86400)::integer);
+    return;
+  end if;
+
+  debut := now();
+  fin := debut + (duree * interval '1 day');
+
+  insert into essais_gratuits (user_id, identifiant_appareil, date_debut, date_fin)
+    values (p_user_id, p_user_id::text, debut, fin)
+    on conflict (user_id) do nothing;
+
+  return query select debut, fin,
+    greatest(0, ceil(extract(epoch from (fin - now())) / 86400)::integer);
+end;
+$$;

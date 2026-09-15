@@ -1,13 +1,15 @@
+import { useCallback } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { useEssai } from "@/lib/trial/useEssai";
+import { useAbonnement } from "@/lib/plan/useAbonnement";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { definirPlanTest, definirEtatNeutreTest } from "@/lib/plan/planTest";
+import { definirPlanTest, definirEtatNeutreTest, definirEtatTrialTest } from "@/lib/plan/planTest";
 import { Carte, EnteteEcran } from "@/components/UI";
 
 export default function Reglages() {
@@ -15,7 +17,15 @@ export default function Reglages() {
   const { langue } = useLangue();
   const { planId, plan } = usePlanActuel();
   const essai = useEssai();
+  const { expire: abonnementExpire } = useAbonnement();
   const { formater } = useCurrency();
+
+  // Recharge l'état de l'essai à chaque focus (jours restants à jour).
+  useFocusEffect(
+    useCallback(() => {
+      essai.recharger();
+    }, [essai.recharger])
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
@@ -25,7 +35,9 @@ export default function Reglages() {
       <Carte style={{ marginBottom: 12 }}>
         <View style={styles.ligneAbonnement}>
           <View>
-            {essai.estPremium ? (
+            {!essai.pret ? (
+              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>…</Text>
+            ) : essai.estPremium ? (
               <>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Feather name="check-circle" size={16} color={colors.pro} />
@@ -40,18 +52,20 @@ export default function Reglages() {
                 {t("essai_actif_reste", langue)(essai.joursRestants)}
               </Text>
             ) : (
-              <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "500" }}>{t("essai_termine_statut", langue)}</Text>
+              <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "500" }}>
+                {abonnementExpire ? t("abonnement_termine_statut", langue) : t("essai_termine_statut", langue)}
+              </Text>
             )}
-            {plan && !essai.estPremium && (
+            {essai.pret && plan && !essai.estPremium && (
               <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-                {t("version_pro", langue)} · {formater(plan.prix)}/mois
+                {t("version_pro", langue)} · {formater(essai.prix)} / {t("mois_title",langue)}
               </Text>
             )}
           </View>
-          {!essai.estPremium && (
+          {essai.pret && !essai.estPremium && (
             <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPro, { backgroundColor: essai.actif ? colors.proFill : colors.danger }]}>
               <Text style={{ color: essai.actif ? colors.onPro : "#fff", fontSize: 11 }}>
-                {essai.actif ? t("version_pro", langue) : t("reglages_upgrade", langue)}
+                {essai.actif ? t("version_pro", langue) : abonnementExpire ? t("abonnement_termine_renew", langue) : t("reglages_upgrade", langue)}
               </Text>
             </Pressable>
           )}
@@ -90,15 +104,15 @@ export default function Reglages() {
 
       {__DEV__ && (
         <>
-          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 6, marginBottom: 8 }}>🧪 TEST — Forcer un plan</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 6, marginBottom: 8 }}>🧪 TEST — Forcer un statut</Text>
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-            {(["gratuit", "premium"] as const).map((p) => (
+            {(["gratuit", "essai", "premium"] as const).map((p) => (
               <Pressable
                 key={p}
-                onPress={() => (p === "gratuit" ? definirEtatNeutreTest() : definirPlanTest(p))}
-                style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: planId === p ? 2 : 1, borderColor: planId === p ? colors.accent : colors.border, alignItems: "center" }}
+                onPress={() => (p === "gratuit" ? definirEtatNeutreTest() : p === "essai" ? definirEtatTrialTest() : definirPlanTest("premium"))}
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: (p === "gratuit" && planId === "gratuit") || (p === "premium" && planId === "premium") ? 2 : 1, borderColor: colors.border, alignItems: "center" }}
               >
-                <Text style={{ fontSize: 11, color: planId === p ? colors.accent : colors.textPrimary }}>{p}</Text>
+                <Text style={{ fontSize: 11, color: colors.textPrimary }}>{p === "gratuit" ? "Free" : p === "essai" ? "Essai" : "Pro"}</Text>
               </Pressable>
             ))}
           </View>
