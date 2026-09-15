@@ -7,6 +7,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran, Badge } from "@/components/UI";
 
@@ -31,9 +32,9 @@ export default function Factures() {
 
   async function charger() {
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setChargement(false); return; }
-    const resultats = await database.get("factures" as any).query(Q.where("user_id", user.id), Q.sortBy("cree_le", Q.desc)).fetch();
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
+    const resultats = await database.get("factures" as any).query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc)).fetch();
     setFactures((resultats as any[]).map((f) => ({ id: f.id, numero: f.numero, clientNom: f.clientNom, total: f.total, statut: f.statut, creeLe: f.creeLe })));
     setChargement(false);
   }

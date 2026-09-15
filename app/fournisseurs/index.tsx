@@ -7,6 +7,7 @@ import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
@@ -28,9 +29,9 @@ export default function Fournisseurs() {
 
   async function charger() {
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setChargement(false); return; }
-    const resultats = await database.get("fournisseurs").query(Q.where("user_id", user.id)).fetch();
+    const userId = await obtenirUserId();
+    if (!userId) { setChargement(false); return; }
+    const resultats = await database.get("fournisseurs").query(Q.where("user_id", userId)).fetch();
     setFournisseurs((resultats as any[]).map((f) => ({ id: f.id, nom: f.nom, telephone: f.telephone, montantDu: f.montantDu })));
     setChargement(false);
   }

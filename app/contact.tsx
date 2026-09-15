@@ -24,13 +24,6 @@ export default function Contact() {
         </View>
       </Pressable>
 
-      <Pressable onPress={() => Linking.openURL(`tel:${NUMERO_SUPPORT}`)} style={[styles.boutonContact, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
-        <Feather name="phone" size={18} color={colors.textPrimary} />
-        <View>
-          <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500" }}>{t("contact_appel", langue)}</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("contact_appel_desc", langue)}</Text>
-        </View>
-      </Pressable>
 
       <Pressable onPress={() => Linking.openURL("mailto:contact.tosign@gmail.com")} style={[styles.boutonContact, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
         <Feather name="mail" size={18} color={colors.textPrimary} />

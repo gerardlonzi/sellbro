@@ -168,7 +168,7 @@ export default function CreancesDettes() {
           </Text>
         </View>
       ) : (
-        <ScrollView>
+        <ScrollView contentContainerStyle={styles.contenu}>
           {filtrees.map((c) => {
             const enRetard = estEnRetard(c);
             const fmt = (d: string | null) => (d ? formaterDate(d, langue) : "—");
@@ -250,4 +250,6 @@ const styles = StyleSheet.create({
   infoDate: { flexDirection: "row", alignItems: "center", gap: 5 },
   ligneActions: { flexDirection: "row", gap: 6, marginTop: 10, justifyContent: "flex-end", alignItems:"center" },
   boutonAction: { width: 36, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 8 },
+  contenu: {  paddingBottom: 70 },
+
 });
