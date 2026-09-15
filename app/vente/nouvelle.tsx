@@ -131,6 +131,11 @@ export default function NouvelleVente() {
 
   function modifierQuantite(index: number, delta: number) {
     const ligne = panier[index];
+    // Bouton « − » à 1 : on notifie au lieu de baisser silencieusement.
+    if (delta < 0 && ligne.quantite <= 1) {
+      showToast(t("vente_quantite_minimum", langue), "error");
+      return;
+    }
     if (delta > 0 && ligne.produitId) {
       const produit = produits.find((p) => p.id === ligne.produitId);
       if (produit && ligne.quantite >= produit.quantiteStock) {
@@ -145,9 +150,15 @@ export default function NouvelleVente() {
 
   // Saisie manuelle de la quantité (clavier), en complément des boutons +/-.
   // On utilise un « brouillon » local pour permettre d'effacer puis retaper,
-  // et on ne valide qu'un nombre ≥ 1 à la fin de l'édition.
+  // et on notifie immédiatement si la valeur saisie est inférieure à 1.
   function modifierQuantiteManuelle(index: number, valeur: string) {
     setQuantitesBrouillon((prev) => ({ ...prev, [index]: valeur }));
+    if (valeur.trim() !== "") {
+      const n = parseInt(valeur, 10);
+      if (!isNaN(n) && n < 1) {
+        showToast(t("vente_quantite_minimum", langue), "error");
+      }
+    }
   }
 
   function validerQuantiteManuelle(index: number) {

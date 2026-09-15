@@ -48,7 +48,17 @@ async function pousserTable(
   const nonSync = (await collection.query(Q.where("synchronise", false)).fetch()) as any[];
   for (const e of nonSync) {
     const payload = mapper(e, cartes);
-    const { data, error } = await supabase.from(table).insert(payload).select("id").single();
+    let data: any = null;
+    let error: any = null;
+    if (e.remoteId) {
+      // Déjà poussé précédemment : UPDATE. Un INSERT ici créerait un doublon
+      // côté serveur (ex: produit modifié après une vente), que le pull
+      // réimporterait ensuite comme un second enregistrement local.
+      ({ error } = await supabase.from(table).update(payload).eq("id", e.remoteId));
+      data = { id: e.remoteId };
+    } else {
+      ({ data, error } = await supabase.from(table).insert(payload).select("id").single());
+    }
     if (!error && data) {
       await database.write(async () => {
         await e.update((x: any) => {
@@ -281,7 +291,10 @@ async function upsertParRemoteId(
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const collection = database.get(nomTable);
-  const existants = (await collection.query(Q.where("synchronise", true)).fetch()) as any[];
+  // On matche par remoteId sur TOUS les enregistrements qui en ont un (pas
+  // seulement synchronise=true) : un enregistrement dont le push a échoué
+  // garde son remoteId et ne doit pas être recréé en doublon au pull.
+  const existants = (await collection.query(Q.where("remote_id", Q.notEq(null))).fetch()) as any[];
   const parRemoteId = new Map(existants.map((e: any) => [e.remoteId, e]));
   const remoteIdsVus = new Set<string>();
 
