@@ -187,15 +187,14 @@ async function prendrePhoto() {
   
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.entete}>
         <Pressable onPress={() => router.back()}>
           <Feather name="x" size={20} color={colors.textSecondary} />
         </Pressable>
         <Text style={{ fontSize: 14, fontWeight: "500", color: colors.textPrimary }}>{t("produit_titre", langue)}</Text>
-        <Pressable onPress={sauvegarder} disabled={chargement}>
-          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "500", opacity: chargement ? 0.5 : 1 }}>{t("produit_sauver", langue)}</Text>
-        </Pressable>
+        <View style={{ width: 40 }} />
       </View>
 
       {reference ? (
@@ -325,6 +324,13 @@ async function prendrePhoto() {
 
 
     </ScrollView>
+
+      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+        <Pressable onPress={sauvegarder} disabled={chargement} style={{ backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 10, alignItems: "center", opacity: chargement ? 0.6 : 1 }}>
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("produit_sauver", langue)}</Text>
+        </Pressable>
+      </View>
+    </View>
 
       <Modal visible={cameraOuverte} animationType="slide" onRequestClose={() => setCameraOuverte(false)}>
         <View style={{ flex: 1, backgroundColor: "#000" }}>

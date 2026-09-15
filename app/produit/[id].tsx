@@ -134,15 +134,13 @@ export default function DetailProduit() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
       <View style={styles.entete}>
         <Pressable onPress={() => router.back()}>
           <Feather name="x" size={20} color={colors.textSecondary} />
         </Pressable>
         <Text style={{ fontSize: 14, fontWeight: "500", color: colors.textPrimary }}>{nom}</Text>
-        <Pressable onPress={sauvegarder} disabled={enregistrement}>
-          <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "500", opacity: enregistrement ? 0.5 : 1 }}>{t("produit_sauver", langue)}</Text>
-        </Pressable>
         <Pressable onPress={() => router.push(`/produit/mouvements/${id}`)} style={{ marginLeft: 12 }}>
   <Feather name="clock" size={18} color={colors.textSecondary} />
 </Pressable>
@@ -233,6 +231,13 @@ export default function DetailProduit() {
         <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "500" }}>{t("categories_supprimer_confirmer", langue)}</Text>
       </Pressable>
     </ScrollView>
+
+      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+        <Pressable onPress={sauvegarder} disabled={enregistrement} style={{ backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 10, alignItems: "center", opacity: enregistrement ? 0.6 : 1 }}>
+          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{enregistrement ? "..." : t("produit_sauver", langue)}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
