@@ -7,6 +7,17 @@ import { obtenirUserId } from "@/lib/auth/userCache";
 import { parserDateSeule } from "@/lib/formatDate";
 import { supabase } from "@/lib/supabase/client";
 import { avecTimeout } from "@/lib/timeout";
+import { t, Langue, detecterLangueSysteme } from "@/lib/i18n";
+
+// Langue choisie dans l'app (pas celle du téléphone) : les notifications
+// planifiées sont générées en dehors de React, on lit donc le stockage local.
+async function langueUtilisateur(): Promise<Langue> {
+  try {
+    const l = await AsyncStorage.getItem("boutika_langue");
+    if (l === "fr" || l === "en") return l;
+  } catch {}
+  return detecterLangueSysteme();
+}
 
 // Configure le comportement des notifications affichées (même en avant-plan).
 Notifications.setNotificationHandler({
@@ -249,17 +260,20 @@ export async function verifierAlertesEtNotifier() {
   // On repart de zéro pour que le contenu reste à jour.
   await Notifications.cancelAllScheduledNotificationsAsync();
 
+  // Textes dans la langue choisie par l'utilisateur dans l'app.
+  const langue = await langueUtilisateur();
+
   const messages: string[] = [];
   if (stockActive && produitsFaibles.length > 0) {
     const apercu = produitsFaibles.slice(0, 3).map((p) => `${p.nom} (${p.quantite})`).join(", ");
     messages.push(
-      `${produitsFaibles.length} produit(s) en stock faible : ${apercu}${produitsFaibles.length > 3 ? "…" : ""}`
+      `${t("notif_msg_stock_faible", langue)(produitsFaibles.length, apercu)}${produitsFaibles.length > 3 ? "…" : ""}`
     );
   }
   if (creanceActive && creancesRetard.length > 0) {
     const apercu = creancesRetard.slice(0, 3).map((c) => `${c.nom} (${c.montant} F)`).join(", ");
     messages.push(
-      `${creancesRetard.length} créance(s) en retard : ${apercu}${creancesRetard.length > 3 ? "…" : ""}`
+      `${t("notif_msg_creance_retard", langue)(creancesRetard.length, apercu)}${creancesRetard.length > 3 ? "…" : ""}`
     );
   }
 
@@ -269,7 +283,7 @@ export async function verifierAlertesEtNotifier() {
   for (const heure of [9, 13, 18]) {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "Cikap — Alertes",
+        title: t("notif_alertes_titre", langue),
         body: messages.join("\n"),
         sound: true,
       },
