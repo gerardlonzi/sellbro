@@ -104,7 +104,9 @@ export function useEssai(): EssaiInfo {
     // `actif` = accès complet (PRO ou essai actif) — conservé pour compat.
     actif: estPremium || etat.actif,
     statut,
-    joursRestants: etat.joursRestants,
+    // Essai pas encore démarré côté serveur (dateFin null) : on affiche la
+    // durée totale plutôt que « 0 jours ». Sinon, jours recalculés depuis dateFin.
+    joursRestants: etat.dateFin ? etat.joursRestants : config.dureeTotale,
     dureeTotale: config.dureeTotale,
     prix: config.prix,
     dateFin: etat.dateFin,
