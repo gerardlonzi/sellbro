@@ -8,6 +8,9 @@ import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { PeriodeId, plageDates } from "@/lib/periode/periodes";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
+import { useEssai } from "@/lib/trial/useEssai";
+import { PLANS_PAR_DEFAUT } from "@/lib/plan/quotas";
+import { calculerBenefice } from "@/lib/ventes/benefice";
 import { EnteteEcran, Skeleton } from "@/components/UI";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
@@ -26,6 +29,13 @@ export default function Export() {
   const { langue } = useLangue();
   const { formater } = useCurrency();
   const { plan } = usePlanActuel();
+  const essai = useEssai();
+  // En essai (TRIAL) ou PRO : accès complet aux périodes, même si le plan
+  // n'est pas encore chargé (hors ligne) — sinon les puces étaient verrouillées.
+  const planEffectif =
+    essai.statut !== "FREE"
+      ? { ...(plan ?? PLANS_PAR_DEFAUT.gratuit), rapportsMax: "annee" as const }
+      : plan;
   const [periode, setPeriode] = useState<PeriodeId>("mois");
   const [format, setFormat] = useState<"pdf" | "excel">("pdf");
   const [stats, setStats] = useState<StatsExport>({ ca: 0, benefice: 0, ventes: 0, parPaiement: {}, produitsEnStock: 0, ruptures: 0, topProduits: [], topClients: [] });
@@ -67,7 +77,9 @@ export default function Export() {
     const topProduits = Object.entries(parProduit).map(([nom, d]) => ({ nom, ...d })).sort((a, b) => b.ventes - a.ventes || b.montant - a.montant).slice(0, 5);
     const topClients = Object.entries(parClient).map(([nom, montant]) => ({ nom, montant })).sort((a, b) => b.montant - a.montant).slice(0, 5);
 
-    setStats({ ca, benefice: Math.round(ca * 0.3), ventes: ventes.length, parPaiement, produitsEnStock, ruptures, topProduits, topClients });
+    // Bénéfice réel : Σ quantité × (prix vente − prix achat).
+    const produitsParId = new Map((tousLesProduits as any[]).map((p) => [p.id, p]));
+    setStats({ ca, benefice: calculerBenefice(ventes, produitsParId), ventes: ventes.length, parPaiement, produitsEnStock, ruptures, topProduits, topClients });
     setChargementStats(false);
   }
 
@@ -120,7 +132,7 @@ export default function Export() {
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 16, paddingTop: 50 }}>
       <EnteteEcran titre="Export comptable" onRetour={() => router.back()} />
 
-      <SelecteurPeriode periode={periode} onChange={setPeriode} plan={plan} />
+      <SelecteurPeriode periode={periode} onChange={setPeriode} plan={planEffectif} />
 
       <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, marginTop: 8 }}>Format</Text>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>

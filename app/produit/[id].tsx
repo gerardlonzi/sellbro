@@ -1,16 +1,22 @@
-import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Image } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, Modal } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { supprimerEnregistrement } from "@/lib/database/supprimer";
+import { televerserImagesLocales } from "@/lib/storage/images";
+import { calculerBenefice } from "@/lib/ventes/benefice";
+import { ImageCachee } from "@/components/ImageCachee";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
 export default function DetailProduit() {
@@ -27,6 +33,11 @@ export default function DetailProduit() {
   const [quantite, setQuantite] = useState("");
   const [seuilAlerte, setSeuilAlerte] = useState("");
   const [champsSupp, setChampsSupp] = useState<Record<string, string>>({});
+  // Images modifiables : URIs locales (nouvelles) ou URLs distantes (existantes).
+  const [images, setImages] = useState<string[]>([]);
+  const [cameraOuverte, setCameraOuverte] = useState(false);
+  const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
   const [stats, setStats] = useState({ nbVentes: 0, ca: 0, benefice: 0, topClients: [] as { nom: string; montant: number }[] });
 
   useEffect(() => {
@@ -43,6 +54,13 @@ export default function DetailProduit() {
       setQuantite(String(p.quantiteStock));
       setSeuilAlerte(String(p.seuilAlerte));
       setChampsSupp(p.champsSupplementaires ?? {});
+      // Charge les images existantes (format multiple `images` ou ancien `image_uri`).
+      const cs = p.champsSupplementaires ?? {};
+      try {
+        setImages(cs.images ? JSON.parse(cs.images) : cs.image_uri ? [cs.image_uri] : []);
+      } catch {
+        setImages([]);
+      }
     }
 
     // Stats de vente de ce produit.
@@ -55,9 +73,46 @@ export default function DetailProduit() {
       if (v.clientNom) clientsMap[v.clientNom] = (clientsMap[v.clientNom] ?? 0) + v.quantite * v.prixUnitaire;
     }
     const topClients = Object.entries(clientsMap).map(([nom, montant]) => ({ nom, montant })).sort((a, b) => b.montant - a.montant).slice(0, 3);
-    setStats({ nbVentes, ca, benefice: Math.round(ca * 0.3), topClients });
+    // Bénéfice réel : quantité × (prix de vente − prix d'achat de CE produit).
+    const produitsParId = new Map([[id, { prixAchat: (p as any)?.prixAchat ?? null }]]);
+    setStats({ nbVentes, ca, benefice: calculerBenefice(ventesList, produitsParId), topClients });
 
     setChargement(false);
+  }
+
+  async function ajouterImages() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const resultat = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+      allowsMultipleSelection: true,
+    });
+    if (!resultat.canceled) {
+      setImages((actuel) => [...actuel, ...resultat.assets.map((a) => a.uri)]);
+    }
+  }
+
+  // Capture in-app via expo-camera (comme dans l'écran de création, fiable sur Android).
+  async function prendrePhoto() {
+    if (!permissionCamera?.granted) {
+      const res = await demanderPermissionCamera();
+      if (!res.granted) {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) return;
+        const resultat = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+        if (!resultat.canceled) setImages((actuel) => [...actuel, resultat.assets[0].uri]);
+        return;
+      }
+    }
+    setCameraOuverte(true);
+  }
+
+  async function capturerPhoto() {
+    if (!cameraRef.current) return;
+    const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+    if (photo?.uri) setImages((actuel) => [...actuel, photo.uri]);
+    setCameraOuverte(false);
   }
 
   async function sauvegarder() {
@@ -69,11 +124,21 @@ export default function DetailProduit() {
     setEnregistrement(true);
     try {
       const p = await database.get("produits").find(id);
+      const userId = await obtenirUserId();
+      // Téléverse les nouvelles images locales → URLs distantes synchronisables.
+      const imagesDistantes = userId ? await televerserImagesLocales(images, "produits", userId) : images;
       const ancien = (p as any);
       const ancienPrix = ancien.prixVente;
       const ancienStock = ancien.quantiteStock;
       const nouveauPrix = Number(prixVente);
       const nouveauStock = Number(quantite) || 0;
+
+      // Met à jour les images dans les champs supplémentaires (supprime
+      // l'ancien format `image_uri` au passage).
+      const nouveauxChamps = { ...champsSupp };
+      delete nouveauxChamps.image_uri;
+      if (imagesDistantes.length > 0) nouveauxChamps.images = JSON.stringify(imagesDistantes);
+      else delete nouveauxChamps.images;
 
       await database.write(async () => {
         await (p as any).update((x: any) => {
@@ -82,9 +147,12 @@ export default function DetailProduit() {
           x.prixAchat = Number(prixAchat) || null;
           x.quantiteStock = nouveauStock;
           x.seuilAlerte = Number(seuilAlerte) || 5;
+          x.champsSupplementairesJson = JSON.stringify(nouveauxChamps);
           x.synchronise = false;
         });
       });
+      setChampsSupp(nouveauxChamps);
+      setImages(imagesDistantes);
 
       // Description détaillée de ce qui a changé.
       const changements: string[] = [];
@@ -174,9 +242,28 @@ export default function DetailProduit() {
         )}
       </View>
 
-      {(champsSupp.images ? JSON.parse(champsSupp.images) : champsSupp.image_uri ? [champsSupp.image_uri] : []).map((uri: string, i: number) => (
-        <Image key={i} source={{ uri }} style={styles.imageProduit} />
-      ))}
+      {/* Images : modifiables — toucher une miniature la supprime. */}
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>{t("produit_champ_image", langue)}</Text>
+        <View style={styles.ligneImages}>
+          {images.map((uri, i) => (
+            <Pressable key={`${uri}-${i}`} onPress={() => setImages((actuel) => actuel.filter((_, idx) => idx !== i))}>
+              <ImageCachee uri={uri} style={styles.miniatureImage} />
+              <View style={[styles.badgeSupprImage, { backgroundColor: colors.danger }]}>
+                <Feather name="x" size={10} color="#fff" />
+              </View>
+            </Pressable>
+          ))}
+          <Pressable onPress={prendrePhoto} style={[styles.zoneImage, { borderColor: colors.border }]}>
+            <Feather name="camera" size={22} color={colors.textMuted} />
+            <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{t("produit_prendre_photo", langue)}</Text>
+          </Pressable>
+          <Pressable onPress={ajouterImages} style={[styles.zoneImage, { borderColor: colors.border }]}>
+            <Feather name="plus" size={22} color={colors.textMuted} />
+            <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{t("produit_ajouter_image", langue)}</Text>
+          </Pressable>
+        </View>
+      </View>
 
       {Object.keys(champsSupp).length > 0 && (
         <View style={[styles.blocChamps, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -237,6 +324,21 @@ export default function DetailProduit() {
           <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{enregistrement ? "..." : t("produit_sauver", langue)}</Text>
         </Pressable>
       </View>
+
+      <Modal visible={cameraOuverte} animationType="slide" onRequestClose={() => setCameraOuverte(false)}>
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          {permissionCamera?.granted && (
+            <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+          )}
+          <View style={styles.overlayCamera}>
+            <Pressable onPress={() => setCameraOuverte(false)} style={styles.boutonFermerCamera}>
+              <Feather name="x" size={22} color="#fff" />
+            </Pressable>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={capturerPhoto} style={styles.boutonCaptureCamera} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -261,6 +363,13 @@ const styles = StyleSheet.create({
   ligneDeux: { flexDirection: "row", gap: 10 },
   boutonSupprimer: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 8 },
   imageProduit: { width: "100%", height: 160, borderRadius: 12, marginBottom: 16 },
+  ligneImages: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  miniatureImage: { width: 80, height: 80, borderRadius: 8 },
+  badgeSupprImage: { position: "absolute", top: -5, right: -5, width: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  zoneImage: { width: 80, height: 80, borderWidth: 1, borderStyle: "dashed", borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  overlayCamera: { flex: 1, justifyContent: "space-between", padding: 16, paddingTop: 50, paddingBottom: 40 },
+  boutonFermerCamera: { alignSelf: "flex-start" },
+  boutonCaptureCamera: { width: 68, height: 68, borderRadius: 34, backgroundColor: "#fff", borderWidth: 4, borderColor: "rgba(255,255,255,0.3)", alignSelf: "center" },
   blocChamps: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
   ligneChamp: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
   pastilleCouleur: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: "#00000022" },

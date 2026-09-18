@@ -17,11 +17,13 @@ import { useTourGuide } from "@/lib/onboarding/useTourGuide";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 import { Skeleton, Badge } from "@/components/UI";
 import { WelcomeTrial } from "@/components/WelcomeTrial";
+import { IndicateurSync } from "@/components/SyncBanner";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { versionDonnees, sAbonnerModifications } from "@/lib/dataVersion";
 import { useEssai } from "@/lib/trial/useEssai";
 import { nombreNotificationsNonLues } from "@/lib/notifications/notifications";
+import { calculerBenefice } from "@/lib/ventes/benefice";
 
 
 
@@ -36,6 +38,7 @@ export default function Accueil() {
   const { planId, pret: planPret } = usePlanActuel();
   const [nomBoutique, setNomBoutique] = useState("");
   const [ca, setCa] = useState(0);
+  const [benefice, setBenefice] = useState(0);
   const [nbVentes, setNbVentes] = useState(0);
   const [nbProduitsVendus, setNbProduitsVendus] = useState(0);
   const [onTeDoit, setOnTeDoit] = useState(0);
@@ -101,6 +104,10 @@ export default function Accueil() {
       const ventesAujourdhui = (toutesLesVentes as any[]).filter((v) => v.creeLe >= debutJour);
 
       setCa(ventesAujourdhui.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0));
+      // Bénéfice réel du jour : Σ quantité × (prix vente − prix achat).
+      const tousLesProduits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+      const produitsParId = new Map((tousLesProduits as any[]).map((p) => [p.id, p]));
+      setBenefice(calculerBenefice(ventesAujourdhui, produitsParId));
       // « Ventes du jour » = nombre de TRANSACTIONS (regroupées par transactionId).
       // « Produits vendus » = total des unités.
       const transactions = new Set(
@@ -139,7 +146,6 @@ export default function Accueil() {
 
   const estPremium = planId === "premium";
   const essai = useEssai();
-  const benefice = Math.round(ca * 0.3);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
@@ -163,6 +169,9 @@ export default function Accueil() {
             <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
           </Pressable>
           )}
+          {/* État de sync : petit cloud à gauche de la cloche (spinner pendant
+              la sync, coche verte quelques secondes, cloud gris sinon). */}
+          <IndicateurSync />
           <Pressable onPress={() => router.push("/notifications")} style={{ position: "relative" }}>
             <Feather name="bell" size={20} color={colors.textSecondary} />
             {nbNotifsNonLues > 0 && (

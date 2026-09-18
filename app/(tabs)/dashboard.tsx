@@ -12,6 +12,8 @@ import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { useEssai } from "@/lib/trial/useEssai";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { PeriodeId, plageDates, plagePrecedente } from "@/lib/periode/periodes";
+import { PLANS_PAR_DEFAUT } from "@/lib/plan/quotas";
+import { calculerBenefice } from "@/lib/ventes/benefice";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
 import { Carte, Skeleton, Badge } from "@/components/UI";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -58,7 +60,13 @@ export default function Dashboard() {
   const essai = useEssai();
   // Plan « effectif » : pendant l'essai (TRIAL) ou en PRO, l'utilisateur a un
   // accès complet aux périodes (rapportsMax = annee). En FREE, on applique le plan réel.
-  const planEffectif = plan && essai.statut !== "FREE" ? { ...plan, rapportsMax: "annee" as const } : plan;
+  // Base = plan réel, ou le plan gratuit par défaut si le plan n'est pas encore
+  // chargé (hors ligne / premier lancement) — sinon `undefined` verrouillait
+  // mois/semestre/année avec paywall même pendant l'essai.
+  const planEffectif =
+    essai.statut !== "FREE"
+      ? { ...(plan ?? PLANS_PAR_DEFAUT.gratuit), rapportsMax: "annee" as const }
+      : plan;
   const [periode, setPeriode] = useState<PeriodeId>("semaine");
   const [stats, setStats] = useState<Stats>(STATS_VIDES);
   const [precedente, setPrecedente] = useState<Tendance>(TENDANCE_VIDE);
@@ -106,6 +114,10 @@ export default function Dashboard() {
     const tousLesVentes = await database.get("ventes").query(Q.where("user_id", userId)).fetch();
     const ventes = (tousLesVentes as any[]).filter((v) => v.creeLe >= debut && v.creeLe <= fin);
 
+    // Produits chargés AVANT les bénéfices : le calcul réel a besoin du prix d'achat.
+    const tousLesProduits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    const produitsParId = new Map((tousLesProduits as any[]).map((p) => [p.id, p]));
+
     // Période précédente (pour les flèches de tendance). Calculée sur les mêmes
     // données déjà chargées, donc sans requête supplémentaire.
     let precCa = 0, precVentes = 0, precBenefice = 0;
@@ -114,12 +126,10 @@ export default function Dashboard() {
       const ventesPrec = (tousLesVentes as any[]).filter((v) => v.creeLe >= prec.debut && v.creeLe < prec.fin);
       precCa = ventesPrec.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
       precVentes = ventesPrec.length;
-      precBenefice = Math.round(precCa * 0.3);
+      precBenefice = calculerBenefice(ventesPrec, produitsParId);
     }
     setPrecedente({ ca: precCa, ventes: precVentes, benefice: precBenefice });
 
-    const tousLesProduits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
-    const produitsParId = new Map((tousLesProduits as any[]).map((p) => [p.id, p]));
     setRuptures((tousLesProduits as any[]).filter((p) => p.quantiteStock === 0).length);
     setAlertes((tousLesProduits as any[]).filter((p) => p.quantiteStock > 0 && p.quantiteStock <= p.seuilAlerte).length);
 
@@ -184,7 +194,7 @@ export default function Dashboard() {
     );
     const produitsVendus = ventes.reduce((s, v) => s + (v.quantite || 0), 0);
 
-    setStats({ ca, ventes: transactions.size, produitsVendus, benefice: Math.round(ca * 0.3), parPaiement, parCategorie, topProduits, topRevenus, topClients });
+    setStats({ ca, ventes: transactions.size, produitsVendus, benefice: calculerBenefice(ventes, produitsParId), parPaiement, parCategorie, topProduits, topRevenus, topClients });
     setChargement(false);
   }
 

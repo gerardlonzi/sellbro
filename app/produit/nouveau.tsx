@@ -1,5 +1,5 @@
 import { useState,useEffect,useRef } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform, Modal } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform, Modal, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -17,6 +17,7 @@ import { enregistrerActivite } from "@/lib/audit/journal";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
+import { televerserImagesLocales } from "@/lib/storage/images";
 
 
 
@@ -119,7 +120,7 @@ async function prendrePhoto() {
   }
 
 
-  async function sauvegarder() {
+  async function sauvegarder(ignorerDoublon = false) {
     if (chargement) return;
     if (!(await peutEcrire())) {
       afficherPaywall(langue, () => router.push("/premium"));
@@ -139,10 +140,38 @@ async function prendrePhoto() {
         if (nb >= plan.quotaProduits) { router.push("/premium"); return; }
       }
 
+      // Doublon : un produit avec le même nom existe déjà → proposer de le
+      // modifier plutôt que de créer un doublon.
+      if (!ignorerDoublon) {
+        const existants = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+        const doublon = (existants as any[]).find(
+          (p) => p.nom.trim().toLowerCase() === nom.trim().toLowerCase()
+        );
+        if (doublon) {
+          setChargement(false);
+          Alert.alert(
+            t("produit_doublon_titre", langue),
+            t("produit_doublon_texte", langue)(doublon.nom),
+            [
+              { text: t("popup_annuler", langue), style: "cancel" },
+              { text: t("produit_doublon_modifier", langue), onPress: () => router.replace(`/produit/${doublon.id}`) },
+              { text: t("produit_doublon_creer", langue), onPress: () => sauvegarder(true) },
+            ]
+          );
+          return;
+        }
+      }
+
       const champsSupplementaires: Record<string, string> = { ...valeursTexte };
       if (champsActifs.includes("couleur") && couleurChoisie) champsSupplementaires.couleur = couleurChoisie;
       if (champsActifs.includes("poids") && poidsValeur) champsSupplementaires.poids = `${poidsValeur} ${poidsUnite}`;
-      if (champsActifs.includes("image") && images.length > 0) champsSupplementaires.images = JSON.stringify(images);
+      // Les images locales sont téléversées vers Supabase Storage : seule l'URL
+      // distante est synchronisée, sinon elles sont invisibles sur les autres
+      // appareils. Hors ligne, l'URI locale est conservée (visible ici).
+      if (champsActifs.includes("image") && images.length > 0) {
+        const imagesDistantes = await televerserImagesLocales(images, "produits", userId);
+        champsSupplementaires.images = JSON.stringify(imagesDistantes);
+      }
 
       let produitId = "";
       await database.write(async () => {
@@ -152,7 +181,10 @@ async function prendrePhoto() {
           p.categorieNom = categorie || null;
           p.prixVente = Number(prixVente);
           p.prixAchat = Number(prixAchat) || null;
-          p.quantiteStock = Number(quantite) || 0;
+          // Stock initial à 0 : le mouvement « achat » ci-dessous l'augmente de
+          // la quantité saisie. Mettre la quantité ici ET dans le mouvement
+          // comptait le stock en double (20 saisis → 40 affichés).
+          p.quantiteStock = 0;
           p.seuilAlerte = Number(seuilAlerte) || 5;
           p.champsSupplementairesJson = JSON.stringify(champsSupplementaires);
           p.creeLe = new Date();
@@ -326,7 +358,7 @@ async function prendrePhoto() {
     </ScrollView>
 
       <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
-        <Pressable onPress={sauvegarder} disabled={chargement} style={{ backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 10, alignItems: "center", opacity: chargement ? 0.6 : 1 }}>
+        <Pressable onPress={() => sauvegarder()} disabled={chargement} style={{ backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 10, alignItems: "center", opacity: chargement ? 0.6 : 1 }}>
           <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("produit_sauver", langue)}</Text>
         </Pressable>
       </View>
