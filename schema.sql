@@ -578,3 +578,46 @@ begin
     greatest(0, ceil(extract(epoch from (fin - now())) / 86400)::integer);
 end;
 $$;
+
+-- ------------------------------------------------------------
+-- IMAGES (produits, logos) — Supabase Storage
+-- ------------------------------------------------------------
+-- Un bucket public en lecture ; chaque utilisateur n'écrit que dans son
+-- propre dossier (produits/<user_id>/…, logos/<user_id>/…).
+
+alter table profiles add column if not exists logo_url text;
+
+insert into storage.buckets (id, name, public)
+values ('images-boutika', 'images-boutika', true)
+on conflict (id) do nothing;
+
+create policy images_lecture_publique on storage.objects
+  for select using (bucket_id = 'images-boutika');
+
+create policy images_insertion_propre_dossier on storage.objects
+  for insert with check (
+    bucket_id = 'images-boutika'
+    and auth.role() = 'authenticated'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+create policy images_modification_propre_dossier on storage.objects
+  for update using (
+    bucket_id = 'images-boutika'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+create policy images_suppression_propre_dossier on storage.objects
+  for delete using (
+    bucket_id = 'images-boutika'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+-- Token Expo Push : permet les notifications push INSTANTANÉES envoyées par
+-- l'edge function push-notification (webhook sur INSERT de la table
+-- notifications), même quand l'app est fermée.
+alter table profiles add column if not exists expo_push_token text;
+
+-- Champs personnalisés + lien produit/fournisseur sur les dépenses, et champs
+-- personnalisés sur les fournisseurs (le jsonb existait déjà sur depenses).
+alter table fournisseurs add column if not exists donnees_supplementaires jsonb not null default '{}'::jsonb;

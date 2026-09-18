@@ -27,6 +27,7 @@ import { afficherPaywall } from "@/lib/trial/paywall";
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 
 import { Badge } from "@/components/UI";
+import { ImageCachee } from "@/components/ImageCachee";
 
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 
@@ -452,7 +453,7 @@ export default function Stock() {
                 style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
               >
                 {p.image_uri ? (
-                  <Image source={{ uri: p.image_uri }} style={styles.apercuImage} />
+                  <ImageCachee uri={p.image_uri} style={styles.apercuImage} />
                 ) : null}
                 <View>
                   <Text

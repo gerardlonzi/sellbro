@@ -8,6 +8,9 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { EnteteEcran, BoutonPrimaire } from "@/components/UI";
 import { supabase } from "@/lib/supabase/client";
+import { avecTimeout } from "@/lib/timeout";
+import { televerserImage } from "@/lib/storage/images";
+import { ImageCachee } from "@/components/ImageCachee";
 import { usePays } from "@/lib/pays/PaysProvider";
 
 export default function InfosBoutique() {
@@ -26,22 +29,36 @@ export default function InfosBoutique() {
   }, []);
 
   async function charger() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      if (data) {
-        setNom(data.nom_boutique ?? "");
-        setTelephone(data.telephone ?? "");
-        setEmail(data.email ?? user.email ?? "");
-        setSecteur(data.secteur ?? "");
+    let logoDistant: string | null = null;
+    try {
+      // Timeout : hors ligne, getUser peut rester pendu et figer l'écran.
+      const {
+        data: { user },
+      } = await avecTimeout(supabase.auth.getUser(), 5000);
+      if (user) {
+        const { data } = await avecTimeout(supabase.from("profiles").select("*").eq("id", user.id).single(), 5000);
+        if (data) {
+          setNom(data.nom_boutique ?? "");
+          setTelephone(data.telephone ?? "");
+          setEmail(data.email ?? user.email ?? "");
+          setSecteur(data.secteur ?? "");
+          // Le logo distant (URL Storage) prime : il suit l'utilisateur sur tous
+          // ses appareils. Le cache local ne sert que de secours hors ligne.
+          logoDistant = data.logo_url ?? null;
+        }
       }
+    } catch {
+      // Hors ligne : valeurs locales ci-dessous.
     }
     const nomLocal = await AsyncStorage.getItem("boutika_nom_boutique");
     if (nomLocal && !nom) setNom(nomLocal);
-    const logoSauvegarde = await AsyncStorage.getItem("boutika_logo");
-    if (logoSauvegarde) setLogo(logoSauvegarde);
+    if (logoDistant) {
+      setLogo(logoDistant);
+      await AsyncStorage.setItem("boutika_logo", logoDistant);
+    } else {
+      const logoSauvegarde = await AsyncStorage.getItem("boutika_logo");
+      if (logoSauvegarde) setLogo(logoSauvegarde);
+    }
   }
 
   async function choisirLogo() {
@@ -65,10 +82,20 @@ export default function InfosBoutique() {
     setChargement(true);
     try {
       await AsyncStorage.setItem("boutika_nom_boutique", nom);
-      if (logo) await AsyncStorage.setItem("boutika_logo", logo);
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await avecTimeout(supabase.auth.getUser(), 5000).catch(() => ({ data: { user: null } }));
+      // Logo : un logo local (data:) est téléversé vers Storage ; on ne garde
+      // que l'URL distante, synchronisée via profiles.logo_url.
+      let logoFinal = logo;
+      if (logo && user) {
+        const url = await televerserImage(logo, "logos", user.id);
+        if (url) logoFinal = url;
+      }
+      if (logoFinal) await AsyncStorage.setItem("boutika_logo", logoFinal);
+      // Copie base64 pour le PDF (fonctionne hors ligne, contrairement à l'URL).
+      if (logo?.startsWith("data:")) await AsyncStorage.setItem("boutika_logo_base64", logo);
+      setLogo(logoFinal);
       if (user) {
         await supabase
           .from("profiles")
@@ -76,6 +103,7 @@ export default function InfosBoutique() {
             nom_boutique: nom.trim() || null,
             telephone: telephone.trim() || null,
             secteur: secteur.trim() || null,
+            logo_url: logoFinal,
           })
           .eq("id", user.id);
       }
@@ -91,7 +119,7 @@ export default function InfosBoutique() {
 
       <Pressable onPress={choisirLogo} style={{ alignItems: "center", marginBottom: 16 }}>
         {logo ? (
-          <Image source={{ uri: logo }} style={styles.logo} />
+          <ImageCachee uri={logo} style={styles.logo} />
         ) : (
           <View style={[styles.logo, styles.logoVide, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Feather name="camera" size={22} color={colors.textMuted} />

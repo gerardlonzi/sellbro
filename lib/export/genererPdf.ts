@@ -2,6 +2,7 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { avecTimeout } from "@/lib/timeout";
 import { enregistrerActivite } from "@/lib/audit/journal";
 
 export type InfosBoutique = {
@@ -24,11 +25,12 @@ async function infosDepuisSupabase(): Promise<InfosBoutique> {
   let secteur: string | null = null;
 
   try {
+    // Timeout : hors ligne, getUser peut rester pendu et bloquer l'export.
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await avecTimeout(supabase.auth.getUser(), 5000);
     if (user) {
-      const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      const { data } = await avecTimeout(supabase.from("profiles").select("*").eq("id", user.id).single(), 5000);
       if (data) {
         nom = data.nom_boutique || nom;
         telephone = data.telephone;
@@ -40,7 +42,10 @@ async function infosDepuisSupabase(): Promise<InfosBoutique> {
     // Hors ligne : on garde les valeurs par défaut.
   }
 
-  const logo = await AsyncStorage.getItem("boutika_logo");
+  // Le base64 local prime (le PDF fonctionne hors ligne) ; sinon l'URL distante.
+  const logo =
+    (await AsyncStorage.getItem("boutika_logo_base64")) ??
+    (await AsyncStorage.getItem("boutika_logo"));
   return { nom, telephone, email, secteur, logo };
 }
 
