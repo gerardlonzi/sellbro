@@ -279,13 +279,15 @@ export async function verifierAlertesEtNotifier() {
 
   if (messages.length === 0) return;
 
-  // Trois rappels quotidiens (matin, midi, fin d'après-midi).
-  for (const heure of [9, 13, 18]) {
+  // Six rappels quotidiens : 8h, 10h, 12h, 14h, 16h, 18h. Planifiés localement,
+  // donc délivrés par le système même si l'app est fermée.
+  for (const heure of [8, 10, 12, 14, 16, 18, 20]) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: t("notif_alertes_titre", langue),
         body: messages.join("\n"),
         sound: true,
+        data: { ecran: "/notifications" },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
