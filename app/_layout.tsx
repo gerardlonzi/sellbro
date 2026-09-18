@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
+import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -14,6 +15,7 @@ import { CategoriesProvider } from "@/lib/categories/CategoriesProvider";
 import { LangueProvider } from "@/lib/i18n";
 import { useSynchronisation } from "@/lib/sync/useSynchronisation";
 import { verifierAlertesEtNotifier } from "@/lib/notifications/notifications";
+import { enregistrerTokenPush } from "@/lib/notifications/push";
 import { PaywallPopup } from "@/components/PaywallPopup";
 import { SyncBanner } from "@/components/SyncBanner";
 import { supabase } from "@/lib/supabase/client";
@@ -39,9 +41,23 @@ function AppContent() {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         synchroniserPourUtilisateurCourant().catch(() => {});
+        // Enregistre le token push : permet les notifications instantanées
+        // envoyées par le serveur même quand l'app est fermée.
+        enregistrerTokenPush().catch(() => {});
       }
     });
     return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Toucher une notification (locale planifiée ou push) ouvre l'écran cible.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((reponse) => {
+      const ecran = reponse.notification.request.content.data?.ecran;
+      if (typeof ecran === "string" && ecran.startsWith("/")) {
+        router.push(ecran as any);
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // Vérifie les alertes (stock faible / créances en retard) et planifie

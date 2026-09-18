@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -11,14 +11,21 @@ import { useAbonnement } from "@/lib/plan/useAbonnement";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { definirPlanTest, definirEtatNeutreTest, definirEtatTrialTest } from "@/lib/plan/planTest";
 import { Carte, EnteteEcran } from "@/components/UI";
+import { sAbonnerSync, EtatSync } from "@/lib/sync/syncStatus";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { useConnexion } from "@/lib/useConnexion";
 
 export default function Reglages() {
   const { colors, mode, setMode } = useTheme();
   const { langue } = useLangue();
   const { planId, plan } = usePlanActuel();
   const essai = useEssai();
-  const { expire: abonnementExpire } = useAbonnement();
+  const { expire: abonnementExpire, joursRestants: joursAbonnement } = useAbonnement();
   const { formater } = useCurrency();
+  const enLigne = useConnexion();
+  const [etatSync, setEtatSync] = useState<EtatSync>("idle");
+
+  useEffect(() => sAbonnerSync(setEtatSync), []);
 
   // Recharge l'état de l'essai à chaque focus (jours restants à jour).
   useFocusEffect(
@@ -44,7 +51,7 @@ export default function Reglages() {
                   <Text style={{ color: colors.pro, fontSize: 13, fontWeight: "600" }}>{t("premium_mode", langue)}</Text>
                 </View>
                 <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>
-                  {t("premium_expire_dans", langue)(essai.joursRestants)}
+                  {t("premium_expire_dans", langue)(joursAbonnement)}
                 </Text>
               </>
             ) : essai.actif ? (
@@ -67,6 +74,40 @@ export default function Reglages() {
               <Text style={{ color: essai.actif ? colors.onPro : "#fff", fontSize: 11 }}>
                 {essai.actif ? t("version_pro", langue) : abonnementExpire ? t("abonnement_termine_renew", langue) : t("reglages_upgrade", langue)}
               </Text>
+            </Pressable>
+          )}
+        </View>
+      </Carte>
+
+      {/* État de synchronisation + déclenchement manuel */}
+      <Carte style={{ marginBottom: 12 }}>
+        <View style={styles.ligneReglage}>
+          <View style={styles.ligneReglageGauche}>
+            <Feather name="cloud" size={16} color={!enLigne ? colors.textMuted : etatSync === "error" ? colors.danger : colors.accent} />
+            <View>
+              <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("reglages_sync_titre", langue)}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>
+                {!enLigne
+                  ? t("hors_ligne", langue)
+                  : etatSync === "syncing"
+                  ? t("sync_en_cours", langue)
+                  : etatSync === "complete"
+                  ? t("sync_terminee", langue)
+                  : etatSync === "error"
+                  ? t("sync_erreur", langue)
+                  : t("sync_jamais", langue)}
+              </Text>
+            </View>
+          </View>
+          {etatSync === "syncing" ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Pressable
+              onPress={() => synchroniserPourUtilisateurCourant().catch(() => {})}
+              disabled={!enLigne}
+              style={[styles.boutonPro, { backgroundColor: colors.proBg, opacity: enLigne ? 1 : 0.5 }]}
+            >
+              <Text style={{ color: colors.pro, fontSize: 11 }}>{t("reglages_sync_bouton", langue)}</Text>
             </Pressable>
           )}
         </View>

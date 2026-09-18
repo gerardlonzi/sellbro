@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { avecTimeout } from "@/lib/timeout";
 
 // Conversion de devise : le prix de base est stocké UNE SEULE FOIS en FCFA
 // (XAF), puis converti vers la devise locale de l'utilisateur selon son pays.
@@ -7,15 +8,55 @@ import { supabase } from "@/lib/supabase/client";
 
 // Taux de secours (fallback) si la config distante n'est pas joignable.
 // Les valeurs réelles sont lues depuis app_config (clé `taux_conversion`).
+
+
 export const TAUX_DEPUIS_FCFA: Record<string, number> = {
   XAF: 1,
   XOF: 1,
-  NGN: 0.42, GHS: 0.015, ZAR: 0.032, KES: 0.21, UGX: 6.1, TZS: 4.4,
-  RWF: 2.2, BIF: 5.0, CDF: 4.8, EGP: 0.082, MAD: 0.017, DZD: 0.23,
-  TND: 0.0054, LYD: 0.0082, SDG: 1.0, SSP: 0.22, ETB: 0.19, SOS: 0.95,
-  DJF: 0.30, ERN: 0.025, MWK: 2.9, ZMW: 0.045, BWP: 0.023, NAD: 0.032,
-  SZL: 0.032, LSL: 0.032, MZN: 0.11, AOA: 1.5, SCR: 0.024, MUR: 0.077,
-  KMF: 0.82, CVE: 0.17, GMD: 0.11, SLL: 0.037, LRD: 0.31, GNF: 14.7,
+
+  NGN: 2.2371,
+  GHS: 0.02202,
+  ZAR: 0.02855,
+  KES: 0.2289,
+  UGX: 6.4,
+  TZS: 4.6759,
+
+  RWF: 2.6091,
+  BIF: 5.1,
+  CDF: 5.0,
+
+  EGP: 0.09081,
+  MAD: 0.01658,
+  DZD: 0.2355,
+
+  TND: 0.0006,
+  LYD: 0.01119,
+
+  SDG: 1.0,
+  SSP: 0.22,
+  ETB: 0.25,
+  SOS: 0.99,
+  DJF: 0.31,
+  ERN: 0.026,
+
+  MWK: 3.09,
+  ZMW: 0.04,
+  BWP: 0.023,
+  NAD: 0.031,
+  SZL: 0.031,
+  LSL: 0.031,
+
+  MZN: 0.11,
+  AOA: 1.5,
+  SCR: 0.024,
+  MUR: 0.078,
+  KMF: 0.8,
+  CVE: 0.17,
+  GMD: 0.11,
+
+  SLE: 0.04,
+  LRD: 0.31,
+  GNF: 15.2,
 };
 
 // Devise par pays (code ISO). Défaut : XAF (Franc CFA) pour les pays non listés.
@@ -37,11 +78,11 @@ let tauxActifs: Record<string, number> = { ...TAUX_DEPUIS_FCFA };
 // Charge les taux depuis la base (app_config), sinon depuis le cache local.
 export async function chargerTauxDepuisConfig(): Promise<void> {
   try {
-    const { data, error } = await supabase
-      .from("app_config")
-      .select("valeur")
-      .eq("cle", "taux_conversion")
-      .single();
+    // Timeout : hors ligne l'appel peut rester pendu et geler le démarrage.
+    const { data, error } = await avecTimeout(
+      supabase.from("app_config").select("valeur").eq("cle", "taux_conversion").single(),
+      5000
+    );
     if (!error && data?.valeur) {
       const parses = JSON.parse(data.valeur);
       tauxActifs = { ...TAUX_DEPUIS_FCFA, ...parses };

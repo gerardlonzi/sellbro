@@ -8,6 +8,8 @@ import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { envoyerCodeEmail, verifierCodeEmail } from "@/lib/auth/emailVerification";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { ActivityIndicator } from "react-native";
 
 export default function Connexion() {
   const { colors } = useTheme();
@@ -17,6 +19,7 @@ export default function Connexion() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [chargement, setChargement] = useState(false);
+  const [syncEnCours, setSyncEnCours] = useState(false);
 
   function emailValide(valeur: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valeur);
@@ -49,7 +52,29 @@ export default function Connexion() {
     }
 
     await AsyncStorage.setItem("onboarding_termine", "true");
+    // Première connexion (ex. nouvel appareil) : on synchronise les données AVANT
+    // d'entrer, avec un message visible. Sécurité : on n'attend jamais plus de
+    // 20 s (réseau lent) — la sync continue en arrière-plan sinon.
+    setSyncEnCours(true);
+    try {
+      await Promise.race([
+        synchroniserPourUtilisateurCourant(),
+        new Promise((resolve) => setTimeout(resolve, 20000)),
+      ]);
+    } catch {}
     router.replace("/(tabs)/accueil");
+  }
+
+  if (syncEnCours) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, alignItems: "center" }]}>
+        <Feather name="cloud" size={40} color={colors.accent} style={{ marginBottom: 16 }} />
+        <ActivityIndicator size="small" color={colors.accent} />
+        <Text style={{ color: colors.textPrimary, fontSize: 14, marginTop: 12, textAlign: "center" }}>
+          {t("sync_en_cours", langue)}
+        </Text>
+      </View>
+    );
   }
 
   return (

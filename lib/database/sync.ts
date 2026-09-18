@@ -6,6 +6,30 @@ import { estEssaiActifLocal } from "@/lib/trial/deviceTrial";
 import { signalerModificationDonnees } from "@/lib/dataVersion";
 import { lireSuppressions, effacerSuppression } from "@/lib/sync/tombstones";
 import { setEtatSync } from "@/lib/sync/syncStatus";
+import { avecTimeout } from "@/lib/timeout";
+import { prechargerImages } from "@/lib/storage/cacheImages";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Rassemble toutes les images connues (produits + logo) et les met en cache
+// disque pour un usage hors ligne durable.
+async function prechargerToutesLesImages(userId: string) {
+  const uris: string[] = [];
+  try {
+    const produits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    for (const p of produits as any[]) {
+      const cs = p.champsSupplementaires;
+      if (cs?.images) {
+        try { uris.push(...JSON.parse(cs.images)); } catch {}
+      }
+      if (cs?.image_uri) uris.push(cs.image_uri);
+    }
+  } catch {}
+  try {
+    const logo = await AsyncStorage.getItem("boutika_logo");
+    if (logo) uris.push(logo);
+  } catch {}
+  await prechargerImages(uris);
+}
 
 // La sync cloud est active dès le PREMIER jour (pendant l'essai gratuit),
 // puis en permanence pour les abonnés Premium. Elle s'arrête si l'essai
@@ -120,6 +144,7 @@ export async function pousserDonneesLocales() {
     adresse: e.adresse ?? null,
     total_achats: e.totalAchats ?? 0,
     montant_du: e.montantDu ?? 0,
+    donnees_supplementaires: JSON.parse(e.donneesSupplementairesJson || "{}"),
   }), cartes);
 
   // 3) Ventes (référence produit_id).
@@ -185,6 +210,7 @@ export async function pousserDonneesLocales() {
     categorie: e.categorie,
     description: e.description,
     montant: e.montant,
+    donnees_supplementaires: JSON.parse(e.donneesSupplementairesJson || "{}"),
   }), cartes);
 
   // 6) Factures puis leurs lignes.
@@ -370,6 +396,7 @@ async function tirerFournisseurs(lignes: any[]) {
     adresse: r.adresse ?? null,
     totalAchats: r.total_achats,
     montantDu: r.montant_du,
+    donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}),
     creeLe: new Date(r.created_at),
     synchronise: true,
   }));
@@ -443,6 +470,7 @@ async function tirerDepenses(lignes: any[]) {
     categorie: r.categorie,
     description: r.description,
     montant: r.montant,
+    donneesSupplementairesJson: JSON.stringify(r.donnees_supplementaires ?? {}),
     creeLe: new Date(r.created_at),
     synchronise: true,
   }));
@@ -549,9 +577,14 @@ export async function synchroniserTout(userId: string) {
       setEtatSync("complete");
       return;
     }
-    await pousserDonneesLocales();
-    await tirerDonneesDistantes(userId);
+    // Timeouts : sur réseau instable, une requête peut rester pendue et laisser
+    // la sync « en cours » indéfiniment (icône cloud qui tourne sans fin).
+    await avecTimeout(pousserDonneesLocales(), 30000);
+    await avecTimeout(tirerDonneesDistantes(userId), 30000);
     signalerModificationDonnees();
+    // Pré-télécharge les images (produits + logo) dans le cache disque : elles
+    // restent visibles HORS LIGNE même après fermeture/redémarrage de l'app.
+    prechargerToutesLesImages(userId).catch(() => {});
     setEtatSync("complete");
   } catch (err) {
     setEtatSync("error");
@@ -565,6 +598,12 @@ export async function synchroniserTout(userId: string) {
 // À appeler après chaque écriture pour que les lecteurs distants (dashboard,
 // clients, créances…) voient immédiatement les nouvelles données.
 export async function synchroniserPourUtilisateurCourant() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) await synchroniserTout(user.id);
+  try {
+    // Timeout : hors ligne, getUser peut rester pendu (refresh du token) et
+    // bloquerait l'écran de connexion.
+    const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 5000);
+    if (user) await synchroniserTout(user.id);
+  } catch {
+    // Hors ligne : rien à synchroniser.
+  }
 }

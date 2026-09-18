@@ -6,6 +6,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { supabase } from "@/lib/supabase/client";
+import { avecTimeout } from "@/lib/timeout";
 import { EnteteEcran, BoutonPrimaire } from "@/components/UI";
 
 type Employe = { id: string; nom: string; telephone: string | null; role: string };
@@ -24,10 +25,15 @@ export default function Employes() {
 
   async function charger() {
     setChargement(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setChargement(false); return; }
-    const { data } = await supabase.from("employes").select("*").eq("proprietaire_id", user.id);
-    setEmployes(data ?? []);
+    try {
+      // Timeout : hors ligne, getUser peut rester pendu et figer l'écran.
+      const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 5000);
+      if (!user) { setChargement(false); return; }
+      const { data } = await avecTimeout(supabase.from("employes").select("*").eq("proprietaire_id", user.id), 5000);
+      setEmployes(data ?? []);
+    } catch {
+      // Hors ligne : liste vide.
+    }
     setChargement(false);
   }
 
