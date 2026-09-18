@@ -1,7 +1,9 @@
 import { appSchema, tableSchema } from "@nozbe/watermelondb";
 
 export const schema = appSchema({
-  version: 4,
+  // v5 : + donnees_supplementaires (JSON) sur depenses et fournisseurs —
+  // lien produit/fournisseur et champs personnalisés, synchronisés en jsonb.
+  version: 5,
   tables: [
     tableSchema({
       name: "produits",
@@ -82,6 +84,7 @@ export const schema = appSchema({
         { name: "adresse", type: "string", isOptional: true },
         { name: "total_achats", type: "number" },
         { name: "montant_du", type: "number" },
+        { name: "donnees_supplementaires", type: "string", isOptional: true }, // jsonb → string JSON
         { name: "cree_le", type: "number" },
         { name: "synchronise", type: "boolean" },
       ],
@@ -94,6 +97,7 @@ export const schema = appSchema({
         { name: "categorie", type: "string" },
         { name: "description", type: "string", isOptional: true },
         { name: "montant", type: "number" },
+        { name: "donnees_supplementaires", type: "string", isOptional: true }, // jsonb → string JSON
         { name: "cree_le", type: "number" },
         { name: "synchronise", type: "boolean" },
       ],

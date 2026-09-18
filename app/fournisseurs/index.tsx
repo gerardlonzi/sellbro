@@ -1,18 +1,24 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, Linking } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 
-type Fournisseur = { id: string; nom: string; telephone: string | null; montantDu: number };
+type Fournisseur = {
+  id: string;
+  nom: string;
+  telephone: string | null;
+  adresse: string | null;
+  montantDu: number;
+  champs: Record<string, string>;
+};
 
 export default function Fournisseurs() {
   const { colors } = useTheme();
@@ -32,7 +38,18 @@ export default function Fournisseurs() {
     const userId = await obtenirUserId();
     if (!userId) { setChargement(false); return; }
     const resultats = await database.get("fournisseurs").query(Q.where("user_id", userId)).fetch();
-    setFournisseurs((resultats as any[]).map((f) => ({ id: f.id, nom: f.nom, telephone: f.telephone, montantDu: f.montantDu })));
+    setFournisseurs((resultats as any[]).map((f) => {
+      let supp: any = {};
+      try { supp = JSON.parse(f.donneesSupplementairesJson || "{}"); } catch {}
+      return {
+        id: f.id,
+        nom: f.nom,
+        telephone: f.telephone,
+        adresse: f.adresse ?? null,
+        montantDu: f.montantDu,
+        champs: supp.champs ?? {},
+      };
+    }));
     setChargement(false);
   }
 
@@ -54,7 +71,18 @@ export default function Fournisseurs() {
               <View style={[styles.avatar, { backgroundColor: colors.accentBg }]}>
                 <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "500" }}>{f.nom.slice(0, 2).toUpperCase()}</Text>
               </View>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", flex: 1 }}>{f.nom}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{f.nom}</Text>
+                {f.adresse ? <Text style={{ color: colors.textMuted, fontSize: 11 }}>{f.adresse}</Text> : null}
+                {Object.entries(f.champs).map(([nom, valeur]) => (
+                  <Text key={nom} style={{ color: colors.textMuted, fontSize: 11 }}>{nom} : {valeur}</Text>
+                ))}
+              </View>
+              {f.telephone ? (
+                <Pressable onPress={() => Linking.openURL(`tel:${f.telephone}`)} hitSlop={8} style={{ padding: 6 }}>
+                  <Feather name="phone" size={15} color={colors.accent} />
+                </Pressable>
+              ) : null}
               {f.montantDu > 0 && (
                 <Text style={{ color: colors.danger, fontSize: 12 }}>{t("fournisseurs_du", langue)} {formater(f.montantDu)}</Text>
               )}

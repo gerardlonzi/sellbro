@@ -8,6 +8,7 @@ export default class Depense extends Model {
   @text("categorie") categorie!: string;
   @text("description") description!: string | null;
   @field("montant") montant!: number;
+  @text("donnees_supplementaires") donneesSupplementairesJson!: string | null;
   @field("synchronise") synchronise!: boolean;
   @date("cree_le") creeLe!: Date;
 }

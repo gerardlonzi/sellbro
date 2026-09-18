@@ -22,6 +22,8 @@ export default function NouveauFournisseur() {
   const { pays } = usePays();
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
+  const [adresse, setAdresse] = useState("");
+  const [champs, setChamps] = useState<{ nom: string; valeur: string }[]>([]);
   const [chargement, setChargement] = useState(false);
 
   async function sauvegarder() {
@@ -43,14 +45,20 @@ export default function NouveauFournisseur() {
     }
     setChargement(true);
     const userId = await obtenirUserId();
-    if (!userId) return;
+    if (!userId) { setChargement(false); return; }
+    // Champs personnalisés : uniquement ceux avec un nom ET une valeur.
+    const champsValides = champs.filter((c) => c.nom.trim() && c.valeur.trim());
     await database.write(async () => {
       await database.get("fournisseurs").create((f: any) => {
         f.userId = userId;
         f.nom = nom.trim();
         f.telephone = telephone.trim() ? `${pays.indicatif}${telephone.replace(/\s/g, "")}` : null;
+        f.adresse = adresse.trim() || null;
         f.totalAchats = 0;
         f.montantDu = 0;
+        f.donneesSupplementairesJson = champsValides.length > 0
+          ? JSON.stringify({ champs: Object.fromEntries(champsValides.map((c) => [c.nom.trim(), c.valeur.trim()])) })
+          : "{}";
         f.creeLe = new Date();
         f.synchronise = false;
       });
@@ -84,6 +92,40 @@ export default function NouveauFournisseur() {
           style={[styles.inputNumero, { borderColor: colors.border, color: colors.textPrimary }]}
         />
       </View>
+
+      {/* Adresse : présente dans le schéma SQL, maintenant exposée dans l'UI */}
+      <Champ label={t("fournisseurs_adresse", langue)} valeur={adresse} onChange={setAdresse} colors={colors} />
+
+      {/* Champs personnalisés : nom + valeur, ajoutables/supprimables */}
+      <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>{t("champs_personnalises", langue)}</Text>
+      {champs.map((c, i) => (
+        <View key={i} style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}>
+          <TextInput
+            value={c.nom}
+            onChangeText={(v) => setChamps((actuel) => actuel.map((x, j) => (j === i ? { ...x, nom: v } : x)))}
+            placeholder={t("champ_nom", langue)}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.inputNumero, { flex: 1, borderColor: colors.border, color: colors.textPrimary, marginBottom: 0 }]}
+          />
+          <TextInput
+            value={c.valeur}
+            onChangeText={(v) => setChamps((actuel) => actuel.map((x, j) => (j === i ? { ...x, valeur: v } : x)))}
+            placeholder={t("champ_valeur", langue)}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.inputNumero, { flex: 1, borderColor: colors.border, color: colors.textPrimary, marginBottom: 0 }]}
+          />
+          <Pressable onPress={() => setChamps((actuel) => actuel.filter((_, j) => j !== i))} hitSlop={8}>
+            <Feather name="x" size={16} color={colors.danger} />
+          </Pressable>
+        </View>
+      ))}
+      <Pressable
+        onPress={() => setChamps((actuel) => [...actuel, { nom: "", valeur: "" }])}
+        style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginBottom: 16, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
+      >
+        <Feather name="plus" size={12} color={colors.accent} />
+        <Text style={{ color: colors.accent, fontSize: 12 }}>{t("champ_ajouter", langue)}</Text>
+      </Pressable>
 
       </ScrollView>
 

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import * as Localization from "expo-localization";
 import { supabase } from "@/lib/supabase/client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { avecTimeout } from "@/lib/timeout";
 
 const LANGUES_SUPPORTEES = ["fr", "en"] as const;
 export type Langue = (typeof LANGUES_SUPPORTEES)[number];
@@ -38,6 +39,7 @@ const traductions = {
     bienvenue_essai_ligne2: (prix: number) => `Après ce délai, l'abonnement Pro (${prix} FCFA/mois) sera nécessaire pour continuer.`,
     bienvenue_essai_ok: "OK",
     bienvenue_essai_pro: "Version Pro",
+    rappel_essai_titre: "Bon retour sur Cikap !",
     rappel_essai_ligne1: (jours: number) => `Ton essai gratuit se termine dans ${jours} jours.`,
     rappel_essai_ligne2: "Continue de profiter de toutes les fonctionnalités Cikap.",
     rappel_essai_plus_tard: "Plus tard",
@@ -131,7 +133,11 @@ const traductions = {
     popup_confirmer_numero_titre: "Confirme ton numéro",
     popup_confirmer_numero_corps: (numero: string) => `${numero} est-il ton vrai numéro ? C'est celui qu'on utilisera pour te contacter.`,
     popup_oui: "Oui, c'est le bon",
-    popup_non: "Non, corriger", popup_ok: "OK",
+    popup_non: "Non, corriger", popup_ok: "OK", popup_annuler: "Annuler",
+    produit_doublon_titre: "Produit déjà existant",
+    produit_doublon_texte: (nom: string) => `« ${nom} » existe déjà dans ton stock. Veux-tu le modifier, ou créer quand même un nouveau produit ?`,
+    produit_doublon_modifier: "Modifier l'existant",
+    produit_doublon_creer: "Créer quand même",
     erreur_numero_manquant: "Entre ton numéro de téléphone pour continuer",
     verification_numero_encours: "Vérification...",
     erreur_numero_deja_utilise: "Ce numéro a déjà un compte. Connecte-toi plutôt.",
@@ -196,6 +202,29 @@ const traductions = {
     reglages_theme_clair: "Clair", reglages_theme_sombre: "Sombre", reglages_theme_auto: "Auto",
     reglages_section_boutique: "Boutique", reglages_info_boutique: "Informations boutique", reglages_categories: "Catégories de produits",
     reglages_section_general: "Général", reglages_langue_devise: "Langue et devise", reglages_notifications: "Notifications", reglages_contact: "Contactez-nous",
+    creances_rechercher: "Rechercher un client…",
+    depense_categorie_nouvelle: "Nouvelle catégorie…",
+    fournisseurs_adresse: "Adresse",
+    depense_categorie_nom: "Nom de la catégorie",
+    depense_fournisseur: "Fournisseur",
+    depense_produit_concerne: "Produit concerné",
+    depense_aucun: "Aucun",
+    champs_personnalises: "Champs personnalisés",
+    champ_ajouter: "Ajouter un champ",
+    champ_nom: "Nom du champ",
+    champ_valeur: "Valeur",
+    filtre_tous: "Tous",
+    filtre_mois: "Mois",
+    filtre_categorie: "Catégorie",
+    filtre_fournisseur: "Fournisseur",
+    creance_whatsapp_rappel: (nom: string, montant: string) => `salut ${nom},j'espére que vous allez bien, petit rappel : vous avez un solde de ${montant}. Merci de régulariser dès que possible.`,
+    reglages_sync_titre: "Synchronisation",
+    reglages_sync_bouton: "Synchroniser",
+    sync_erreur: "Échec de la synchronisation",
+    sync_jamais: "Jamais synchronisé",
+    notif_alertes_titre: "Cikap — Alertes",
+    notif_msg_stock_faible: (n: number, apercu: string) => `${n} produit(s) en stock faible : ${apercu}`,
+    notif_msg_creance_retard: (n: number, apercu: string) => `${n} créance(s) en retard : ${apercu}`,
     reglages_upgrade: "Upgrade", reglages_vocaux_mois: "vocaux/mois", reglages_scans_mois: "scans/mois",
     reglages_test_reinitialiser: "Réinitialiser l'onboarding (test)",
 
@@ -524,6 +553,7 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     bienvenue_essai_ligne2: (prix: number) => `After this period, the Pro subscription (${prix} FCFA/month) will be required to continue.`,
     bienvenue_essai_ok: "OK",
     bienvenue_essai_pro: "Pro Version",
+    rappel_essai_titre: "Welcome back to Cikap!",
     rappel_essai_ligne1: (jours: number) => `Your Free Trial ends in ${jours} days.`,
     rappel_essai_ligne2: "Continue enjoying all Cikap features.",
     rappel_essai_plus_tard: "Later",
@@ -617,7 +647,11 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     popup_confirmer_numero_titre: "Confirm your number",
     popup_confirmer_numero_corps: (numero: string) => `Is ${numero} your real number? We'll use it to reach you.`,
     popup_oui: "Yes, that's right",
-    popup_non: "No, fix it", popup_ok: "OK",
+    popup_non: "No, fix it", popup_ok: "OK", popup_annuler: "Cancel",
+    produit_doublon_titre: "Product already exists",
+    produit_doublon_texte: (nom: string) => `"${nom}" already exists in your stock. Do you want to edit it, or create a new product anyway?`,
+    produit_doublon_modifier: "Edit existing",
+    produit_doublon_creer: "Create anyway",
     erreur_numero_manquant: "Enter your phone number to continue",
     verification_numero_encours: "Checking...",
     erreur_numero_deja_utilise: "This number already has an account. Log in instead.",
@@ -682,6 +716,29 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     reglages_theme_clair: "Light", reglages_theme_sombre: "Dark", reglages_theme_auto: "Auto",
     reglages_section_boutique: "Shop", reglages_info_boutique: "Shop information", reglages_categories: "Product categories",
     reglages_section_general: "General", reglages_langue_devise: "Language and currency", reglages_notifications: "Notifications", reglages_contact: "Contact us",
+    creances_rechercher: "Search a client…",
+    depense_categorie_nouvelle: "New category…",
+    fournisseurs_adresse: "Address",
+    depense_categorie_nom: "Category name",
+    depense_fournisseur: "Supplier",
+    depense_produit_concerne: "Related product",
+    depense_aucun: "None",
+    champs_personnalises: "Custom fields",
+    champ_ajouter: "Add a field",
+    champ_nom: "Field name",
+    champ_valeur: "Value",
+    filtre_tous: "All",
+    filtre_mois: "Month",
+    filtre_categorie: "Category",
+    filtre_fournisseur: "Supplier",
+    creance_whatsapp_rappel: (nom: string, montant: string) => `Hello ${nom}, hope you are doing well, a quick reminder: you have an outstanding balance of ${montant}. Please settle it when you can.`,
+    reglages_sync_titre: "Synchronization",
+    reglages_sync_bouton: "Sync now",
+    sync_erreur: "Sync failed",
+    sync_jamais: "Never synced",
+    notif_alertes_titre: "Cikap — Alerts",
+    notif_msg_stock_faible: (n: number, apercu: string) => `${n} product(s) low on stock: ${apercu}`,
+    notif_msg_creance_retard: (n: number, apercu: string) => `${n} overdue credit(s): ${apercu}`,
     reglages_upgrade: "Upgrade", reglages_vocaux_mois: "voice/month", reglages_scans_mois: "scans/month",
     reglages_test_reinitialiser: "Reset onboarding (test)",
 
@@ -1008,10 +1065,11 @@ export function LangueProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Timeout : hors ligne, getUser peut rester pendu (refresh du token).
+      const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 4000);
       if (!user) return;
 
-      const { data } = await supabase.from("profiles").select("langue").eq("id", user.id).single();
+      const { data } = await avecTimeout(supabase.from("profiles").select("langue").eq("id", user.id).single(), 4000);
       if (data?.langue && LANGUES_SUPPORTEES.includes(data.langue as Langue) && !langueLocale) {
         setLangueState(data.langue as Langue);
         await AsyncStorage.setItem(CLE_LANGUE_LOCALE, data.langue);
@@ -1026,7 +1084,7 @@ export function LangueProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(CLE_LANGUE_LOCALE, nouvelleLangue);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 4000);
       if (user) {
         await supabase.from("profiles").update({ langue: nouvelleLangue }).eq("id", user.id);
       }

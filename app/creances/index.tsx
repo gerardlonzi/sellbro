@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, Linking, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Pressable, StyleSheet, Linking, ActivityIndicator, TextInput } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -38,6 +38,10 @@ export default function CreancesDettes() {
   const [enregistrement, setEnregistrement] = useState(false);
   const [filtres, setFiltres] = useState<ValeursFiltre>(VALEURS_FILTRE_VIDES);
   const [panneauOuvert, setPanneauOuvert] = useState(false);
+  const [recherche, setRecherche] = useState("");
+  // La barre de recherche est masquée par défaut : l'icône loupe (à gauche du
+  // filtre) l'affiche/la cache comme un interrupteur.
+  const [rechercheVisible, setRechercheVisible] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -115,6 +119,10 @@ export default function CreancesDettes() {
   });
   filtrees = filtrees.filter((c) => dansPlageMontant(c.montant_restant, filtres));
 
+  // Recherche par nom de client (insensible à la casse).
+  const terme = recherche.trim().toLowerCase();
+  if (terme) filtrees = filtrees.filter((c) => c.personne_nom.toLowerCase().includes(terme));
+
   if (filtres.tri === "montant_croissant") filtrees = [...filtrees].sort((a, b) => a.montant_restant - b.montant_restant);
   if (filtres.tri === "montant_decroissant") filtrees = [...filtrees].sort((a, b) => b.montant_restant - a.montant_restant);
   if (filtres.tri === "echeance_proche") {
@@ -133,7 +141,7 @@ export default function CreancesDettes() {
 
   function envoyerWhatsapp(telephone: string | null, nom: string, montant: number) {
     if (!telephone) return;
-    const message = `Bonjour ${nom}, petit rappel : vous avez un solde de ${formater(montant)}. Merci de régulariser quand vous pourrez.`;
+    const message = t("creance_whatsapp_rappel", langue)(nom, formater(montant));
     Linking.openURL(`https://wa.me/${telephone.replace("+", "")}?text=${encodeURIComponent(message)}`);
   }
 
@@ -141,11 +149,42 @@ export default function CreancesDettes() {
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50, height: "100%" }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <EnteteEcran titre={t("creances_titre", langue)} onRetour={() => router.back()} />
-        <Pressable onPress={() => setPanneauOuvert(true)} style={[styles.boutonFiltreIcone]}>
-          <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Pressable
+            onPress={() => {
+              // Bascule : fermer la barre efface aussi la recherche en cours.
+              if (rechercheVisible) setRecherche("");
+              setRechercheVisible(!rechercheVisible);
+            }}
+            style={styles.boutonFiltreIcone}
+          >
+            <Feather name="search" size={16} color={rechercheVisible || recherche ? colors.accent : colors.textSecondary} />
+          </Pressable>
+          <Pressable onPress={() => setPanneauOuvert(true)} style={[styles.boutonFiltreIcone]}>
+            <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
+          </Pressable>
+        </View>
 
       </View>
+
+      {rechercheVisible && (
+        <View style={[styles.barreRecherche, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+          <Feather name="search" size={14} color={colors.textMuted} />
+          <TextInput
+            value={recherche}
+            onChangeText={setRecherche}
+            placeholder={t("creances_rechercher", langue)}
+            placeholderTextColor={colors.textMuted}
+            autoFocus
+            style={{ flex: 1, color: colors.textPrimary, fontSize: 13, paddingVertical: 8 }}
+          />
+          {recherche.length > 0 && (
+            <Pressable onPress={() => setRecherche("")} hitSlop={8}>
+              <Feather name="x" size={14} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
+      )}
 
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
         <View style={[styles.onglets, { backgroundColor: colors.border, flex: 1 }]}>
@@ -240,6 +279,7 @@ export default function CreancesDettes() {
 }
 
 const styles = StyleSheet.create({
+  barreRecherche: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, marginBottom: 10 },
   onglets: { flexDirection: "row", borderRadius: 10, padding: 3 },
   onglet: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
   boutonFiltreIcone: { width: 42, alignItems: "center", justifyContent: "center", borderRadius: 8 },

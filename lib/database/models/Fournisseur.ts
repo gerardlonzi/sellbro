@@ -10,6 +10,7 @@ export default class Fournisseur extends Model {
   @text("adresse") adresse!: string | null;
   @field("total_achats") totalAchats!: number;
   @field("montant_du") montantDu!: number;
+  @text("donnees_supplementaires") donneesSupplementairesJson!: string | null;
   @field("synchronise") synchronise!: boolean;
   @date("cree_le") creeLe!: Date;
 }
