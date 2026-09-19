@@ -23,6 +23,7 @@ export default function NouveauFournisseur() {
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
   const [adresse, setAdresse] = useState("");
+  const [description, setDescription] = useState("");
   const [champs, setChamps] = useState<{ nom: string; valeur: string }[]>([]);
   const [chargement, setChargement] = useState(false);
 
@@ -56,9 +57,10 @@ export default function NouveauFournisseur() {
         f.adresse = adresse.trim() || null;
         f.totalAchats = 0;
         f.montantDu = 0;
-        f.donneesSupplementairesJson = champsValides.length > 0
-          ? JSON.stringify({ champs: Object.fromEntries(champsValides.map((c) => [c.nom.trim(), c.valeur.trim()])) })
-          : "{}";
+        const donnees: Record<string, unknown> = {};
+        if (description.trim()) donnees.description = description.trim();
+        if (champsValides.length > 0) donnees.champs = Object.fromEntries(champsValides.map((c) => [c.nom.trim(), c.valeur.trim()]));
+        f.donneesSupplementairesJson = JSON.stringify(donnees);
         f.creeLe = new Date();
         f.synchronise = false;
       });
@@ -95,6 +97,8 @@ export default function NouveauFournisseur() {
 
       {/* Adresse : présente dans le schéma SQL, maintenant exposée dans l'UI */}
       <Champ label={t("fournisseurs_adresse", langue)} valeur={adresse} onChange={setAdresse} colors={colors} />
+
+      <Champ label={t("fournisseurs_description", langue)} valeur={description} onChange={setDescription} colors={colors} />
 
       {/* Champs personnalisés : nom + valeur, ajoutables/supprimables */}
       <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>{t("champs_personnalises", langue)}</Text>
