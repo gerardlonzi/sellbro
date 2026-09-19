@@ -147,25 +147,31 @@ export default function CreancesDettes() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50, height: "100%" }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <EnteteEcran titre={t("creances_titre", langue)} onRetour={() => router.back()} />
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Pressable
-            onPress={() => {
-              // Bascule : fermer la barre efface aussi la recherche en cours.
-              if (rechercheVisible) setRecherche("");
-              setRechercheVisible(!rechercheVisible);
-            }}
-            style={styles.boutonFiltreIcone}
-          >
-            <Feather name="search" size={16} color={rechercheVisible || recherche ? colors.accent : colors.textSecondary} />
-          </Pressable>
-          <Pressable onPress={() => setPanneauOuvert(true)} style={[styles.boutonFiltreIcone]}>
-            <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
-          </Pressable>
-        </View>
-
-      </View>
+      {/* Boutons recherche + filtre dans l'entête via la prop `action`
+          (comme Dépenses/Fournisseurs) : un View externe à côté de
+          EnteteEcran les poussait hors de l'écran à cause du titre en flex:1. */}
+      <EnteteEcran
+        titre={t("creances_titre", langue)}
+        onRetour={() => router.back()}
+        action={
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Pressable
+              onPress={() => {
+                // Bascule : fermer la barre efface aussi la recherche en cours.
+                if (rechercheVisible) setRecherche("");
+                setRechercheVisible(!rechercheVisible);
+              }}
+              style={styles.boutonFiltreIcone}
+              hitSlop={8}
+            >
+              <Feather name="search" size={16} color={rechercheVisible || recherche ? colors.accent : colors.textSecondary} />
+            </Pressable>
+            <Pressable onPress={() => setPanneauOuvert(true)} style={styles.boutonFiltreIcone} hitSlop={8}>
+              <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
+            </Pressable>
+          </View>
+        }
+      />
 
       {rechercheVisible && (
         <View style={[styles.barreRecherche, { borderColor: colors.border, backgroundColor: colors.surface }]}>
