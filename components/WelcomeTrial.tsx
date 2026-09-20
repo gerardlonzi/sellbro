@@ -97,7 +97,7 @@ export function WelcomeTrial() {
     ? t("bienvenue_essai_titre", langue)
     : estExpiration
     ? abonnementExpire ? t("abonnement_termine_statut", langue) : t("essai_termine_titre", langue)
-    : t("bienvenue_essai_titre", langue);
+    : t("rappel_essai_titre", langue);
 
   const corps = estBienvenue
     ? t("bienvenue_essai_ligne1", langue)(essai.dureeTotale)
