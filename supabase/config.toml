@@ -1,0 +1,4 @@
+# Le webhook SasPay est appelé par les serveurs SasPay (pas par l'app) :
+# pas de JWT Supabase — la sécurité repose sur la signature HMAC.
+[functions.saspay-webhook]
+verify_jwt = false
