@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from "react-native";
+import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useEssai } from "@/lib/trial/useEssai";
@@ -17,7 +16,6 @@ export default function OnboardingPlan() {
   const essai = useEssai();
   const { formater } = useCurrency();
   const [planChoisi, setPlanChoisi] = useState<PlanId>("premium");
-  const [chargement, setChargement] = useState(false);
 
   const PLANS: { id: PlanId; nomCle: string; prixCle: string; prixJourCle?: string; descCle: string; fonctionnalitesCle: string; populaire?: boolean }[] = [
     { id: "premium", nomCle: "plan_premium_nom", prixCle: "plan_premium_prix", prixJourCle: "plan_premium_prix_jour", descCle: "plan_premium_description", fonctionnalitesCle: "plan_premium_fonctionnalites", populaire: true },
@@ -35,13 +33,8 @@ export default function OnboardingPlan() {
   const couleurDegrade = teinteParPlan[planChoisi];
 
   async function continuer() {
-    setChargement(true);
-
-      await AsyncStorage.setItem("plan_choisi_en_attente", planChoisi);
-      const telephone = await AsyncStorage.getItem("boutika_telephone");
-      setChargement(false);
-      Linking.openURL(`https://boutika.app/abonnement?plan=${planChoisi}${telephone ? `&telephone=${encodeURIComponent(telephone)}` : ""}`);
-    
+    // Paiement Mobile Money in-app (SasPay) — plus de redirection externe.
+    router.push("/premium/paiement");
   }
 
   return (
@@ -53,11 +46,6 @@ export default function OnboardingPlan() {
         <Text style={{ fontSize: 21, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>{t("plan_titre", langue)}</Text>
         <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 22 }}>{t("plan_sous_titre", langue)}</Text>
 
-        {essai.pret && !essai.estPremium && essai.actif && (
-          <View style={{ backgroundColor: colors.proBg, borderColor: colors.borderPro, borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 18 }}>
-            <Text style={{ color: colors.pro, fontSize: 13, textAlign: "center" }}>{t("plan_essai_actif", langue)}</Text>
-          </View>
-        )}
 
         {PLANS.map((plan) => {
           const selectionne = planChoisi === plan.id;
@@ -83,8 +71,12 @@ export default function OnboardingPlan() {
                 {selectionne && <Feather name="check-circle" size={18} color={couleurAccentCarte} />}
               </View>
               <View style={styles.ligneBase}>
-                <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>{formater(essai.prix)} / {t("mois_title",langue)}</Text>
-                <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>(≈ {formater(Math.round(essai.prix / 30))} / {t("jour_title",langue)})</Text>
+                <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>
+                  {essai.prix != null ? `${formater(essai.prix)} / ${t("mois_title",langue)}` : "…"}
+                </Text>
+                {essai.prix != null && (
+                  <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>(≈ {formater(Math.round(essai.prix / 30))} / {t("jour_title",langue)})</Text>
+                )}
               </View>
               <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 6, marginBottom: 10, lineHeight: 18 }}>{t(plan.descCle as any, langue)}</Text>
               {(t(plan.fonctionnalitesCle as any, langue) as unknown as string[]).map((f) => (
@@ -96,16 +88,20 @@ export default function OnboardingPlan() {
             </Pressable>
           );
         })}
+        {/* Message de redirection SasPay : affiché ICI (avant le clic), car
+            l'écran suivant ouvre directement le checkout hébergé. */}
+        <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: "center", marginTop: 14, lineHeight: 18 }}>
+          {t("paiement_checkout_info", langue)}
+        </Text>
         <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: "center", marginTop: 16, marginBottom: 12 }}>{t("plan_note_changement", langue)}</Text>
       </ScrollView>
 
       <View style={[styles.bas, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
         <Pressable
           onPress={continuer}
-          disabled={chargement}
-          style={[styles.boutonPrincipal, { backgroundColor: planChoisi === "premium" ? colors.proFill : colors.accent, opacity: chargement ? 0.6 : 1 }]}
+          style={[styles.boutonPrincipal, { backgroundColor: planChoisi === "premium" ? colors.proFill : colors.accent }]}
         >
-          <Text style={[styles.boutonTexte, { color: planChoisi === "premium" ? colors.onPro : "#fff" }]}>{chargement ? "..." : TEXTE_BOUTON[planChoisi]}</Text>
+          <Text style={[styles.boutonTexte, { color: planChoisi === "premium" ? colors.onPro : "#fff" }]}>{TEXTE_BOUTON[planChoisi]}</Text>
         </Pressable>
       </View>
 
