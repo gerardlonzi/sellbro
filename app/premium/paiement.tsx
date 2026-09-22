@@ -156,7 +156,16 @@ export default function Paiement() {
       );
       if (error || !data?.checkout_url || !data?.transaction_id) {
         console.warn("create-saspay-checkout a échoué :", error ?? data);
-        showToast(t("paiement_erreur_initiation", langue), "error");
+        // Sur un non-2xx, supabase-js met le corps dans error.context : la
+        // fonction renvoie la cause exacte ({ error: "SasPay non configuré"
+        // | "plan introuvable" | … }) — on l'affiche pour le diagnostic.
+        let message = t("paiement_erreur_initiation", langue);
+        try {
+          const corps = await (error as any)?.context?.json();
+          if (corps?.error) message = String(corps.error);
+          else if (data?.error) message = String(data.error);
+        } catch {}
+        showToast(message, "error");
         setErreurInit(true);
         return;
       }
