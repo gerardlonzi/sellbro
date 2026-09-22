@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
+import { AvatarNom } from "@/components/AvatarNom";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
@@ -323,25 +324,32 @@ export default function NouvelleVente() {
       )}
       {panier.map((ligne, i) => (
         <View key={i} style={[styles.lignePanier, { borderColor: colors.border }]}>
-          <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{ligne.nom}</Text>
-          <Pressable onPress={() => modifierQuantite(i, -1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
-            <Feather name="minus" size={16} color={colors.textPrimary} />
-          </Pressable>
-          <TextInput
-            value={quantitesBrouillon[i] ?? String(ligne.quantite)}
-            onChangeText={(v) => modifierQuantiteManuelle(i, v)}
-            onEndEditing={() => validerQuantiteManuelle(i)}
-            onBlur={() => validerQuantiteManuelle(i)}
-            keyboardType="numeric"
-            style={{ width: 40, textAlign: "center", color: colors.textPrimary, fontSize: 15, fontWeight: "700", borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 2 }}
-          />
-          <Pressable onPress={() => modifierQuantite(i, 1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
-            <Feather name="plus" size={16} color={colors.textPrimary} />
-          </Pressable>
-          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "700", width: 70, textAlign: "right" }}>
+          {/* Colonne 1 : avatar avec initiales du produit */}
+          <AvatarNom nom={ligne.nom} taille={32} />
+          {/* Colonne 2 : nom du produit */}
+          <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, flex: 1, marginLeft: 8 }}>{ligne.nom}</Text>
+          {/* Colonne 3 : quantité (contrôles groupés) */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Pressable onPress={() => modifierQuantite(i, -1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
+              <Feather name="minus" size={16} color={colors.textPrimary} />
+            </Pressable>
+            <TextInput
+              value={quantitesBrouillon[i] ?? String(ligne.quantite)}
+              onChangeText={(v) => modifierQuantiteManuelle(i, v)}
+              onEndEditing={() => validerQuantiteManuelle(i)}
+              onBlur={() => validerQuantiteManuelle(i)}
+              keyboardType="numeric"
+              style={{ width: 36, textAlign: "center", color: colors.textPrimary, fontSize: 15, fontWeight: "700", borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 2 }}
+            />
+            <Pressable onPress={() => modifierQuantite(i, 1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
+              <Feather name="plus" size={16} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+          {/* Colonne 4 : prix total de la ligne */}
+          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "700", width: 70, textAlign: "right", marginLeft: 8 }}>
             {formater(ligne.quantite * ligne.prixUnitaire)}
           </Text>
-          <Pressable onPress={() => retirerDuPanier(i)} hitSlop={8}>
+          <Pressable onPress={() => retirerDuPanier(i)} hitSlop={8} style={{ marginLeft: 6 }}>
             <Feather name="x" size={16} color={colors.danger} />
           </Pressable>
         </View>

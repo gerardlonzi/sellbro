@@ -63,7 +63,7 @@ export default function Reglages() {
                 {abonnementExpire ? t("abonnement_termine_statut", langue) : t("essai_termine_statut", langue)}
               </Text>
             )}
-            {essai.pret && plan && !essai.estPremium && (
+            {essai.pret && plan && !essai.estPremium && essai.prix != null && (
               <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
                 {t("version_pro", langue)} · {formater(essai.prix)} / {t("mois_title",langue)}
               </Text>

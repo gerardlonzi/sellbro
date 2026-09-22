@@ -42,9 +42,11 @@ export function PaywallPopup() {
           </View>
           <Text style={[styles.titre, { color: colors.textPrimary }]}>{titre}</Text>
           <Text style={[styles.texte, { color: colors.textSecondary }]}>{message}</Text>
-          <Text style={[styles.prix, { color: colors.textPrimary }]}>
-            {t("paywall_prix_label", etat.langue)} : {formater(essai.prix)}/{t("mois_title",langue)} (≈ {formater(Math.round(essai.prix / 30))}/{t("jour_title",langue)})
-          </Text>
+          {essai.prix != null && (
+            <Text style={[styles.prix, { color: colors.textPrimary }]}>
+              {t("paywall_prix_label", etat.langue)} : {formater(essai.prix)}/{t("mois_title",langue)} (≈ {formater(Math.round(essai.prix / 30))}/{t("jour_title",langue)})
+            </Text>
+          )}
 
           <View style={styles.ligneBoutons}>
             <Pressable onPress={fermerPaywall} style={[styles.boutonSecondaire, { borderColor: colors.border }]}>

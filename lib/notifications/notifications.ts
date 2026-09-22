@@ -8,6 +8,8 @@ import { parserDateSeule } from "@/lib/formatDate";
 import { supabase } from "@/lib/supabase/client";
 import { avecTimeout } from "@/lib/timeout";
 import { t, Langue, detecterLangueSysteme } from "@/lib/i18n";
+import { DEVISES } from "@/lib/currency/CurrencyProvider";
+import { convertirDepuisFcfa } from "@/lib/currency/taux";
 
 // Langue choisie dans l'app (pas celle du téléphone) : les notifications
 // planifiées sont générées en dehors de React, on lit donc le stockage local.
@@ -17,6 +19,18 @@ async function langueUtilisateur(): Promise<Langue> {
     if (l === "fr" || l === "en") return l;
   } catch {}
   return detecterLangueSysteme();
+}
+
+// Devise choisie dans l'app : même raisonnement que la langue, les montants
+// des notifications doivent respecter ce choix (pas un symbole codé en dur).
+async function formaterMontantNotif(montantFcfa: number): Promise<string> {
+  try {
+    const code = await AsyncStorage.getItem("boutika_devise");
+    const devise = DEVISES.find((d) => d.code === code) ?? DEVISES[0];
+    return `${convertirDepuisFcfa(montantFcfa, devise.code).toLocaleString()} ${devise.symbole}`;
+  } catch {
+    return `${montantFcfa.toLocaleString()} FCFA`;
+  }
 }
 
 // Configure le comportement des notifications affichées (même en avant-plan).
@@ -271,7 +285,8 @@ export async function verifierAlertesEtNotifier() {
     );
   }
   if (creanceActive && creancesRetard.length > 0) {
-    const apercu = creancesRetard.slice(0, 3).map((c) => `${c.nom} (${c.montant} F)`).join(", ");
+    const montants = await Promise.all(creancesRetard.slice(0, 3).map((c) => formaterMontantNotif(c.montant)));
+    const apercu = creancesRetard.slice(0, 3).map((c, i) => `${c.nom} (${montants[i]})`).join(", ");
     messages.push(
       `${t("notif_msg_creance_retard", langue)(creancesRetard.length, apercu)}${creancesRetard.length > 3 ? "…" : ""}`
     );

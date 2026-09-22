@@ -2,7 +2,6 @@ import { supabase } from "../supabase/client";
 
 export type RemoteConfig = {
   aiFeaturesEnabled: boolean;
-  prixAbonnementMensuel: number;
   limiteVocalGratuitMois: number;
   limiteScanGratuitMois: number;
   dureeMaxVocalSecondes: number;
@@ -12,9 +11,11 @@ export type RemoteConfig = {
 // Valeurs de secours si la config distante n'a pas pu être lue
 // (ex: tout premier lancement hors ligne). Ça garantit que l'app
 // démarre toujours, même sans connexion.
+// NB : le prix de l'abonnement et la durée d'essai ne sont PAS ici — ils
+// viennent de la base (tables plans / app_config) via useEssai, avec cache
+// local pour le hors ligne. Aucune valeur tarifaire n'est codée en dur.
 const DEFAULT_CONFIG: RemoteConfig = {
   aiFeaturesEnabled: false,
-  prixAbonnementMensuel: 2500,
   limiteVocalGratuitMois: 20,
   limiteScanGratuitMois: 5,
   dureeMaxVocalSecondes: 15,
@@ -33,7 +34,6 @@ export async function fetchRemoteConfig(): Promise<RemoteConfig> {
 
   return {
     aiFeaturesEnabled: map.ai_features_enabled === "true",
-    prixAbonnementMensuel: Number(map.prix_abonnement_mensuel) || DEFAULT_CONFIG.prixAbonnementMensuel,
     limiteVocalGratuitMois: Number(map.limite_vocal_gratuit_mois) || DEFAULT_CONFIG.limiteVocalGratuitMois,
     limiteScanGratuitMois: Number(map.limite_scan_gratuit_mois) || DEFAULT_CONFIG.limiteScanGratuitMois,
     dureeMaxVocalSecondes: Number(map.duree_max_vocal_secondes) || DEFAULT_CONFIG.dureeMaxVocalSecondes,

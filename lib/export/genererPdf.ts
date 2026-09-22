@@ -137,53 +137,96 @@ const STYLE = `<style>
   .total { font-size: 14px; font-weight: bold; }
 </style>`;
 
-async function partager(html: string, nomFichier: string) {
-  const { uri } = await Print.printToFileAsync({ html });
+async function partager(html: string, nomFichier: string, ticket = false) {
+  const options = ticket
+    ? { html, width: LARGEUR_TICKET_PT, height: HAUTEUR_TICKET_PT }
+    : { html };
+  const { uri } = await Print.printToFileAsync(options);
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: nomFichier });
   }
 }
 
 // Envoie directement vers l'écran d'impression du téléphone (sans partage).
-async function imprimerDirectement(html: string) {
-  await Print.printAsync({ html });
+async function imprimerDirectement(html: string, ticket = false) {
+  await Print.printAsync(ticket ? { html, width: LARGEUR_TICKET_PT, height: HAUTEUR_TICKET_PT } : { html });
 }
 
-// Génère une facture PDF. Par défaut, ouvre directement l'écran d'impression
-// du téléphone ; `exporter = true` génère un fichier à partager/télécharger.
+// Format « ticket de caisse » thermique : largeur standard 80 mm (≈ 227 pt),
+// PAS du A4. expo-print prend les dimensions de page en points.
+const LARGEUR_TICKET_PT = 227; // 80 mm
+const HAUTEUR_TICKET_PT = 842; // hauteur de page (pagination automatique)
+
+// Style « ticket de caisse » (modèle : assets/facture.jpg) — bande étroite
+// type reçu thermique : police monospace, en-tête centré, séparateurs en
+// pointillés, TOTAL en gros, mode de paiement, date centrée en bas.
+const STYLE_TICKET = `<style>
+  @page { size: 80mm auto; margin: 0; }
+  * { font-family: "Courier New", Courier, monospace; color: #1a1a1a; }
+  body { width: 80mm; margin: 0; padding: 10px 8px; }
+  .centre { text-align: center; }
+  .boutique { font-size: 17px; font-weight: bold; text-transform: uppercase; }
+  .contact { font-size: 11px; }
+  .separateur { border-top: 1px dashed #1a1a1a; margin: 10px 0; }
+  .ligne { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .ligne .detail { color: #444; font-size: 10px; }
+  .total { font-size: 20px; font-weight: bold; padding: 6px 0; }
+  .paiement { font-size: 12px; text-transform: uppercase; }
+  .date { text-align: center; font-size: 12px; margin-top: 12px; }
+  .merci { text-align: center; font-size: 9px; color: #555; margin-top: 14px; line-height: 1.5; }
+</style>`;
+
+// Génère une facture PDF au format ticket de caisse. Par défaut, ouvre
+// directement l'écran d'impression ; `exporter = true` génère un fichier à
+// partager/télécharger.
 export async function genererFacturePdf(facture: any, lignes: any[], langue: "fr" | "en" = "fr", exporter = false) {
   const infos = await obtenirInfosBoutique();
   const l = L[langue];
+
+  const date = facture.creeLe ? new Date(facture.creeLe) : new Date();
+  const dateFormatee = `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+
+  // Chaque article : nom (+ détail « qté × prix unitaire ») et montant à droite.
   const lignesHtml = lignes
     .map(
-      (x) => `<tr>
-        <td>${x.produitNom}</td>
-        <td class="droite">${x.quantite}</td>
-        <td class="droite">${(x.prixUnitaire || 0).toLocaleString()} F</td>
-        <td class="droite">${((x.quantite || 0) * (x.prixUnitaire || 0)).toLocaleString()} F</td>
-      </tr>`
+      (x) => `<div class="ligne">
+        <div>
+          <div>${x.produitNom}</div>
+          <div class="detail">${x.quantite} × ${(x.prixUnitaire || 0).toLocaleString()} F</div>
+        </div>
+        <div>${((x.quantite || 0) * (x.prixUnitaire || 0)).toLocaleString()} F</div>
+      </div>`
     )
     .join("");
 
-  const html = `<html><head>${STYLE}</head><body>
-    ${enteteHtml(infos, l.facture, facture.numero)}
-    ${blocClientHtml(facture, langue)}
-    <table>
-      <tr><th>${l.produit}</th><th class="droite">${l.qte}</th><th class="droite">${l.prixUnitaire}</th><th class="droite">${l.montant}</th></tr>
-      ${lignesHtml}
-    </table>
-    <table style="width:auto;margin-left:auto;min-width:200px;">
-      <tr><td>${l.sousTotal}</td><td class="droite">${(facture.sousTotal || 0).toLocaleString()} F</td></tr>
-      ${facture.remise ? `<tr><td>${l.remise}</td><td class="droite">- ${facture.remise.toLocaleString()} F</td></tr>` : ""}
-      <tr><td class="total">${l.total}</td><td class="droite total">${(facture.total || 0).toLocaleString()} F</td></tr>
-    </table>
-    ${piedHtml(langue)}
+  const clientHtml = facture.clientNom
+    ? `<div class="ligne"><div>${l.client}</div><div>${facture.clientNom}</div></div>
+       ${facture.clientTelephone ? `<div class="ligne"><div>${l.telephone}</div><div>${facture.clientTelephone}</div></div>` : ""}`
+    : "";
+
+  const html = `<html><head>${STYLE_TICKET}</head><body>
+    <div class="centre">
+      <div class="boutique">${infos.nom}</div>
+      ${infos.telephone ? `<div class="contact">${infos.telephone}</div>` : ""}
+      ${infos.email ? `<div class="contact">${infos.email}</div>` : ""}
+    </div>
+    <div class="separateur"></div>
+    <div class="ligne"><div>${l.facture}</div><div>${facture.numero}</div></div>
+    ${clientHtml}
+    <div class="separateur"></div>
+    ${lignesHtml}
+    <div class="separateur"></div>
+    ${facture.remise ? `<div class="ligne"><div>${l.remise}</div><div>- ${facture.remise.toLocaleString()} F</div></div>` : ""}
+    <div class="ligne total"><div>${l.total}</div><div>${(facture.total || 0).toLocaleString()} F</div></div>
+    <div class="ligne paiement"><div>${facture.statut === "payee" ? l.total : l.sousTotal}</div><div>${(facture.montantPaye || 0).toLocaleString()} F</div></div>
+    <div class="date">${dateFormatee}</div>
+    <div class="merci">${l.mentions}</div>
   </body></html>`;
 
   if (exporter) {
-    await partager(html, `Facture-${facture.numero}.pdf`);
+    await partager(html, `Facture-${facture.numero}.pdf`, true);
   } else {
-    await imprimerDirectement(html);
+    await imprimerDirectement(html, true);
   }
   await enregistrerActivite("impression", "ajout", `Facture ${facture.numero} imprimée`);
 }

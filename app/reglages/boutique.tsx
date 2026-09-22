@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, Linking } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { EnteteEcran, BoutonPrimaire } from "@/components/UI";
@@ -12,6 +12,9 @@ import { avecTimeout } from "@/lib/timeout";
 import { televerserImage } from "@/lib/storage/images";
 import { ImageCachee } from "@/components/ImageCachee";
 import { usePays } from "@/lib/pays/PaysProvider";
+
+// Numéro WhatsApp du support (même que la page Contact).
+const NUMERO_SUPPORT = "+237671986281";
 
 export default function InfosBoutique() {
   const { colors } = useTheme();
@@ -156,6 +159,12 @@ export default function InfosBoutique() {
       <View style={{ marginTop: 20 }}>
         <BoutonPrimaire texte={t("produit_sauver", langue)} onPress={sauvegarder} disabled={chargement} />
       </View>
+
+      {/* Lien support : tout en bas de la page, ouvre WhatsApp. */}
+      <Pressable onPress={() => Linking.openURL(`https://wa.me/${NUMERO_SUPPORT.replace("+", "")}`)} style={styles.contacter}>
+        <MaterialCommunityIcons name="whatsapp" size={15} color="#1D9E75" />
+        <Text style={{ color: "#1D9E75", fontSize: 13, fontWeight: "500" }}>{t("boutique_nous_contacter", langue)}</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -168,4 +177,5 @@ const styles = StyleSheet.create({
   indicatif: { justifyContent: "center", paddingHorizontal: 10, borderWidth: 1, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 4 },
   logo: { width: 84, height: 84, borderRadius: 16 },
   logoVide: { borderWidth: 1, borderStyle: "dashed", alignItems: "center", justifyContent: "center" },
+  contacter: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 28, marginBottom: 20 },
 });

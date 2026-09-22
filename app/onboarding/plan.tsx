@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from "react-native";
+import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
+import { useEssai } from "@/lib/trial/useEssai";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { demarrerOuVerifierEssaiGratuit } from "@/lib/trial/deviceTrial";
 
 type PlanId = "gratuit" | "premium";
@@ -13,9 +15,12 @@ type PlanId = "gratuit" | "premium";
 export default function OnboardingPlan() {
   const { colors } = useTheme();
   const { langue } = useLangue();
+  const essai = useEssai();
+  const { formater } = useCurrency();
   const [planChoisi, setPlanChoisi] = useState<PlanId>("gratuit");
   const [chargement, setChargement] = useState(false);
 
+  // Le prix vient de la base (table plans via useEssai) — aucune valeur en dur.
   const PLANS: { id: PlanId; nomCle: string; prixCle: string; prixJourCle?: string; descCle: string; fonctionnalitesCle: string; populaire?: boolean }[] = [
     { id: "gratuit", nomCle: "plan_gratuit_nom", prixCle: "plan_gratuit_prix", descCle: "plan_gratuit_description", fonctionnalitesCle: "plan_premium_fonctionnalites" },
     { id: "premium", nomCle: "plan_premium_nom", prixCle: "plan_premium_prix", prixJourCle: "plan_premium_prix_jour", descCle: "plan_premium_description", fonctionnalitesCle: "plan_premium_fonctionnalites", populaire: true },
@@ -44,9 +49,8 @@ export default function OnboardingPlan() {
       router.replace("/(tabs)/accueil");
     } else {
       await AsyncStorage.setItem("plan_choisi_en_attente", planChoisi);
-      const telephone = await AsyncStorage.getItem("boutika_telephone");
       setChargement(false);
-      Linking.openURL(`https://boutika.app/abonnement?plan=${planChoisi}${telephone ? `&telephone=${encodeURIComponent(telephone)}` : ""}`);
+      router.push("/premium/paiement");
     }
   }
 
@@ -88,8 +92,23 @@ export default function OnboardingPlan() {
                 {selectionne && <Feather name="check-circle" size={18} color={couleurAccentCarte} />}
               </View>
               <View style={styles.ligneBase}>
-                <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>{t(plan.prixCle as any, langue)}</Text>
-                {plan.prixJourCle && <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>({t(plan.prixJourCle as any, langue)})</Text>}
+                {plan.id === "premium" ? (
+                  <>
+                    <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>
+                      {essai.prix != null ? `${formater(essai.prix)} / ${t("mois_title", langue)}` : "…"}
+                    </Text>
+                    {essai.prix != null && (
+                      <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>
+                        (≈ {formater(Math.round(essai.prix / 30))} / {t("jour_title", langue)})
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>{t(plan.prixCle as any, langue)}</Text>
+                    {plan.prixJourCle && <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>({t(plan.prixJourCle as any, langue)})</Text>}
+                  </>
+                )}
               </View>
               <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 6, marginBottom: 10, lineHeight: 18 }}>{t(plan.descCle as any, langue)}</Text>
               {(t(plan.fonctionnalitesCle as any, langue) as unknown as string[]).map((f) => (

@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, TextInput } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
@@ -31,11 +32,16 @@ export default function Depenses() {
   const { langue } = useLangue();
   const { formater } = useCurrency();
   const [depenses, setDepenses] = useState<Depense[]>([]);
+  const [revenusMois, setRevenusMois] = useState(0);
   const [chargement, setChargement] = useState(true);
-  // Filtres : mois (null = tous), catégorie, fournisseur.
+  // Filtres : mois (null = tous), jour précis (prioritaire), catégorie, fournisseur, recherche.
   const [mois, setMois] = useState<Date | null>(null);
+  const [jour, setJour] = useState<Date | null>(null);
   const [categorieFiltre, setCategorieFiltre] = useState<string | null>(null);
   const [fournisseurFiltre, setFournisseurFiltre] = useState<string | null>(null);
+  const [recherche, setRecherche] = useState("");
+  const [filtresVisibles, setFiltresVisibles] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,11 +71,48 @@ export default function Depenses() {
     setChargement(false);
   }
 
+  // Revenus du mois sélectionné (ou du mois courant si aucun filtre) :
+  // somme des quantité × prix unitaire des ventes.
+  async function chargerRevenus(moisCible: Date) {
+    const userId = await obtenirUserId();
+    if (!userId) return;
+    const debut = new Date(moisCible.getFullYear(), moisCible.getMonth(), 1).getTime();
+    const fin = new Date(moisCible.getFullYear(), moisCible.getMonth() + 1, 1).getTime();
+    const ventes = await database.get("ventes").query(
+      Q.where("user_id", userId),
+      Q.where("cree_le", Q.gte(debut)),
+      Q.where("cree_le", Q.lt(fin))
+    ).fetch();
+    const total = (ventes as any[]).reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
+    setRevenusMois(total);
+  }
+
+  useFocusEffect(
+    useCallback(() => {
+      chargerRevenus(jour ?? mois ?? new Date());
+    }, [jour, mois])
+  );
+
   // --- Filtres -------------------------------------------------------------
+  const texteRecherche = recherche.trim().toLowerCase();
   const filtrees = depenses.filter((d) => {
-    if (mois && (d.creeLe.getMonth() !== mois.getMonth() || d.creeLe.getFullYear() !== mois.getFullYear())) return false;
+    if (jour) {
+      if (d.creeLe.getDate() !== jour.getDate() || d.creeLe.getMonth() !== jour.getMonth() || d.creeLe.getFullYear() !== jour.getFullYear()) return false;
+    } else if (mois && (d.creeLe.getMonth() !== mois.getMonth() || d.creeLe.getFullYear() !== mois.getFullYear())) {
+      return false;
+    }
     if (categorieFiltre && d.categorie !== categorieFiltre) return false;
     if (fournisseurFiltre && d.fournisseurNom !== fournisseurFiltre) return false;
+    if (texteRecherche) {
+      const contenu = [
+        libelleCategorieDepense(d.categorie, langue),
+        d.description ?? "",
+        d.fournisseurNom ?? "",
+        d.produitNom ?? "",
+        ...Object.entries(d.champs).flat(),
+      ].join(" ").toLowerCase();
+      if (!contenu.includes(texteRecherche)) return false;
+    }
     return true;
   });
 
@@ -79,59 +122,119 @@ export default function Depenses() {
 
   function changerMois(delta: number) {
     const base = mois ?? new Date();
+    setJour(null);
     setMois(new Date(base.getFullYear(), base.getMonth() + delta, 1));
   }
 
   const nomsMois = langue === "en" ? MOIS_EN : MOIS_FR;
   const total = filtrees.reduce((s, d) => s + d.montant, 0);
-  const filtreActif = mois !== null || categorieFiltre !== null || fournisseurFiltre !== null;
+  const filtreActif = mois !== null || jour !== null || categorieFiltre !== null || fournisseurFiltre !== null || texteRecherche !== "";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
-      <EnteteEcran titre={t("depenses_titre", langue)} onRetour={() => router.back()} />
+      <EnteteEcran
+        titre={t("depenses_titre", langue)}
+        onRetour={() => router.back()}
+        action={
+          <Pressable
+            onPress={() => setFiltresVisibles((v) => !v)}
+            style={[styles.boutonFiltre, { borderColor: filtreActif ? colors.accent : colors.border, borderWidth: filtreActif ? 1.5 : 1 }]}
+            hitSlop={8}
+          >
+            <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
+          </Pressable>
+        }
+      />
 
-      {/* Filtre par mois : navigation ‹ mois › */}
-      <View style={styles.ligneFiltreMois}>
-        <Pressable onPress={() => changerMois(-1)} hitSlop={10}>
-          <Feather name="chevron-left" size={18} color={colors.textSecondary} />
-        </Pressable>
-        <Pressable onPress={() => setMois(null)}>
-          <Text style={{ color: mois ? colors.accent : colors.textSecondary, fontSize: 13, fontWeight: "500" }}>
-            {mois ? `${nomsMois[mois.getMonth()]} ${mois.getFullYear()}` : t("filtre_tous", langue)}
-          </Text>
-        </Pressable>
-        <Pressable onPress={() => changerMois(1)} hitSlop={10}>
-          <Feather name="chevron-right" size={18} color={colors.textSecondary} />
-        </Pressable>
+      {/* Barre de recherche */}
+      <View style={[styles.barreRecherche, { borderColor: colors.border }]}>
+        <Feather name="search" size={14} color={colors.textMuted} />
+        <TextInput
+          value={recherche}
+          onChangeText={setRecherche}
+          placeholder={t("depenses_rechercher", langue)}
+          placeholderTextColor={colors.textMuted}
+          style={{ flex: 1, color: colors.textPrimary, fontSize: 13, paddingVertical: 0 }}
+        />
+        {recherche.length > 0 && (
+          <Pressable onPress={() => setRecherche("")} hitSlop={8}>
+            <Feather name="x" size={14} color={colors.textMuted} />
+          </Pressable>
+        )}
       </View>
 
-      {/* Filtre par catégorie */}
-      {categoriesPresentes.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ligneFiltres}>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <PuceFiltre label={t("filtre_tous", langue)} actif={categorieFiltre === null} onPress={() => setCategorieFiltre(null)} colors={colors} />
-            {categoriesPresentes.map((c) => (
-              <PuceFiltre key={c} label={libelleCategorieDepense(c, langue)} actif={categorieFiltre === c} onPress={() => setCategorieFiltre(categorieFiltre === c ? null : c)} colors={colors} />
-            ))}
+      {filtresVisibles && (
+        <View>
+          {/* Filtre par mois : navigation ‹ mois › + sélecteur de jour précis */}
+          <View style={styles.ligneFiltreMois}>
+            <Pressable onPress={() => changerMois(-1)} hitSlop={10}>
+              <Feather name="chevron-left" size={18} color={colors.textSecondary} />
+            </Pressable>
+            <Pressable onPress={() => { setMois(null); setJour(null); }}>
+              <Text style={{ color: mois || jour ? colors.accent : colors.textSecondary, fontSize: 13, fontWeight: "500" }}>
+                {jour
+                  ? jour.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")
+                  : mois
+                    ? `${nomsMois[mois.getMonth()]} ${mois.getFullYear()}`
+                    : t("filtre_tous", langue)}
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => changerMois(1)} hitSlop={10}>
+              <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+            </Pressable>
+            {/* Sélecteur de jour précis */}
+            <Pressable onPress={() => setPickerVisible(true)} hitSlop={10} style={{ marginLeft: 4 }}>
+              <Feather name="calendar" size={17} color={jour ? colors.accent : colors.textSecondary} />
+            </Pressable>
           </View>
-        </ScrollView>
-      )}
 
-      {/* Filtre par fournisseur */}
-      {fournisseursPresents.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ligneFiltres}>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <PuceFiltre label={`${t("filtre_fournisseur", langue)} : ${t("filtre_tous", langue)}`} actif={fournisseurFiltre === null} onPress={() => setFournisseurFiltre(null)} colors={colors} />
-            {fournisseursPresents.map((f) => (
-              <PuceFiltre key={f} label={f} actif={fournisseurFiltre === f} onPress={() => setFournisseurFiltre(fournisseurFiltre === f ? null : f)} colors={colors} />
-            ))}
-          </View>
-        </ScrollView>
+          {pickerVisible && (
+            <DateTimePicker
+              value={jour ?? mois ?? new Date()}
+              mode="date"
+              display="default"
+              onChange={(_, date) => {
+                setPickerVisible(false);
+                if (date) setJour(date);
+              }}
+            />
+          )}
+
+          {/* Filtre par catégorie */}
+          {categoriesPresentes.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ligneFiltres}>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <PuceFiltre label={t("filtre_tous", langue)} actif={categorieFiltre === null} onPress={() => setCategorieFiltre(null)} colors={colors} />
+                {categoriesPresentes.map((c) => (
+                  <PuceFiltre key={c} label={libelleCategorieDepense(c, langue)} actif={categorieFiltre === c} onPress={() => setCategorieFiltre(categorieFiltre === c ? null : c)} colors={colors} />
+                ))}
+              </View>
+            </ScrollView>
+          )}
+
+          {/* Filtre par fournisseur */}
+          {fournisseursPresents.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ligneFiltres}>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <PuceFiltre label={`${t("filtre_fournisseur", langue)} : ${t("filtre_tous", langue)}`} actif={fournisseurFiltre === null} onPress={() => setFournisseurFiltre(null)} colors={colors} />
+                {fournisseursPresents.map((f) => (
+                  <PuceFiltre key={f} label={f} actif={fournisseurFiltre === f} onPress={() => setFournisseurFiltre(fournisseurFiltre === f ? null : f)} colors={colors} />
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
       )}
 
       {!chargement && filtrees.length > 0 && (
         <View style={[styles.bandeauTotal, { backgroundColor: colors.dangerBg }]}>
           <Text style={{ color: colors.danger, fontSize: 12 }}>Total : {formater(total)} ({filtrees.length})</Text>
+          {/* Calcul intégré : revenus du mois − dépenses du mois (jour précis exclu) */}
+          {!jour && (
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+              {t("depenses_revenus_mois", langue)} : {formater(revenusMois)}  •  {t("depenses_solde", langue)} : {formater(revenusMois - total)}
+            </Text>
+          )}
         </View>
       )}
 
@@ -182,6 +285,8 @@ function PuceFiltre({ label, actif, onPress, colors }: any) {
 }
 
 const styles = StyleSheet.create({
+  boutonFiltre: { width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  barreRecherche: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10 },
   ligneFiltreMois: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 8 },
   ligneFiltres: { marginBottom: 8 },
   bandeauTotal: { padding: 10, borderRadius: 10, marginBottom: 12 },

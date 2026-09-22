@@ -78,7 +78,7 @@ export function Skeleton({ width = "100%", height = 14, style }: { width?: Dimen
   return <Animated.View style={[{ width, height, borderRadius: 6, backgroundColor: colors.border, opacity: opacite }, style]} />;
 }
 
-export function EnteteEcran({ titre, onRetour }: { titre: string; onRetour?: () => void }) {
+export function EnteteEcran({ titre, onRetour, action }: { titre: string; onRetour?: () => void; action?: React.ReactNode }) {
   const { colors } = useTheme();
   return (
     <View style={styles.entete}>
@@ -89,7 +89,8 @@ export function EnteteEcran({ titre, onRetour }: { titre: string; onRetour?: () 
           </Text>
         </Pressable>
       )}
-      <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{titre}</Text>
+      <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary, flex: 1 }}>{titre}</Text>
+      {action}
     </View>
   );
 }

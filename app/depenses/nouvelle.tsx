@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -30,6 +30,9 @@ export default function NouvelleDepense() {
   const [produits, setProduits] = useState<Option[]>([]);
   const [fournisseurId, setFournisseurId] = useState<string | null>(null);
   const [produitId, setProduitId] = useState<string | null>(null);
+  const [menuProduitOuvert, setMenuProduitOuvert] = useState(false);
+  const [produitManuel, setProduitManuel] = useState("");
+  const [saisieProduitManuel, setSaisieProduitManuel] = useState(false);
   const [champs, setChamps] = useState<ChampPerso[]>([]);
   const [description, setDescription] = useState("");
   const [montant, setMontant] = useState("");
@@ -85,11 +88,13 @@ export default function NouvelleDepense() {
 
     const fournisseur = fournisseurs.find((f) => f.id === fournisseurId) ?? null;
     const produit = produits.find((p) => p.id === produitId) ?? null;
+    const produitManuelTrim = produitManuel.trim();
     // Champs personnalisés : uniquement ceux avec un nom ET une valeur.
     const champsValides = champs.filter((c) => c.nom.trim() && c.valeur.trim());
     const donnees: Record<string, unknown> = {};
     if (fournisseur) { donnees.fournisseur_id = fournisseur.id; donnees.fournisseur_nom = fournisseur.nom; }
     if (produit) { donnees.produit_id = produit.id; donnees.produit_nom = produit.nom; }
+    else if (produitManuelTrim) { donnees.produit_nom = produitManuelTrim; }
     if (champsValides.length > 0) {
       donnees.champs = Object.fromEntries(champsValides.map((c) => [c.nom.trim(), c.valeur.trim()]));
     }
@@ -152,6 +157,13 @@ export default function NouvelleDepense() {
           <Pressable onPress={choisirNouvelleCategorie} style={[styles.boutonAjouter, { backgroundColor: colors.accent }]}>
             <Feather name="check" size={16} color="#fff" />
           </Pressable>
+          {/* Annuler : referme la saisie sans créer de catégorie */}
+          <Pressable
+            onPress={() => { setSaisieCategorie(false); setCategoriePerso(""); }}
+            style={[styles.boutonAjouter, { borderWidth: 1, borderColor: colors.border }]}
+          >
+            <Feather name="x" size={16} color={colors.danger} />
+          </Pressable>
         </View>
       )}
 
@@ -176,29 +188,96 @@ export default function NouvelleDepense() {
         </>
       )}
 
-      {/* Lien produit : sélection directe */}
-      {produits.length > 0 && (
-        <>
-          <Text style={styles.label}>{t("depense_produit_concerne", langue)}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable onPress={() => setProduitId(null)} style={[styles.puce, { borderColor: produitId === null ? colors.accent : colors.border, borderWidth: produitId === null ? 2 : 1 }]}>
-                <Text style={{ color: produitId === null ? colors.accent : colors.textPrimary, fontSize: 12 }}>{t("depense_aucun", langue)}</Text>
+      {/* Lien produit : bouton qui ouvre un menu déroulant + saisie manuelle */}
+      <Text style={styles.label}>{t("depense_produit_concerne", langue)}</Text>
+      {saisieProduitManuel ? (
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+          <TextInput
+            value={produitManuel}
+            onChangeText={setProduitManuel}
+            placeholder={t("depense_produit_manuel", langue)}
+            placeholderTextColor={colors.textMuted}
+            autoFocus
+            style={[styles.input, { flex: 1, borderColor: colors.border, color: colors.textPrimary, marginBottom: 0 }]}
+          />
+          <Pressable
+            onPress={() => { setSaisieProduitManuel(false); setProduitManuel(""); }}
+            style={[styles.boutonAjouter, { borderWidth: 1, borderColor: colors.border }]}
+          >
+            <Feather name="x" size={16} color={colors.danger} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          onPress={() => setMenuProduitOuvert(true)}
+          style={[styles.selecteur, { borderColor: colors.border }]}
+        >
+          <Text style={{ flex: 1, fontSize: 13, color: produitId ? colors.textPrimary : colors.textMuted }}>
+            {produitId ? produits.find((p) => p.id === produitId)?.nom : t("depense_aucun", langue)}
+          </Text>
+          <Feather name="chevron-down" size={14} color={colors.textMuted} />
+        </Pressable>
+      )}
+
+      {/* Menu déroulant des produits */}
+      <Modal visible={menuProduitOuvert} transparent animationType="fade" onRequestClose={() => setMenuProduitOuvert(false)}>
+        <Pressable style={styles.fondModal} onPress={() => setMenuProduitOuvert(false)}>
+          <Pressable style={[styles.feuilleModal, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(e) => e.stopPropagation()}>
+            <ScrollView style={{ maxHeight: 360 }}>
+              <Pressable
+                onPress={() => { setProduitId(null); setMenuProduitOuvert(false); }}
+                style={[styles.ligneModal, { borderBottomColor: colors.border }]}
+              >
+                <Text style={{ fontSize: 14, color: produitId === null ? colors.accent : colors.textPrimary }}>{t("depense_aucun", langue)}</Text>
+                {produitId === null && <Feather name="check" size={16} color={colors.accent} />}
               </Pressable>
               {produits.map((p) => (
-                <Pressable key={p.id} onPress={() => setProduitId(p.id)} style={[styles.puce, { borderColor: produitId === p.id ? colors.accent : colors.border, borderWidth: produitId === p.id ? 2 : 1 }]}>
-                  <Text style={{ color: produitId === p.id ? colors.accent : colors.textPrimary, fontSize: 12 }}>{p.nom}</Text>
+                <Pressable
+                  key={p.id}
+                  onPress={() => { setProduitId(p.id); setMenuProduitOuvert(false); }}
+                  style={[styles.ligneModal, { borderBottomColor: colors.border }]}
+                >
+                  <Text style={{ fontSize: 14, color: produitId === p.id ? colors.accent : colors.textPrimary }}>{p.nom}</Text>
+                  {produitId === p.id && <Feather name="check" size={16} color={colors.accent} />}
                 </Pressable>
               ))}
-            </View>
-          </ScrollView>
-        </>
-      )}
+              {/* Saisie manuelle d'un produit non listé */}
+              <Pressable
+                onPress={() => { setProduitId(null); setSaisieProduitManuel(true); setMenuProduitOuvert(false); }}
+                style={[styles.ligneModal, { borderBottomColor: colors.border }]}
+              >
+                <Text style={{ fontSize: 14, color: colors.accent }}>{t("depense_produit_manuel", langue)}</Text>
+                <Feather name="edit-3" size={14} color={colors.accent} />
+              </Pressable>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Champ label={t("depenses_description", langue)} valeur={description} onChange={setDescription} colors={colors} />
 
       {/* Champs personnalisés : nom + valeur, ajoutables/supprimables */}
       <Text style={styles.label}>{t("champs_personnalises", langue)}</Text>
+
+      {/* Suggestions rapides (même principe que "Informations supplémentaires" produit) */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        {["champ_sugg_recu", "champ_sugg_paiement", "champ_sugg_note"].map((cle) => {
+          const nom = t(cle as any, langue);
+          const dejaActif = champs.some((c) => c.nom === nom);
+          return (
+            <Pressable
+              key={cle}
+              disabled={dejaActif}
+              onPress={() => setChamps((actuel) => [...actuel, { nom, valeur: "" }])}
+              style={[styles.puce, { borderColor: dejaActif ? colors.border : colors.accent, borderWidth: 1, opacity: dejaActif ? 0.4 : 1, flexDirection: "row", alignItems: "center", gap: 4 }]}
+            >
+              <Feather name="plus" size={11} color={dejaActif ? colors.textMuted : colors.accent} />
+              <Text style={{ color: dejaActif ? colors.textMuted : colors.accent, fontSize: 12 }}>{nom}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       {champs.map((c, i) => (
         <View key={i} style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}>
           <TextInput
@@ -260,5 +339,9 @@ const styles = StyleSheet.create({
   puce: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, marginBottom: 14 },
   boutonAjouter: { width: 44, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  selecteur: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 16 },
+  fondModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  feuilleModal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: 1, paddingBottom: 30, paddingTop: 10 },
+  ligneModal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1 },
   bouton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 10, marginTop: 10 },
 });

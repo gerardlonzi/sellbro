@@ -155,13 +155,15 @@ export default function Clients() {
                 <View style={[styles.avatar, { backgroundColor: colors.accentBg }]}>
                   <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "500" }}>{c.nom.slice(0, 2).toUpperCase()}</Text>
                 </View>
-                <View>
-                  <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{c.nom}</Text>
+                <View style={{ flexShrink: 1 }}>
+                  <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{c.nom}</Text>
                   <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{c.nbAchats} {t("clients_achats", langue)}</Text>
                 </View>
                 {c.aCreance && <View style={[styles.pointCreance, { backgroundColor: colors.danger }]} />}
               </Pressable>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10 }}>{formater(c.total)}</Text>
+              {/* Colonne montant : largeur fixe + alignement à droite, stable
+                  quelle que soit la longueur du nom. */}
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10, width: 90, textAlign: "right" }}>{formater(c.total)}</Text>
               <MenuContextuel actions={[{ label: "Voir historique", icone: "list", onPress: () => router.push({ pathname: "/commandes", params: { client: c.nom } }) }]} />
             </View>
           ))}
@@ -194,7 +196,7 @@ const styles = StyleSheet.create({
   boutonFiltreIcone: { width: 42, alignItems: "center", justifyContent: "center", borderRadius: 8 },
   etatVide: { alignItems: "center", paddingTop: 50 },
   ligne: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1 },
-  ligneGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
+  ligneGauche: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
   avatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   pointCreance: { width: 8, height: 8, borderRadius: 4, marginLeft: 4 },
   recherche: {

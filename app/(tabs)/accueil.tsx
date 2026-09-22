@@ -15,6 +15,7 @@ import { obtenirUserId } from "@/lib/auth/userCache";
 import { TourGuide } from "@/components/TourGuide";
 import { useTourGuide } from "@/lib/onboarding/useTourGuide";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
+import { AvatarNom } from "@/components/AvatarNom";
 import { Skeleton, Badge } from "@/components/UI";
 import { WelcomeTrial } from "@/components/WelcomeTrial";
 import { IndicateurSync } from "@/components/SyncBanner";
@@ -28,7 +29,14 @@ import { calculerBenefice } from "@/lib/ventes/benefice";
 
 
 
-type VenteRecente = { nom: string; montant: number; source: "vocal" | "scan" | "manuel" };
+type VenteRecente = { nom: string; montant: number; modePaiement: "cash" | "momo" | "credit" | null };
+
+// Puce colorée du moyen de paiement — une couleur par mode.
+const COULEURS_PAIEMENT: Record<string, { fond: string; texte: string }> = {
+  cash: { fond: "#DFF3EB", texte: "#0E6A51" },
+  momo: { fond: "#FFF3CC", texte: "#8A6D00" },
+  credit: { fond: "#E3EDFB", texte: "#1D4ED8" },
+};
 
 export default function Accueil() {
   const { colors } = useTheme();
@@ -121,7 +129,7 @@ export default function Accueil() {
       setVentesRecentes((toutesLesVentes as any[]).slice(0, 5).map((v) => ({
         nom: v.produitNom ?? v.clientNom ?? "—",
         montant: v.quantite * v.prixUnitaire,
-        source: v.source,
+        modePaiement: v.modePaiement ?? null,
       })));
 
       const creances = await database.get("creances_dettes").query(Q.where("user_id", userId), Q.where("statut", Q.notEq("payee"))).fetch();
@@ -194,7 +202,7 @@ export default function Accueil() {
         </Pressable>
       )}
       {/* Chiffre d'affaires */}
-      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border ,borderWidth:1 }]}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Feather name="dollar-sign" size={14} color={colors.textSecondary} />
           <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500" }}>{t("ca_aujourdhui", langue)}</Text>
@@ -205,26 +213,18 @@ export default function Accueil() {
           <Text style={{ color: colors.textPrimary, fontSize: 26, fontWeight: "700", marginVertical: 4 }}>{formater(ca)}</Text>
         )}
         <Text style={{ color: colors.textMuted, fontSize: 12 }}>{!chargementVentes && ca === 0 ? t("aucune_vente_jour", langue) : ""}</Text>
-      </View>
+        </View>
 
       <View style={styles.ligneDeuxCartes}>
         <View style={[styles.cartePetite, { backgroundColor: colors.warningBg, borderColor: colors.border }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-            <Feather name="shopping-bag" size={13} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, fontSize:12, fontWeight: "500" }}>{t("ventes_du_jour", langue)}</Text>
-          </View>
-          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.warning, fontSize: 18, fontWeight: "700" }}>{nbVentes}</Text>}
-        </View>
-        <View style={[styles.cartePetite, { backgroundColor: colors.accentBg, borderColor: colors.border }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
             <Feather name="package" size={13} color={colors.textSecondary} />
             <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("produits_vendus", langue)}</Text>
           </View>
-          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.accent, fontSize: 18, fontWeight: "700" }}>{nbProduitsVendus}</Text>}
-        </View>
-      </View>
+          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.warning, fontSize: 18, fontWeight: "700" }}>{nbProduitsVendus}</Text>}
 
-      <View style={[styles.cartePetite, { backgroundColor:colors.surface, borderColor: colors.border, marginTop: 12 }]}>
+        </View>
+        <View style={[styles.cartePetite, { backgroundColor: colors.accentBg, borderColor: colors.border }]}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
           <Feather name="trending-up" size={13} color={colors.textSecondary} />
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("benefice_estime", langue)}</Text>
@@ -232,8 +232,11 @@ export default function Accueil() {
         {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.success, fontSize: 18, fontWeight: "700" }}>{formater(benefice)}</Text>}
       </View>
 
+      </View>
+
+
       {/* Créances et dettes */}
-      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
+      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 ,borderWidth:1}]}>
         <Pressable onPress={() => router.push("/creances")} style={styles.enTeteCreances}>
           <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{t("creances_dettes", langue)}</Text>
           <Feather name="chevron-right" size={16} color={colors.textMuted} />
@@ -272,7 +275,7 @@ export default function Accueil() {
 
 
       {/* Ventes récentes */}
-      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 20, marginTop:30 }]}>
+      <View style={{  marginBottom: 30, marginTop:30, gap:8 , borderRadius: 12, paddingVertical: 16}}>
         <View style={styles.enTeteVentes}>
           <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{t("ventes_recentes", langue)}</Text>
           <Pressable onPress={() => router.push("/(tabs)/ventes")}>
@@ -284,15 +287,28 @@ export default function Accueil() {
         ) : ventesRecentes.length === 0 ? (
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("aucune_vente_recente", langue)}</Text>
         ) : (
-          ventesRecentes.map((v, i) => (
-            <View key={i} style={styles.ligneCreance}>
-              <View style={styles.ligneGauche}>
-                <Feather name={v.source === "vocal" ? "mic" : v.source === "scan" ? "camera" : "edit-3"} size={13} color={colors.textMuted} />
-                <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{v.nom}</Text>
+          ventesRecentes.map((v, i) => {
+            const couleursPuce = COULEURS_PAIEMENT[v.modePaiement ?? ""] ?? { fond: colors.surface, texte: colors.textMuted };
+            return (
+              <View key={i} style={[styles.ligneCreance, {backgroundColor:colors.surface, padding:10, borderRadius:10}]}>
+                {/* Colonne 1 : avatar initiales + nom du produit */}
+                <View style={[styles.ligneGauche, { flex: 1 }]}>
+                  <AvatarNom nom={v.nom} taille={28} />
+                  <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, flexShrink: 1 }}>{v.nom}</Text>
+                </View>
+                {/* Colonne 2 : prix total (prix unitaire × quantité) */}
+                <Text style={{ color: colors.textSecondary, fontSize: 12, width: 90, textAlign: "right" }}>{formater(v.montant)}</Text>
+                {/* Colonne 3 : moyen de paiement en puce colorée */}
+                {v.modePaiement ? (
+                  <View style={{ backgroundColor: couleursPuce.fond, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, width: 62, alignItems: "center" }}>
+                    <Text style={{ color: couleursPuce.texte, fontSize: 10, fontWeight: "600" }} numberOfLines={1}>
+                      {t(`vente_paiement_${v.modePaiement}` as any, langue)}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(v.montant)}</Text>
-            </View>
-          ))
+            );
+          })
         )}
       </View>
 
@@ -314,7 +330,7 @@ const styles = StyleSheet.create({
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 25 },
   enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
   enteteDroite: { flexDirection: "row", alignItems: "center", gap: 10 },
-  carte: { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 12 },
+  carte: {  borderRadius: 12, padding: 16, marginBottom: 12 },
   ligneDeuxCartes: { flexDirection: "row", gap: 10 },
   cartePetite: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 12 },
   ligneCreance: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },

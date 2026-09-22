@@ -3,6 +3,8 @@ import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/lib/theme/ThemeProvider";
+import { chargerTauxDepuisConfig } from "@/lib/currency/taux";
+import { rafraichirPlan } from "@/lib/plan/planStore";
 
 // Cet écran ne bloque jamais l'utilisateur : "Passer" mène directement
 // à l'accueil, et le nom de boutique peut être renseigné plus tard
@@ -24,6 +26,12 @@ export default function ConfigBoutique() {
           await supabase.from("profiles").update({ nom_boutique: nomBoutique }).eq("id", user.id);
         }
       }
+      // Juste après l'inscription (en ligne) : on récupère les taux de change
+      // et la config des plans/essai, sauvegardés localement pour le hors ligne.
+      await Promise.all([
+        chargerTauxDepuisConfig().catch(() => {}),
+        rafraichirPlan().catch(() => {}),
+      ]);
       router.replace("/(tabs)/accueil");
     } finally {
       setChargement(false);

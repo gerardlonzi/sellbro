@@ -7,7 +7,8 @@ export type Plan = {
   id: PlanId;
   nom: string;
   actif: boolean;
-  prix: number;
+  // null tant que le prix n'a pas été lu depuis la base — aucune valeur en dur.
+  prix: number | null;
   dureeEssaiJours: number | null;
   estEssaiGratuit: boolean;
   quotaVocal: number;
@@ -31,7 +32,7 @@ depenses: boolean;
 // PAS par des quotas — d'où des fonctionnalités identiques au Premium.
 export const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
   gratuit: {
-    id: "gratuit", nom: "Essai gratuit", actif: true, prix: 3000, dureeEssaiJours: 3, estEssaiGratuit: true,
+    id: "gratuit", nom: "Essai gratuit", actif: true, prix: null, dureeEssaiJours: null, estEssaiGratuit: true,
     quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
     // Version gratuite : rapports limités à jour/semaine ; mois, semestre et
     // année affichent le paywall dans le dashboard.
@@ -40,7 +41,7 @@ export const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
     factures: true, fournisseurs: true, depenses: true,
   },
   premium: {
-    id: "premium", nom: "Premium", actif: true, prix: 2000, dureeEssaiJours: null, estEssaiGratuit: false,
+    id: "premium", nom: "Premium", actif: true, prix: null, dureeEssaiJours: null, estEssaiGratuit: false,
     quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
     historiqueJours: null, rapportsMax: "annee",
     exportComptable: true, sauvegardeCloud: true, multiEmployes: true, supportPrioritaire: true,

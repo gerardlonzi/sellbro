@@ -12,7 +12,10 @@ export async function lireOverrideTest(): Promise<string | null> {
 
 type Etat = { planId: PlanId; plan: Plan | undefined; pret: boolean };
 
-let etat: Etat = { planId: "gratuit", plan: undefined, pret: false };
+// Le plan gratuit est la valeur par défaut dès le départ : `plan` ne doit
+// jamais rester `undefined` (sinon les fonctionnalités liées au plan, ex. les
+// périodes du dashboard, se verrouillent à tort hors ligne / premier lancement).
+let etat: Etat = { planId: "gratuit", plan: PLANS_PAR_DEFAUT.gratuit, pret: false };
 const abonnes = new Set<(e: Etat) => void>();
 
 function notifier() {
@@ -38,7 +41,7 @@ export async function rafraichirPlan() {
   if (planIdLocal && PLANS_PAR_DEFAUT[planIdLocal as PlanId]) {
     etat = { planId: planIdLocal as PlanId, plan: PLANS_PAR_DEFAUT[planIdLocal as PlanId], pret: true };
   } else {
-    etat = { ...etat, pret: true };
+    etat = { ...etat, plan: etat.plan ?? PLANS_PAR_DEFAUT.gratuit, pret: true };
   }
   notifier();
 
