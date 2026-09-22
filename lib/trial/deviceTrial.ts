@@ -107,5 +107,7 @@ export async function demarrerOuVerifierEssaiGratuit(): Promise<EtatEssai> {
     const actif = cache.dateFin ? new Date(cache.dateFin).getTime() > Date.now() : true;
     return { ...cache, actif };
   }
-  return { actif: true, joursRestants: 3, dateFin: null };
+  // Jamais démarré / hors ligne sans cache : dateFin null → l'UI affiche la
+  // durée lue depuis app_config (dureeTotale), aucune valeur en dur ici.
+  return { actif: true, joursRestants: 0, dateFin: null };
 }

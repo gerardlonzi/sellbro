@@ -5,10 +5,11 @@
 -- retombe sur le cache local et « X jours restants » ne bouge pas.
 -- ============================================================
 
--- 1) Durée d'essai configurable (3 jours par défaut).
-insert into app_config (cle, valeur, type) values
-  ('duree_essai_jours', '3', 'number')
-on conflict (cle) do update set valeur = excluded.valeur;
+-- 1) Durée d'essai : AUCUNE valeur par défaut ici. C'est toi qui la définis
+--    en base, et tu peux la changer quand tu veux sans toucher au code :
+--      insert into app_config (cle, valeur, type)
+--        values ('duree_essai_jours', '3', 'number')
+--      on conflict (cle) do update set valeur = excluded.valeur;
 
 -- 2) L'essai est lié au COMPTE (user_id), pas à l'appareil :
 --    un utilisateur ayant épuisé son essai ne peut pas en redémarrer
@@ -34,8 +35,13 @@ declare
   debut timestamptz;
   fin timestamptz;
 begin
-  select coalesce((select valeur::integer from app_config where cle = 'duree_essai_jours'), 3)
-    into duree;
+  -- La durée vient UNIQUEMENT de app_config : aucune valeur en dur.
+  select valeur::integer into duree
+    from app_config where cle = 'duree_essai_jours';
+
+  if duree is null then
+    raise exception 'duree_essai_jours absente de app_config : définis-la en base (insert into app_config ...)';
+  end if;
 
   select date_debut, date_fin into debut, fin
     from essais_gratuits where user_id = p_user_id;
