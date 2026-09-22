@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { obtenirEtatEssaiLocal, demarrerOuVerifierEssaiGratuit, EtatEssai } from "./deviceTrial";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { supabase } from "@/lib/supabase/client";
@@ -22,17 +23,42 @@ export function aAccesComplet(statut: Statut): boolean {
 
 // Lit la config d'essai depuis la base : la durée vient de
 // `app_config.duree_essai_jours`, le prix du plan Pro de `plans` (id = premium).
-async function chargerConfigEssai(): Promise<{ dureeTotale: number; prix: number }> {
+// AUCUNE valeur en dur : après le premier fetch réussi (en ligne), la config
+// est mise en cache local pour le mode hors ligne. Sans réseau ni cache, on
+// renvoie null — l'UI masque alors le prix au lieu d'afficher NaN.
+const CLE_CONFIG_ESSAI = "config_essai_cache";
+
+export type ConfigEssai = { dureeTotale: number | null; prix: number | null };
+
+async function lireCacheConfig(): Promise<ConfigEssai> {
+  try {
+    const brut = await AsyncStorage.getItem(CLE_CONFIG_ESSAI);
+    if (brut) return JSON.parse(brut) as ConfigEssai;
+  } catch {}
+  return { dureeTotale: null, prix: null };
+}
+
+async function chargerConfigEssai(): Promise<ConfigEssai> {
   try {
     const [cfg, planPro] = await Promise.all([
       supabase.from("app_config").select("valeur").eq("cle", "duree_essai_jours").single(),
       supabase.from("plans").select("prix").eq("id", "premium").single(),
     ]);
-    const dureeTotale = cfg.data?.valeur ? parseInt(cfg.data.valeur, 10) || 2 : 2;
-    const prix = planPro.data?.prix ?? "····";
-    return { dureeTotale, prix };
+    const dureeTotale = cfg.data?.valeur ? parseInt(cfg.data.valeur, 10) : null;
+    // Number.isFinite écarte aussi NaN (typeof NaN === "number") : sans ça,
+    // un prix mal saisi en base s'affichait « NaN » dans l'app.
+    const brut = planPro.data?.prix;
+    const prix = typeof brut === "number" && Number.isFinite(brut) ? brut : null;
+    const config: ConfigEssai = {
+      dureeTotale: dureeTotale && Number.isFinite(dureeTotale) && dureeTotale > 0 ? dureeTotale : null,
+      prix,
+    };
+    await AsyncStorage.setItem(CLE_CONFIG_ESSAI, JSON.stringify(config));
+    return config;
   } catch {
-    return { dureeTotale: 2, prix: 2500 };
+    // Hors ligne : on retombe sur la dernière config connue, jamais sur une
+    // valeur inventée.
+    return lireCacheConfig();
   }
 }
 
@@ -41,8 +67,8 @@ export type EssaiInfo = {
   actif: boolean;
   statut: Statut;
   joursRestants: number;
-  dureeTotale: number;
-  prix: number;
+  dureeTotale: number | null;
+  prix: number | null;
   dateFin: string | null;
   pret: boolean;
   recharger: () => Promise<void>;
@@ -54,17 +80,19 @@ export type EssaiInfo = {
 export function useEssai(): EssaiInfo {
   const { planId, pret: planPret } = usePlanActuel();
   const [etat, setEtat] = useState<EtatEssai>({ actif: true, joursRestants: 0, dateFin: null });
-  const [config, setConfig] = useState({ dureeTotale: 2, prix: 2500 });
+  const [config, setConfig] = useState<ConfigEssai>({ dureeTotale: null, prix: null });
   const [pret, setPret] = useState(false);
 
   useEffect(() => {
     let actif = true;
     (async () => {
       // 1) État LOCAL d'abord : l'affichage (badge plan, carte réglages)
-      // fonctionne immédiatement, même hors ligne.
-      const local = await obtenirEtatEssaiLocal();
+      // fonctionne immédiatement, même hors ligne. La config (prix, durée)
+      // vient du cache local — jamais de valeur en dur.
+      const [local, configCachee] = await Promise.all([obtenirEtatEssaiLocal(), lireCacheConfig()]);
       if (actif) {
         setEtat(local);
+        setConfig(configCachee);
         setPret(true);
       }
 
@@ -106,7 +134,7 @@ export function useEssai(): EssaiInfo {
     statut,
     // Essai pas encore démarré côté serveur (dateFin null) : on affiche la
     // durée totale plutôt que « 0 jours ». Sinon, jours recalculés depuis dateFin.
-    joursRestants: etat.dateFin ? etat.joursRestants : config.dureeTotale,
+    joursRestants: etat.dateFin ? etat.joursRestants : (config.dureeTotale ?? 0),
     dureeTotale: config.dureeTotale,
     prix: config.prix,
     dateFin: etat.dateFin,
