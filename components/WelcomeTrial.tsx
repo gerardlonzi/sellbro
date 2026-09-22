@@ -9,6 +9,9 @@ import { useEssai } from "@/lib/trial/useEssai";
 import { useAbonnement } from "@/lib/plan/useAbonnement";
 
 const CLE_BIENVENUE = "bienvenue_essai_vue";
+// Posé par l'écran de connexion : l'utilisateur revient (compte existant),
+// le popup de bienvenue dit « Bon retour » au lieu de « Bienvenue ».
+const CLE_RETOUR = "bienvenue_retour";
 const CLE_RAPPELS_VUS = "essai_rappels_vus";
 const CLE_EXPIRATION_VUE = "essai_expiration_vue";
 
@@ -36,16 +39,19 @@ export function WelcomeTrial() {
   const essai = useEssai();
   const { expire: abonnementExpire } = useAbonnement();
   const [popup, setPopup] = useState<EtatPopup>({ type: "aucun" });
+  const [estRetour, setEstRetour] = useState(false);
 
   useEffect(() => {
     if (essai.estPremium || !essai.pret) return;
 
     (async () => {
-      const [bienvenue, rappelsVus, expirationVue] = await Promise.all([
+      const [bienvenue, rappelsVus, expirationVue, retour] = await Promise.all([
         AsyncStorage.getItem(CLE_BIENVENUE),
         AsyncStorage.getItem(CLE_RAPPELS_VUS),
         AsyncStorage.getItem(CLE_EXPIRATION_VUE),
+        AsyncStorage.getItem(CLE_RETOUR),
       ]);
+      setEstRetour(retour === "true");
 
       // En essai actif (TRIAL) : popup de bienvenue (une fois) puis rappels.
       if (essai.statut === "TRIAL") {
@@ -53,11 +59,15 @@ export function WelcomeTrial() {
           setPopup({ type: "bienvenue" });
           return;
         }
-        const vus: number[] = rappelsVus ? JSON.parse(rappelsVus) : [];
-        const prochain = seuilsRappels(essai.dureeTotale).find(
-          (seuil) => essai.joursRestants <= seuil && !vus.includes(seuil)
-        );
-        if (prochain != null) setPopup({ type: "rappel", jours: essai.joursRestants });
+        // Sans durée connue (hors ligne, jamais synchronisé) : pas de rappel
+        // plutôt qu'un calcul sur une valeur inventée.
+        if (essai.dureeTotale != null) {
+          const vus: number[] = rappelsVus ? JSON.parse(rappelsVus) : [];
+          const prochain = seuilsRappels(essai.dureeTotale).find(
+            (seuil) => essai.joursRestants <= seuil && !vus.includes(seuil)
+          );
+          if (prochain != null) setPopup({ type: "rappel", jours: essai.joursRestants });
+        }
         return;
       }
 
@@ -74,7 +84,9 @@ export function WelcomeTrial() {
     if (popup.type === "rappel") {
       // Marque le seuil correspondant comme déjà affiché.
       const vus: number[] = JSON.parse((await AsyncStorage.getItem(CLE_RAPPELS_VUS)) ?? "[]");
-      const seuil = seuilsRappels(essai.dureeTotale).find((s) => essai.joursRestants <= s && !vus.includes(s));
+      const seuil = essai.dureeTotale != null
+        ? seuilsRappels(essai.dureeTotale).find((s) => essai.joursRestants <= s && !vus.includes(s))
+        : undefined;
       if (seuil != null) {
         vus.push(seuil);
         await AsyncStorage.setItem(CLE_RAPPELS_VUS, JSON.stringify(vus));
@@ -94,18 +106,22 @@ export function WelcomeTrial() {
   const estExpiration = popup.type === "expiration";
 
   const titre = estBienvenue
-    ? t("bienvenue_essai_titre", langue)
+    ? t(estRetour ? "bienvenue_retour_titre" : "bienvenue_essai_titre", langue)
     : estExpiration
     ? abonnementExpire ? t("abonnement_termine_statut", langue) : t("essai_termine_titre", langue)
     : t("rappel_essai_titre", langue);
 
   const corps = estBienvenue
-    ? t("bienvenue_essai_ligne1", langue)(essai.dureeTotale)
+    ? t("bienvenue_essai_ligne1", langue)(essai.dureeTotale ?? essai.joursRestants)
     : estExpiration
     ? abonnementExpire ? t("paywall_message_abonnement", langue) : t("essai_termine_texte", langue)
     : t("rappel_essai_ligne1", langue)(popup.jours);
 
-  const sousCorps = estBienvenue ? t("bienvenue_essai_ligne2", langue)(essai.prix) : estExpiration ? "" : t("rappel_essai_ligne2", langue);
+  // Prix inconnu (hors ligne sans cache) → on n'affiche pas la ligne de prix
+  // plutôt qu'un montant faux ou NaN.
+  const sousCorps = estBienvenue
+    ? essai.prix != null ? t("bienvenue_essai_ligne2", langue)(essai.prix) : ""
+    : estExpiration ? "" : t("rappel_essai_ligne2", langue);
 
   return (
     <Modal visible transparent animationType="fade">

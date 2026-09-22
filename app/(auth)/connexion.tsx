@@ -1,6 +1,6 @@
 // app/(auth)/connexion.tsx
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Image } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -52,6 +52,9 @@ export default function Connexion() {
     }
 
     await AsyncStorage.setItem("onboarding_termine", "true");
+    // Connexion (compte existant) ≠ inscription : le popup d'essai affichera
+    // « Bon retour » au lieu de « Bienvenue ».
+    await AsyncStorage.setItem("bienvenue_retour", "true");
     // Première connexion (ex. nouvel appareil) : on synchronise les données AVANT
     // d'entrer, avec un message visible. Sécurité : on n'attend jamais plus de
     // 20 s (réseau lent) — la sync continue en arrière-plan sinon.
@@ -82,9 +85,11 @@ export default function Connexion() {
       <Pressable onPress={() => router.back()} hitSlop={10} style={styles.boutonRetour}>
         <Feather name="arrow-left" size={22} color={colors.textPrimary} />
       </Pressable>
-      <View style={[styles.icone, { backgroundColor: colors.accentBg }]}>
-        <Text style={{ fontSize: 28 }}>🏪</Text>
-      </View>
+      <Image
+        source={require("../../assets/splash-logo.jpg")}
+        style={styles.icone}
+        resizeMode="contain"
+      />
       <Text style={[styles.titre, { color: colors.textPrimary }]}>{t("connexion_titre", langue)}</Text>
       <Text style={[styles.sousTitre, { color: colors.textSecondary }]}>{t("connexion_sous_titre", langue)}</Text>
 
@@ -142,7 +147,7 @@ export default function Connexion() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, justifyContent: "center" },
   boutonRetour: { position: "absolute", top: 50, left: 24, zIndex: 1 },
-  icone: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 14 },
+  icone: { width: 88, height: 88, borderRadius: 20, alignSelf: "center", marginBottom: 14 },
   titre: { fontSize: 18, fontWeight: "500", marginBottom: 6, textAlign: "center" },
   sousTitre: { fontSize: 13, marginBottom: 24, textAlign: "center" },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 16 },
