@@ -27,7 +27,7 @@ import { afficherPaywall } from "@/lib/trial/paywall";
 import { useCategories } from "@/lib/categories/CategoriesProvider";
 
 import { Badge } from "@/components/UI";
-import { ImageCachee } from "@/components/ImageCachee";
+import { AvatarNom } from "@/components/AvatarNom";
 
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 
@@ -59,6 +59,7 @@ type Produit = {
   quantite_stock: number;
   seuil_alerte: number;
   categorie_nom: string | null;
+  nb_vendus: number;
   image_uri: string | null;
 };
 
@@ -127,6 +128,17 @@ export default function Stock() {
       .query(Q.where("user_id", userId))
       .fetch();
 
+    // Nombre d'unités vendues par produit (colonne « vendue » de la liste).
+    const ventes = await database
+      .get("ventes")
+      .query(Q.where("user_id", userId))
+      .fetch();
+    const vendusParProduit = new Map<string, number>();
+    for (const v of ventes as any[]) {
+      if (!v.produitId) continue;
+      vendusParProduit.set(v.produitId, (vendusParProduit.get(v.produitId) ?? 0) + (v.quantite || 0));
+    }
+
     setProduits(
       resultats.map((p: any) => ({
         id: p.id,
@@ -135,6 +147,7 @@ export default function Stock() {
         quantite_stock: p.quantiteStock,
         seuil_alerte: p.seuilAlerte,
         categorie_nom: p.categorieNom,
+        nb_vendus: vendusParProduit.get(p.id) ?? 0,
         image_uri: p.champsSupplementaires?.images ? JSON.parse(p.champsSupplementaires.images)[0] ?? null : (p.champsSupplementaires?.image_uri ?? null),
       }))
     );
@@ -452,11 +465,12 @@ export default function Stock() {
                 onPress={() => router.push(`/produit/${p.id}`)}
                 style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
               >
-                {p.image_uri ? (
-                  <ImageCachee uri={p.image_uri} style={styles.apercuImage} />
-                ) : null}
-                <View>
+                {/* Colonne 1 : image du produit, ou avatar avec initiales */}
+                <AvatarNom nom={p.nom} imageUri={p.image_uri} taille={36} />
+                {/* Colonne 2 : nom + prix unitaire en dessous */}
+                <View style={{ flexShrink: 1 }}>
                   <Text
+                    numberOfLines={1}
                     style={{
                       color: colors.textPrimary,
                       fontSize: 13,
@@ -477,6 +491,17 @@ export default function Stock() {
                 </View>
               </Pressable>
 
+              {/* Colonne 3 : nombre de ventes (« vendue » en dessous) */}
+              <View style={{ width: 53, alignItems: "center", marginRight: 30, flexDirection:"row", gap:4 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 10, fontWeight: "600" }}>
+                  {p.nb_vendus}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "600" }}>
+                  {t("stock_vendus", langue)}
+                </Text>
+              </View>
+
+              {/* Colonne 4 : quantité en stock */}
               {p.quantite_stock === 0 ? (
                 <Badge
                   texte={`${p.quantite_stock} ${t(
