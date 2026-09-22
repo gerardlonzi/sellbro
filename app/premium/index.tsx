@@ -44,8 +44,11 @@ export default function OnboardingPlan() {
           <Feather name="arrow-left" size={22} color={colors.textSecondary} />
         </Pressable>
         <Text style={{ fontSize: 21, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>{t("plan_titre", langue)}</Text>
-        <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 22 }}>{t("plan_sous_titre", langue)}</Text>
+        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 14, lineHeight: 18, marginBottom:20 }}>
+        <Feather name="info" size={13} style={{color:colors.accent , marginRight:20}}  />
 
+           {t("paiement_checkout_info", langue)}
+        </Text>
 
         {PLANS.map((plan) => {
           const selectionne = planChoisi === plan.id;
@@ -90,10 +93,7 @@ export default function OnboardingPlan() {
         })}
         {/* Message de redirection SasPay : affiché ICI (avant le clic), car
             l'écran suivant ouvre directement le checkout hébergé. */}
-        <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: "center", marginTop: 14, lineHeight: 18 }}>
-          {t("paiement_checkout_info", langue)}
-        </Text>
-        <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: "center", marginTop: 16, marginBottom: 12 }}>{t("plan_note_changement", langue)}</Text>
+        
       </ScrollView>
 
       <View style={[styles.bas, { borderTopColor: colors.border, backgroundColor: colors.background }]}>

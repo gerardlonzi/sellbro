@@ -39,7 +39,10 @@ export default function Paiement() {
   const { pays } = usePays();
 
   const [etape, setEtape] = useState<Etape>("pret");
-  const [chargement, setChargement] = useState(false);
+  // chargement démarre à true : le checkout est lancé automatiquement au
+  // montage, donc pas de flash du bouton « Réessayer » avant le lancement.
+  const [chargement, setChargement] = useState(true);
+  const [erreurInit, setErreurInit] = useState(false);
   const [delaiDepasse, setDelaiDepasse] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
 
@@ -52,7 +55,10 @@ export default function Paiement() {
     (async () => {
       try {
         const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 5000);
-        if (!user) return;
+        if (!user) {
+          setChargement(false);
+          return;
+        }
 
         const ilYa30Min = new Date(Date.now() - 30 * 60 * 1000).toISOString();
         const { data: enAttente } = await supabase
@@ -75,7 +81,9 @@ export default function Paiement() {
           payer();
         }
       } catch {
-        // Hors ligne : l'écran reste utilisable.
+        // Hors ligne : on arrête le spinner et on propose de réessayer.
+        setChargement(false);
+        setErreurInit(true);
       }
     })();
     return () => nettoyer();
@@ -138,6 +146,7 @@ export default function Paiement() {
   // la page de paiement hébergée SasPay dans le navigateur.
   async function payer() {
     setChargement(true);
+    setErreurInit(false);
     try {
       const { data, error } = await avecTimeout(
         supabase.functions.invoke("create-saspay-checkout", {
@@ -146,7 +155,9 @@ export default function Paiement() {
         20000
       );
       if (error || !data?.checkout_url || !data?.transaction_id) {
+        console.warn("create-saspay-checkout a échoué :", error ?? data);
         showToast(t("paiement_erreur_initiation", langue), "error");
+        setErreurInit(true);
         return;
       }
 
@@ -163,6 +174,7 @@ export default function Paiement() {
       verifierSilencieux(data.transaction_id);
     } catch {
       showToast(t("connexion_requise", langue), "error");
+      setErreurInit(true);
     } finally {
       setChargement(false);
     }
@@ -209,6 +221,9 @@ export default function Paiement() {
     nettoyer();
     setTransactionId(null);
     setEtape("pret");
+    // Relance directement un nouveau checkout (sinon l'écran « pret » resterait
+    // vide : il n'a plus de bouton, le lancement est automatique).
+    payer();
   }
 
   // ---------- Rendu ----------
@@ -270,20 +285,29 @@ export default function Paiement() {
         <Feather name="arrow-left" size={22} color={colors.textPrimary} />
       </Pressable>
 
-      {/* Lancement automatique du checkout (déclenché au montage) : on montre
-          un simple chargement. Si l'appel a échoué (hors ligne…), un bouton
-          permet de réessayer. */}
-      <ActivityIndicator size="large" color={colors.accent} />
-      <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_titre", langue)}</Text>
-
-      {!chargement && (
-        <Pressable
-          onPress={payer}
-          style={[styles.bouton, { backgroundColor: colors.accent, marginTop: 28 }]}
-        >
-          <Text style={styles.boutonTexte}>{t("paiement_reessayer", langue)}</Text>
-        </Pressable>
-      )}
+      {/* Lancement automatique du checkout (déclenché au montage) : spinner
+          pendant l'appel. En cas d'échec : le spinner S'ARRÊTE et on affiche
+          l'erreur + un bouton Réessayer. */}
+      {chargement ? (
+        <>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_titre", langue)}</Text>
+        </>
+      ) : erreurInit ? (
+        <>
+          <Feather name="alert-circle" size={48} color={colors.danger} />
+          <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_titre", langue)}</Text>
+          <Text style={[styles.texte, { color: colors.textSecondary, marginTop: 8 }]}>
+            {t("paiement_erreur_initiation", langue)}
+          </Text>
+          <Pressable
+            onPress={payer}
+            style={[styles.bouton, { backgroundColor: colors.accent, marginTop: 28 }]}
+          >
+            <Text style={styles.boutonTexte}>{t("paiement_reessayer", langue)}</Text>
+          </Pressable>
+        </>
+      ) : null}
     </View>
   );
 }
