@@ -5,69 +5,32 @@ import { avecTimeout } from "@/lib/timeout";
 // Conversion de devise : le prix de base est stocké UNE SEULE FOIS en FCFA
 // (XAF), puis converti vers la devise locale de l'utilisateur selon son pays.
 // Un utilisateur hors zone CFA ne voit donc jamais un montant en FCFA.
+//
+// Seules les devises des pays supportés par SasPay sont gérées (voir
+// lib/paiement/reseaux.ts). Les taux réels sont lus depuis app_config
+// (clé `taux_conversion`) en ligne, puis mis en cache pour le hors ligne.
 
-// Taux de secours (fallback) si la config distante n'est pas joignable.
-// Les valeurs réelles sont lues depuis app_config (clé `taux_conversion`).
-
-
+// Taux de secours (fallback) si la config distante ET le cache sont absents.
 export const TAUX_DEPUIS_FCFA: Record<string, number> = {
   XAF: 1,
   XOF: 1,
-
-  NGN: 2.2371,
-  GHS: 0.02202,
-  ZAR: 0.02855,
-  KES: 0.2289,
-  UGX: 6.4,
-  TZS: 4.6759,
-
-  RWF: 2.6091,
-  BIF: 5.1,
   CDF: 5.0,
-
-  EGP: 0.09081,
-  MAD: 0.01658,
-  DZD: 0.2355,
-
-  TND: 0.0006,
-  LYD: 0.01119,
-
-  SDG: 1.0,
-  SSP: 0.22,
-  ETB: 0.25,
-  SOS: 0.99,
-  DJF: 0.31,
-  ERN: 0.026,
-
-  MWK: 3.09,
-  ZMW: 0.04,
-  BWP: 0.023,
-  NAD: 0.031,
-  SZL: 0.031,
-  LSL: 0.031,
-
-  MZN: 0.11,
-  AOA: 1.5,
-  SCR: 0.024,
-  MUR: 0.078,
-  KMF: 0.8,
-  CVE: 0.17,
-  GMD: 0.11,
-
-  SLE: 0.04,
-  LRD: 0.31,
+  GHS: 0.02202,
   GNF: 15.2,
+  KES: 0.2289,
+  MWK: 3.09,
+  NGN: 2.2371,
+  RWF: 2.6091,
+  TZS: 4.6759,
+  UGX: 6.4,
+  ZMW: 0.04,
 };
 
-// Devise par pays (code ISO). Défaut : XAF (Franc CFA) pour les pays non listés.
+// Devise par pays (code ISO) — uniquement les pays supportés par SasPay.
 export const DEVISES_PAR_PAYS: Record<string, string> = {
-  CM: "XAF", CI: "XOF", SN: "XOF", BJ: "XOF", BF: "XOF", ML: "XOF", NE: "XOF",
-  TG: "XOF", GN: "GNF", CG: "XAF", CD: "CDF", TD: "XAF", CF: "XAF", GA: "XAF",
-  GQ: "XAF", NG: "NGN", GH: "GHS", ZA: "ZAR", KE: "KES", UG: "UGX", TZ: "TZS",
-  RW: "RWF", BI: "BIF", EG: "EGP", MA: "MAD", DZ: "DZD", TN: "TND", ET: "ETB",
-  SO: "SOS", DJ: "DJF", MW: "MWK", ZM: "ZMW", BW: "BWP", NA: "NAD", SZ: "SZL",
-  LS: "LSL", MZ: "MZN", AO: "AOA", SC: "SCR", MU: "MUR", KM: "KMF", CV: "CVE",
-  GM: "GMD", SL: "SLL", LR: "LRD", LY: "LYD", SD: "SDG", SS: "SSP", ER: "ERN",
+  BF: "XOF", BJ: "XOF", CD: "CDF", CI: "XOF", CM: "XAF", GH: "GHS",
+  GN: "GNF", KE: "KES", ML: "XOF", MW: "MWK", NE: "XOF", NG: "NGN",
+  RW: "RWF", SN: "XOF", TG: "XOF", TZ: "TZS", UG: "UGX", ZM: "ZMW",
 };
 
 const CLE_CACHE = "taux_conversion_cache";
@@ -76,6 +39,8 @@ const CLE_CACHE = "taux_conversion_cache";
 let tauxActifs: Record<string, number> = { ...TAUX_DEPUIS_FCFA };
 
 // Charge les taux depuis la base (app_config), sinon depuis le cache local.
+// Appelé au démarrage (CurrencyProvider) — après l'inscription, les taux sont
+// donc récupérés en ligne puis sauvegardés localement pour le hors ligne.
 export async function chargerTauxDepuisConfig(): Promise<void> {
   try {
     // Timeout : hors ligne l'appel peut rester pendu et geler le démarrage.
@@ -101,7 +66,10 @@ export async function chargerTauxDepuisConfig(): Promise<void> {
 }
 
 // Convertit un montant en FCFA (XAF) vers la devise cible.
+// Un montant invalide (null/NaN, ex. prix pas encore chargé hors ligne) donne
+// 0 au lieu de « NaN » — les écrans de prix testent `!= null` avant d'afficher.
 export function convertirDepuisFcfa(montantFcfa: number, deviseCode: string): number {
+  if (typeof montantFcfa !== "number" || !Number.isFinite(montantFcfa)) return 0;
   const taux = tauxActifs[deviseCode] ?? TAUX_DEPUIS_FCFA[deviseCode] ?? 1;
   const valeur = montantFcfa * taux;
   return taux >= 1 ? Math.round(valeur) : Math.max(1, Math.round(valeur));
