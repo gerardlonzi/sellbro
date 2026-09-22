@@ -74,7 +74,9 @@ export default function CreancesDettes() {
     try {
       const enreg = await database.get("creances_dettes").find(id);
       await database.write(async () => {
-        await (enreg as any).update((c: any) => { c.statut = "payee"; });
+        // synchronise=false : sans ça, le push n'envoyait jamais le nouveau
+        // statut et le PULL suivant réécrivait « en_retard » par-dessus.
+        await (enreg as any).update((c: any) => { c.statut = "payee"; c.synchronise = false; });
       });
       await enregistrerActivite("creance", "modification", "Créance marquée payée");
       chargerListe();
