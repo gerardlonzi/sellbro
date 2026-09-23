@@ -151,18 +151,21 @@ Deno.serve(async (req) => {
       }),
     });
 
-    const resultat = await reponse.json().catch(() => null);
+    // SasPay enveloppe la réponse : { success, data: {...}, code } — on
+    // déballe `data` si présente.
+    const corpsSasPay = await reponse.json().catch(() => null);
+    const resultat = corpsSasPay?.data ?? corpsSasPay;
 
     if (!reponse.ok) {
       await supabaseAdmin
         .from("payment_transactions")
-        .update({ status: "failed", raw_webhook_payload: resultat, updated_at: new Date().toISOString() })
+        .update({ status: "failed", raw_webhook_payload: corpsSasPay, updated_at: new Date().toISOString() })
         .eq("id", transaction.id);
       // On ne relaie PAS le message brut de SasPay au client (il peut contenir
       // des mentions trompeuses type « solde insuffisant », que nous ne pouvons
       // pas vérifier). Le client affiche un message générique traduit ; le code
       // SasPay (missing_method, no_route_available…) reste dispo pour le debug.
-      return json({ error: "initiation impossible", code: resultat?.code ?? null }, 502);
+      return json({ error: "initiation impossible", code: corpsSasPay?.code ?? resultat?.code ?? null }, 502);
     }
 
     // 6) Succès de l'initiation (statut PENDING côté SasPay — la confirmation

@@ -61,7 +61,9 @@ Deno.serve(async (req) => {
         `https://api.saspay.me/api/v1/checkout-sessions/${transaction.checkout_session_id}/`,
         { headers: { Authorization: `Bearer ${saspayKey}` } }
       );
-      const session = await rSession.json().catch(() => null);
+      // SasPay enveloppe la réponse : { success, data: {...} }
+      const corpsSession = await rSession.json().catch(() => null);
+      const session = corpsSession?.data ?? corpsSession;
       if (!rSession.ok || !session) return json({ status: "pending" });
 
       if (session.transaction) {
@@ -99,7 +101,8 @@ Deno.serve(async (req) => {
       `https://api.saspay.me/api/v1/payments/${transaction.saspay_transaction_id}/verify/`,
       { headers: { Authorization: `Bearer ${saspayKey}` } }
     );
-    const resultat = await reponse.json().catch(() => null);
+    const corpsSasPay = await reponse.json().catch(() => null);
+    const resultat = corpsSasPay?.data ?? corpsSasPay;
     if (!reponse.ok) return json({ status: "pending" });
 
     const statutSasPay: string = (resultat?.status ?? "").toUpperCase();
