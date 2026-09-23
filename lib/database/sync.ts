@@ -8,7 +8,32 @@ import { lireSuppressions, effacerSuppression } from "@/lib/sync/tombstones";
 import { setEtatSync } from "@/lib/sync/syncStatus";
 import { avecTimeout } from "@/lib/timeout";
 import { prechargerImages } from "@/lib/storage/cacheImages";
+import { estImageLocale, televerserImagesLocales } from "@/lib/storage/images";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Re-téléverse les images produit restées LOCALES (ajoutées hors ligne) avant
+// le push : sinon l'URI file:// serait envoyée au serveur, invisible ailleurs.
+async function televerserImagesProduitsEnAttente(userId: string) {
+  const produits = (await database.get("produits").query(Q.where("user_id", userId)).fetch()) as any[];
+  for (const p of produits) {
+    try {
+      const supp = JSON.parse(p.champsSupplementairesJson || "{}");
+      const images: string[] = supp.images ? JSON.parse(supp.images) : [];
+      if (!images.some(estImageLocale)) continue;
+      const distantes = await televerserImagesLocales(images, "produits", userId);
+      if (!distantes.some((u) => !estImageLocale(u))) continue; // tout a échoué : on réessaiera
+      supp.images = JSON.stringify(distantes);
+      await database.write(async () => {
+        await p.update((x: any) => {
+          x.champsSupplementairesJson = JSON.stringify(supp);
+          x.synchronise = false; // force le push des nouvelles URL
+        });
+      });
+    } catch {
+      // Produit illisible / hors ligne : on réessaiera à la prochaine sync.
+    }
+  }
+}
 
 // Rassemble toutes les images connues (produits + logo) et les met en cache
 // disque pour un usage hors ligne durable.
@@ -116,6 +141,12 @@ export async function pousserDonneesLocales() {
     vente: new Map(),
     facture: new Map(),
   };
+
+  // 0.5) Images produit restées locales (ajoutées hors ligne) : on les
+  //      téléverse d'abord pour que le push envoie des URL distantes.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userIdCourant = sessionData.session?.user?.id;
+  if (userIdCourant) await televerserImagesProduitsEnAttente(userIdCourant);
 
   // 1) Produits (sans FK, construit la carte pour les autres tables).
   await pousserTable("produits", (e) => {

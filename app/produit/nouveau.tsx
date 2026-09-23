@@ -17,7 +17,40 @@ import { enregistrerActivite } from "@/lib/audit/journal";
 import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
-import { televerserImagesLocales } from "@/lib/storage/images";
+import { televerserImagesLocales, estImageLocale } from "@/lib/storage/images";
+
+// Téléverse les images locales en arrière-plan puis met à jour la fiche
+// produit avec les URL distantes et la marque « à synchroniser ». Sans await
+// côté écran : l'enregistrement reste instantané.
+function televerserEnArrierePlan(produitId: string, uris: string[], userId: string) {
+  (async () => {
+    try {
+      const locales = uris.filter(estImageLocale);
+      if (locales.length === 0) return;
+      const distantes = await televerserImagesLocales(locales, "produits", userId);
+      // Si tout a échoué (hors ligne), la sync réessaiera au retour réseau.
+      if (!distantes.some((u) => !estImageLocale(u))) return;
+      const produit = (await database.get("produits").find(produitId)) as any;
+      const supp = JSON.parse(produit.champsSupplementairesJson || "{}");
+      const actuelles: string[] = supp.images ? JSON.parse(supp.images) : [];
+      // Remplace chaque URI locale par son URL distante (même ordre).
+      const fusion = actuelles.map((u) => {
+        const i = locales.indexOf(u);
+        return i >= 0 ? distantes[i] : u;
+      });
+      supp.images = JSON.stringify(fusion);
+      await database.write(async () => {
+        await produit.update((p: any) => {
+          p.champsSupplementairesJson = JSON.stringify(supp);
+          p.synchronise = false;
+        });
+      });
+      synchroniserPourUtilisateurCourant().catch(() => {});
+    } catch {
+      // Silencieux : la sync réessaiera.
+    }
+  })();
+}
 
 
 
@@ -165,12 +198,12 @@ async function prendrePhoto() {
       const champsSupplementaires: Record<string, string> = { ...valeursTexte };
       if (champsActifs.includes("couleur") && couleurChoisie) champsSupplementaires.couleur = couleurChoisie;
       if (champsActifs.includes("poids") && poidsValeur) champsSupplementaires.poids = `${poidsValeur} ${poidsUnite}`;
-      // Les images locales sont téléversées vers Supabase Storage : seule l'URL
-      // distante est synchronisée, sinon elles sont invisibles sur les autres
-      // appareils. Hors ligne, l'URI locale est conservée (visible ici).
+      // Les images sont enregistrées avec leur URI LOCALE tout de suite :
+      // affichage immédiat, en ligne comme hors ligne. Le téléversement vers
+      // Supabase Storage se fait en arrière-plan APRÈS la sauvegarde (cf.
+      // televerserEnArrierePlan) — il ne bloque plus l'enregistrement.
       if (champsActifs.includes("image") && images.length > 0) {
-        const imagesDistantes = await televerserImagesLocales(images, "produits", userId);
-        champsSupplementaires.images = JSON.stringify(imagesDistantes);
+        champsSupplementaires.images = JSON.stringify(images);
       }
 
       let produitId = "";
@@ -206,6 +239,12 @@ async function prendrePhoto() {
       }
 
       console.log("Produit sauvegardé");
+
+      // Téléverse les images en arrière-plan puis met à jour la fiche avec les
+      // URL distantes (la synchronisation poussera alors les bonnes URL).
+      if (champsActifs.includes("image") && images.length > 0 && produitId) {
+        televerserEnArrierePlan(produitId, images, userId);
+      }
 
       synchroniserPourUtilisateurCourant().catch(() => {});
       await enregistrerActivite("produit", "ajout", `Produit ajouté : ${nom} — stock initial : ${Number(quantite) || 0}`);

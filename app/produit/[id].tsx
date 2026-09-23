@@ -14,7 +14,8 @@ import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { supprimerEnregistrement } from "@/lib/database/supprimer";
-import { televerserImagesLocales } from "@/lib/storage/images";
+import { televerserImagesLocales, estImageLocale } from "@/lib/storage/images";
+import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { calculerBenefice } from "@/lib/ventes/benefice";
 import { ImageCachee } from "@/components/ImageCachee";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
@@ -125,8 +126,9 @@ export default function DetailProduit() {
     try {
       const p = await database.get("produits").find(id);
       const userId = await obtenirUserId();
-      // Téléverse les nouvelles images locales → URLs distantes synchronisables.
-      const imagesDistantes = userId ? await televerserImagesLocales(images, "produits", userId) : images;
+      // On enregistre d'abord avec les URI locales (affichage immédiat, même
+      // hors ligne) ; le téléversement se fait en arrière-plan après coup.
+      const imagesDistantes = images;
       const ancien = (p as any);
       const ancienPrix = ancien.prixVente;
       const ancienStock = ancien.quantiteStock;
@@ -153,6 +155,29 @@ export default function DetailProduit() {
       });
       setChampsSupp(nouveauxChamps);
       setImages(imagesDistantes);
+
+      // Téléverse les images locales en arrière-plan puis met à jour la fiche
+      // avec les URL distantes (la sync poussera alors les bonnes URL).
+      if (userId && imagesDistantes.some(estImageLocale)) {
+        const idProduit = (p as any).id;
+        const uris = imagesDistantes;
+        (async () => {
+          try {
+            const distantes = await televerserImagesLocales(uris, "produits", userId);
+            if (!distantes.some((u) => !estImageLocale(u))) return; // hors ligne : la sync réessaiera
+            const produit = (await database.get("produits").find(idProduit)) as any;
+            const supp = JSON.parse(produit.champsSupplementairesJson || "{}");
+            supp.images = JSON.stringify(distantes);
+            await database.write(async () => {
+              await produit.update((x: any) => {
+                x.champsSupplementairesJson = JSON.stringify(supp);
+                x.synchronise = false;
+              });
+            });
+            synchroniserPourUtilisateurCourant().catch(() => {});
+          } catch {}
+        })();
+      }
 
       // Description détaillée de ce qui a changé.
       const changements: string[] = [];
