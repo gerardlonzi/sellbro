@@ -7,6 +7,8 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useEssai } from "@/lib/trial/useEssai";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
+import { useConnexion } from "@/lib/useConnexion";
+import { useToast } from "@/lib/toast/ToastProvider";
 
 type PlanId = "premium";
 
@@ -15,6 +17,8 @@ export default function OnboardingPlan() {
   const { langue } = useLangue();
   const essai = useEssai();
   const { formater } = useCurrency();
+  const enLigne = useConnexion();
+  const { showToast } = useToast();
   const [planChoisi, setPlanChoisi] = useState<PlanId>("premium");
 
   const PLANS: { id: PlanId; nomCle: string; prixCle: string; prixJourCle?: string; descCle: string; fonctionnalitesCle: string; populaire?: boolean }[] = [
@@ -33,6 +37,11 @@ export default function OnboardingPlan() {
   const couleurDegrade = teinteParPlan[planChoisi];
 
   async function continuer() {
+    // Hors ligne : popup standard de l'app, comme sur les autres écrans.
+    if (!enLigne) {
+      showToast(t("erreur_connexion_requise", langue), "error");
+      return;
+    }
     // Paiement Mobile Money in-app (SasPay) — plus de redirection externe.
     router.push("/premium/paiement");
   }
@@ -44,8 +53,8 @@ export default function OnboardingPlan() {
           <Feather name="arrow-left" size={22} color={colors.textSecondary} />
         </Pressable>
         <Text style={{ fontSize: 21, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>{t("plan_titre", langue)}</Text>
-        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 14, lineHeight: 18, marginBottom:20 }}>
-        <Feather name="info" size={13} style={{color:colors.accent , marginRight:20}}  />
+        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 14, lineHeight: 18, marginBottom:20, display:"flex" }}>
+        <Feather name="info" size={13} style={{color:colors.accent, }}  />
 
            {t("paiement_checkout_info", langue)}
         </Text>
