@@ -13,10 +13,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SASPAY_CHECKOUT_URL = "https://api.saspay.me/api/v1/checkout-sessions/";
 
-// Après paiement réussi, la page hébergée redirige vers cette URL (deep link
-// de l'app — scheme "cikap" déclaré dans app.json). Ce n'est PAS une preuve
-// de paiement : seul le webhook confirme.
-const RETURN_URL = "cikap://premium/retour";
+// Après paiement réussi, la page hébergée redirige vers cette URL. SasPay
+// exige du https:// : la fonction checkout-retour sert de pont et redirige
+// (302) vers le deep link cikap://premium/retour de l'app. Ce n'est PAS une
+// preuve de paiement : seul le webhook confirme.
+const RETURN_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/checkout-retour`;
 
 // Pays supportés par SasPay → devise de facturation. Miroir de
 // lib/currency/taux.ts (DEVISES_PAR_PAYS) — à garder synchronisé.
@@ -65,27 +66,18 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // 3) Prix depuis la table plans (source de vérité serveur). Le prix de
-    //    base est en XAF ; prix_par_devise (jsonb) définit le prix dans la
-    //    devise du pays — SasPay ne convertit PAS les montants Mobile Money.
-    const { data: plan } = await supabaseAdmin
-      .from("plans")
-      .select("prix, prix_par_devise")
-      .eq("id", "premium")
-      .single();
+    // 3) Prix (table plans, source de vérité) ET profil client : requêtes
+    //    indépendantes lancées EN PARALLÈLE (un round-trip de moins).
+    const [{ data: plan }, { data: profil }] = await Promise.all([
+      supabaseAdmin.from("plans").select("prix, prix_par_devise").eq("id", "premium").single(),
+      supabaseAdmin.from("profiles").select("nom_boutique, telephone").eq("id", user.id).maybeSingle(),
+    ]);
     if (!plan) return json({ error: "plan introuvable" }, 500);
 
     const montant = devise === "XAF" ? plan.prix : plan.prix_par_devise?.[devise];
     if (!montant || !Number.isFinite(Number(montant))) {
       return json({ error: `prix non configuré pour la devise ${devise}` }, 500);
     }
-
-    // 4) Nom / téléphone du client pour la page de checkout.
-    const { data: profil } = await supabaseAdmin
-      .from("profiles")
-      .select("nom_boutique, telephone")
-      .eq("id", user.id)
-      .maybeSingle();
     const customerName =
       profil?.nom_boutique || user.user_metadata?.nom_complet || user.email?.split("@")[0] || "Client Cikap";
 
@@ -127,12 +119,15 @@ Deno.serve(async (req) => {
       }),
     });
 
-    const session = await reponse.json().catch(() => null);
+    // SasPay enveloppe la réponse : { success, data: { id, checkout_url, ... } }
+    const corpsSasPay = await reponse.json().catch(() => null);
+    const session = corpsSasPay?.data ?? corpsSasPay;
 
     if (!reponse.ok || !session?.checkout_url) {
+      console.error(`SasPay a refusé: status=${reponse.status} réponse=${JSON.stringify(corpsSasPay)}`);
       await supabaseAdmin
         .from("payment_transactions")
-        .update({ status: "failed", raw_webhook_payload: session, updated_at: new Date().toISOString() })
+        .update({ status: "failed", raw_webhook_payload: corpsSasPay, updated_at: new Date().toISOString() })
         .eq("id", transaction.id);
       return json({ error: "checkout non créé" }, 502);
     }
