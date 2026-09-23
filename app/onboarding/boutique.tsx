@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Image, Linking } from "react-native";
 import { router } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Feather , MaterialCommunityIcons} from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
@@ -12,6 +12,8 @@ import { usePays } from "@/lib/pays/PaysProvider";
 import { verifierLimiteAppareil, enregistrerInscriptionAppareil } from "@/lib/auth/limiteAppareil";
 import { envoyerCodeEmail } from "@/lib/auth/emailVerification";
 import { supabase } from "@/lib/supabase/client";
+
+
 
 export default function OnboardingBoutique() {
   const { colors } = useTheme();
@@ -25,6 +27,9 @@ export default function OnboardingBoutique() {
 const [telephone, setTelephone] = useState("");
 
   const [email, setEmail] = useState("");
+
+  const NUMERO_SUPPORT = "+237671986281";
+
 
   function emailValide(valeur: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valeur);
@@ -177,6 +182,12 @@ const [telephone, setTelephone] = useState("");
         </Text>
       </Pressable>
 
+      {/* Lien support : tout en bas de la page, ouvre WhatsApp. */}
+      <Pressable onPress={() => Linking.openURL(`https://wa.me/${NUMERO_SUPPORT.replace("+", "")}`)} style={styles.contacter}>
+        <MaterialCommunityIcons name="whatsapp" size={15} color="#1D9E75" />
+        <Text style={{ color: "#1D9E75", fontSize: 13, fontWeight: "500" }}>{t("boutique_nous_contacter", langue)}</Text>
+      </Pressable>
+
     </View>
   );
 }
@@ -197,4 +208,6 @@ inputNumero: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, 
   carteModal: { width: "100%", borderWidth: 1, borderRadius: 16, padding: 22 },
   iconeModal: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 16 },
   boutonModalPrincipal: { paddingVertical: 13, borderRadius: 10, alignItems: "center", marginBottom: 4 },
+  contacter: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 28, marginBottom: 20 },
+
 });

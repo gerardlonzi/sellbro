@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, Linking } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { EnteteEcran, BoutonPrimaire } from "@/components/UI";
@@ -160,11 +160,7 @@ export default function InfosBoutique() {
         <BoutonPrimaire texte={t("produit_sauver", langue)} onPress={sauvegarder} disabled={chargement} />
       </View>
 
-      {/* Lien support : tout en bas de la page, ouvre WhatsApp. */}
-      <Pressable onPress={() => Linking.openURL(`https://wa.me/${NUMERO_SUPPORT.replace("+", "")}`)} style={styles.contacter}>
-        <MaterialCommunityIcons name="whatsapp" size={15} color="#1D9E75" />
-        <Text style={{ color: "#1D9E75", fontSize: 13, fontWeight: "500" }}>{t("boutique_nous_contacter", langue)}</Text>
-      </Pressable>
+      
     </ScrollView>
   );
 }
