@@ -98,7 +98,9 @@ Deno.serve(async (req) => {
               `https://api.saspay.me/api/v1/checkout-sessions/${candidat.checkout_session_id}/`,
               { headers: { Authorization: `Bearer ${saspayKey}` } }
             );
-            const session = await r.json().catch(() => null);
+            // SasPay enveloppe la réponse : { success, data: {...} }
+            const corps = await r.json().catch(() => null);
+            const session = corps?.data ?? corps;
             if (session?.transaction && session.transaction === saspayId) {
               // Lien établi : on mémorise l'id de transaction SasPay.
               await supabaseAdmin
