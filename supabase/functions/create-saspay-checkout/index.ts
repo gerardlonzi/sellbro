@@ -111,6 +111,9 @@ Deno.serve(async (req) => {
         currency: devise,
         country,
         description: "Abonnement Cikap Pro",
+        // Le commerçant (nous) absorbe les frais : le client paie EXACTEMENT
+        // le prix affiché (2000 F = 2000 F débités).
+        fee_charge_mode: "MERCHANT",
         customer_email: user.email,
         customer_name: customerName,
         customer_phone: profil?.telephone ?? "",
