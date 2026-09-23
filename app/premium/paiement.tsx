@@ -54,32 +54,54 @@ export default function Paiement() {
   useEffect(() => {
     (async () => {
       try {
-        const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 5000);
+        // getSession() est LOCAL (instantané) — pas besoin d'un round-trip
+        // réseau ici : le JWT sera de toute façon validé par la fonction.
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
         if (!user) {
           setChargement(false);
           return;
         }
 
         const ilYa30Min = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-        const { data: enAttente } = await supabase
-          .from("payment_transactions")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("status", "pending")
-          .gte("created_at", ilYa30Min)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Timeout explicite : sans ça, sur réseau lent cette requête pouvait
+        // pendre indéfiniment et bloquer le lancement du checkout.
+        const { data: enAttente } = await avecTimeout(
+          supabase
+            .from("payment_transactions")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("status", "pending")
+            .gte("created_at", ilYa30Min)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          8000
+        );
         if (enAttente) {
-          setTransactionId(enAttente.id);
-          setEtape("attente");
-          ecouter(enAttente.id);
-        } else {
-          // Pas d'écran intermédiaire : « Passer à Premium » ouvre
-          // DIRECTEMENT le checkout SasPay (le message de redirection est
-          // affiché sur la page Premium, avant le clic).
-          payer();
+          // Une transaction pending existe (navigateur fermé avant la fin).
+          // On vérifie d'abord son statut RÉEL (le webhook a peut-être
+          // confirmé pendant l'absence)...
+          const { data: verif } = await avecTimeout(
+            supabase.functions.invoke("verify-payment", { body: { transaction_id: enAttente.id } }),
+            15000
+          ).catch(() => ({ data: null }));
+          if (verif?.status === "success") {
+            setTransactionId(enAttente.id);
+            setEtape("attente");
+            await onSucces();
+            return;
+          }
+          if (verif?.status === "failed" || verif?.status === "cancelled") {
+            onEchec();
+            return;
+          }
+          // ...sinon l'ancienne session SasPay est probablement expirée ou
+          // abandonnée : on en crée une NOUVELLE (sinon le navigateur ne
+          // se rouvrirait jamais et l'écran resterait figé).
         }
+        // « Passer à Premium » ouvre DIRECTEMENT le checkout SasPay.
+        payer();
       } catch {
         // Hors ligne : on arrête le spinner et on propose de réessayer.
         setChargement(false);
@@ -266,12 +288,15 @@ export default function Paiement() {
     );
   }
 
+  // Étape « attente » : MÊME écran que la redirection (une seule page après
+  // « Passer à Pro ») — seul le bouton « Vérifier le statut » apparaît si le
+  // webhook tarde.
   if (etape === "attente") {
     return (
       <View style={[styles.centre, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 20 }]}>{t("paiement_attente_titre", langue)}</Text>
-        <Text style={[styles.texte, { color: colors.textSecondary }]}>{t("paiement_attente_texte", langue)}</Text>
+        <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 20 }]}>{t("paiement_redirection_titre", langue)}</Text>
+        <Text style={[styles.texte, { color: colors.textSecondary }]}>{t("paiement_redirection_texte", langue)}</Text>
         {delaiDepasse && (
           <Pressable
             onPress={verifier}
@@ -300,12 +325,15 @@ export default function Paiement() {
       {chargement ? (
         <>
           <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_titre", langue)}</Text>
+          <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_redirection_titre", langue)}</Text>
+          <Text style={[styles.texte, { color: colors.textSecondary, marginTop: 8 }]}>
+            {t("paiement_redirection_texte", langue)}
+          </Text>
         </>
       ) : erreurInit ? (
         <>
           <Feather name="alert-circle" size={48} color={colors.danger} />
-          <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_titre", langue)}</Text>
+          <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_redirection_titre", langue)}</Text>
           <Text style={[styles.texte, { color: colors.textSecondary, marginTop: 8 }]}>
             {t("paiement_erreur_initiation", langue)}
           </Text>
