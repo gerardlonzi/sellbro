@@ -55,13 +55,15 @@ const traductions = {
     abonnement_termine_statut: "Abonnement terminé",
     abonnement_termine_renew: "Renouveler",
     paiement_titre: "Abonnement Cikap Pro",
+    paiement_redirection_titre: "Redirection vers la page de paiement",
+    paiement_redirection_texte: "Tu vas être redirigé vers une page de paiement sécurisée. Ton abonnement sera activé automatiquement après confirmation.",
     paiement_numero_label: "Numéro Mobile Money",
     paiement_numero_aide: "Le numéro qui recevra la demande de paiement (peut être différent de ton numéro habituel).",
     paiement_reseau_label: "Choisis ton réseau",
     paiement_payer: "Passer à Pro",
-    paiement_checkout_info: "Tu vas être redirigé vers la page de paiement sécurisée SasPay pour choisir ton moyen de paiement (Mobile Money, OM, carte…). Ton abonnement Pro sera activé automatiquement après confirmation.",
+    paiement_checkout_info: "Débloque toutes les fonctionnalités de Cikap pour gérer ton activité plus efficacement. Paye par Mobile Money, Orange Money, airtel etc..",
     paiement_attente_titre: "Paiement en cours",
-    paiement_attente_texte: "Finalise le paiement sur la page SasPay. Ton abonnement sera activé automatiquement dès confirmation.",
+    paiement_attente_texte: "Finalise le paiement sur la page de paiement sécurisée. Ton abonnement sera activé automatiquement dès confirmation.",
     paiement_verifier: "Vérifier le statut",
     paiement_succes_titre: "Paiement réussi !",
     paiement_succes_texte: "Ton abonnement Pro est maintenant actif. Merci !",
@@ -106,7 +108,7 @@ const traductions = {
     slide_suivant: "Suivant",
     slide_passer: "Passer",
 
-    plan_titre: "Choisis ton plan",
+    plan_titre: "Passe à Premium",
     plan_sous_titre: "Tu pourras changer à tout moment dans Réglages",
     plan_essai_actif: "Tu es en essai gratuit — passe à un plan pour voir toutes les fonctionnalités.",
     plan_gratuit_nom: "Gratuit",
@@ -601,13 +603,15 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     abonnement_termine_statut: "Subscription ended",
     abonnement_termine_renew: "Renew",
     paiement_titre: "Cikap Pro subscription",
+    paiement_redirection_titre: "Redirecting to payment page",
+    paiement_redirection_texte: "You'll be redirected to a secure payment page. Your subscription will activate automatically after confirmation.",
     paiement_numero_label: "Mobile Money number",
     paiement_numero_aide: "The number that will receive the payment request (it can be different from your usual number).",
     paiement_reseau_label: "Choose your network",
     paiement_payer: "Upgrade to Pro",
-    paiement_checkout_info: "You will be redirected to SasPay's secure payment page to choose your payment method (Mobile Money, OM, card…). Your Pro subscription will be activated automatically once confirmed.",
+    paiement_checkout_info: "Unlock all Cikap features to manage your business more efficiently. Pay with Mobile Money, Orange Money, Airtel Money, and more.",
     paiement_attente_titre: "Payment in progress",
-    paiement_attente_texte: "Complete the payment on the SasPay page. Your subscription will be activated automatically once confirmed.",
+    paiement_attente_texte: "Complete the payment on the secure payment page. Your subscription will be activated automatically once confirmed.",
     paiement_verifier: "Check status",
     paiement_succes_titre: "Payment successful!",
     paiement_succes_texte: "Your Pro subscription is now active. Thank you!",
@@ -656,7 +660,7 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
 
     plan_populaire: "★ The most popular",
     plan_note_changement: "You can change your plan anytime in Settings",
-    plan_titre: "Choose your plan",
+    plan_titre: "Go Premium",
     plan_sous_titre: "You can change it anytime in Settings",
     plan_essai_actif: "You are on the free trial — upgrade to a plan to see all features.",
     plan_gratuit_nom: "Free",
@@ -1107,7 +1111,7 @@ erreur_enregistrement_boutique: "Impossible to save the shop, try again.",
 };
 
 export function t<K extends keyof typeof traductions.fr>(cle: K, langue: Langue = "fr"): typeof traductions.fr[K] {
-  return (traductions[langue][cle] ?? traductions.fr[cle]) as typeof traductions.fr[K];
+  return ((traductions[langue] as typeof traductions.fr)[cle] ?? traductions.fr[cle]) as typeof traductions.fr[K];
 }
 
 const CLE_LANGUE_LOCALE = "boutika_langue";
