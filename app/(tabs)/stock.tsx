@@ -226,15 +226,21 @@ export default function Stock() {
       ========================== */}
 
       <View style={styles.entete}>
-        <Text
-          style={{
-            fontSize: 16,
-            fontWeight: "500",
-            color: colors.textPrimary,
-          }}
-        >
-          {t("stock_titre", langue)}
-        </Text>
+        <View style={styles.enteteGauche}>
+         <Pressable onPress={() => router.push("/reglages")} hitSlop={10}>
+            <Feather name="menu" size={22} color={colors.textPrimary} />
+          </Pressable>
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: "500",
+              color: colors.textPrimary,
+            }}
+          >
+            {t("stock_titre", langue)}
+          </Text>
+
+        </View>
 
         <View style={styles.actionsEntete}>
           {/* Bouton scan code-barres */}
@@ -736,5 +742,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
+
 });
 
