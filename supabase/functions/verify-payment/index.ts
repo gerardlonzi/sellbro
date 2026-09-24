@@ -20,6 +20,49 @@ function json(data: unknown, status = 200) {
   });
 }
 
+// Répare les paiements confirmés jamais activés : si l'utilisateur a une
+// transaction success récente et AUCUN abonnement actif, on l'active.
+// `transaction` : transaction déjà chargée (cas success direct), sinon null
+// → on cherche la success la plus récente de l'utilisateur.
+async function reparerSiNecessaire(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  userId: string,
+  transaction: { id: string; user_id: string; network: string | null } | null
+): Promise<boolean> {
+  const { data: abo } = await supabaseAdmin
+    .from("abonnements")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("statut", "actif")
+    .gt("date_expiration", new Date().toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (abo) return false; // déjà actif : rien à réparer
+
+  let tx = transaction;
+  if (!tx) {
+    const { data } = await supabaseAdmin
+      .from("payment_transactions")
+      .select("id, user_id, network")
+      .eq("user_id", userId)
+      .eq("status", "success")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    tx = data;
+  }
+  if (!tx) return false;
+
+  await activerAbonnement(supabaseAdmin, {
+    transactionId: tx.id,
+    userId: tx.user_id,
+    phone: null,
+    network: tx.network,
+  });
+  console.log(`réparation: abonnement activé pour user=${userId} via transaction=${tx.id}`);
+  return true;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -51,28 +94,23 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!transaction) return json({ error: "transaction introuvable" }, 404);
 
-    // Auto-réparation : transaction déjà confirmée (success) MAIS sans
-    // abonnement actif (ex. bug d'activation passé) → on ré-active ici.
-    if (transaction.status === "success") {
-      const { data: abo } = await supabaseAdmin
-        .from("abonnements")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("statut", "actif")
-        .gt("date_expiration", new Date().toISOString())
-        .limit(1)
-        .maybeSingle();
-      if (!abo) {
-        await activerAbonnement(supabaseAdmin, {
-          transactionId: transaction.id,
-          userId: transaction.user_id,
-          phone: null,
-          network: transaction.network,
-        });
+    // Auto-réparation : un paiement confirmé (success) SANS abonnement actif
+    // (ex. bug d'activation passé) → on ré-active. On cherche la transaction
+    // success la plus récente de l'utilisateur, pas seulement celle demandée :
+    // l'app appelle souvent avec une transaction pending plus récente.
+    if (transaction.status !== "pending") {
+      if (transaction.status === "success") {
+        const reparee = await reparerSiNecessaire(supabaseAdmin, user.id, transaction);
+        return json({ status: reparee ? "success" : transaction.status });
       }
-      return json({ status: "success" });
+      return json({ status: transaction.status });
     }
-    if (transaction.status !== "pending") return json({ status: transaction.status });
+    // Transaction demandée encore pending : avant d'aller interroger SasPay,
+    // on vérifie s'il n'existe pas une AUTRE transaction success non activée.
+    {
+      const reparee = await reparerSiNecessaire(supabaseAdmin, user.id, null);
+      if (reparee) return json({ status: "success" });
+    }
 
     // Checkout hébergé sans transaction SasPay connue : on lit la session.
     // La session porte le statut (PENDING/SUCCESS/CANCELLED) et, une fois
