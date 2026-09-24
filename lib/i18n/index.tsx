@@ -627,6 +627,7 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     paiement_checkout_ouvert: "A confirmation page was opened in your browser to complete the payment.",
     boutique_nous_contacter: "Any question? Contact us on WhatsApp",
     premium_mode: "Premium mode",
+    premium_puce_active: "Active",
     premium_expire_dans: (jours: number) => `You're in Premium mode, expires in ${jours} days.`,
     ajouter_manuellement: "Add a product / sale",
     ventes_recentes: "Recent sales",
