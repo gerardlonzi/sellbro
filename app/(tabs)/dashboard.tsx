@@ -203,7 +203,12 @@ export default function Dashboard() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
       <View style={styles.entete}>
-        <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
+      <View style={styles.enteteGauche}>
+         <Pressable onPress={() => router.push("/reglages")} hitSlop={10}>
+            <Feather name="menu" size={22} color={colors.textPrimary} />
+          </Pressable>
+          <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
+        </View>
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
         {!planPret ? (
             <ActivityIndicator size="small" color={colors.textMuted} />
@@ -476,4 +481,6 @@ const styles = StyleSheet.create({
   ligneTop: { flexDirection: "row", alignItems: "center", paddingVertical: 8 },
   avatar: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", marginRight: 10 },
   lignePaiement: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5 },
+  enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
+
 });
