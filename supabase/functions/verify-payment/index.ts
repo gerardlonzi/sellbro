@@ -51,6 +51,27 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!transaction) return json({ error: "transaction introuvable" }, 404);
 
+    // Auto-réparation : transaction déjà confirmée (success) MAIS sans
+    // abonnement actif (ex. bug d'activation passé) → on ré-active ici.
+    if (transaction.status === "success") {
+      const { data: abo } = await supabaseAdmin
+        .from("abonnements")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("statut", "actif")
+        .gt("date_expiration", new Date().toISOString())
+        .limit(1)
+        .maybeSingle();
+      if (!abo) {
+        await activerAbonnement(supabaseAdmin, {
+          transactionId: transaction.id,
+          userId: transaction.user_id,
+          phone: null,
+          network: transaction.network,
+        });
+      }
+      return json({ status: "success" });
+    }
     if (transaction.status !== "pending") return json({ status: transaction.status });
 
     // Checkout hébergé sans transaction SasPay connue : on lit la session.
