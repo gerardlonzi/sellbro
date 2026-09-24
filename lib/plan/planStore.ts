@@ -4,6 +4,9 @@ import { avecTimeout } from "@/lib/timeout";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const CLE_OVERRIDE = "plan_test_override";
+// Date d'expiration du plan payant, mise en cache avec le plan : sans elle,
+// un Premium expiré gardait l'accès complet tant qu'il restait hors ligne.
+const CLE_EXPIRATION = "plan_expiration";
 
 export async function lireOverrideTest(): Promise<string | null> {
   if (!__DEV__) return null;
@@ -36,7 +39,17 @@ export async function rafraichirPlan() {
   // 1) Lecture LOCALE immédiate (fonctionne hors ligne) : le badge du plan
   // s'affiche tout de suite depuis le cache, sans attendre le réseau.
   const override = await lireOverrideTest();
-  const planLocal = (await AsyncStorage.getItem("plan_actuel")) as PlanId | null;
+  let planLocal = (await AsyncStorage.getItem("plan_actuel")) as PlanId | null;
+  // Un plan payant dont la date d'expiration (mise en cache à la dernière
+  // synchro) est dépassée ne vaut plus — MÊME hors ligne. On retombe sur
+  // gratuit/essai jusqu'à la prochaine vérification serveur.
+  if (planLocal && planLocal !== "gratuit") {
+    const expiration = await AsyncStorage.getItem(CLE_EXPIRATION);
+    if (expiration && new Date(expiration).getTime() <= Date.now()) {
+      planLocal = null;
+      await AsyncStorage.removeItem("plan_actuel");
+    }
+  }
   const planIdLocal = override ?? planLocal;
   if (planIdLocal && PLANS_PAR_DEFAUT[planIdLocal as PlanId]) {
     etat = { planId: planIdLocal as PlanId, plan: PLANS_PAR_DEFAUT[planIdLocal as PlanId], pret: true };
@@ -73,6 +86,22 @@ export async function rafraichirPlan() {
     if (planIdNormalise && plans[planIdNormalise as PlanId]) {
       etat = { planId: planIdNormalise as PlanId, plan: plans[planIdNormalise as PlanId], pret: true };
       await AsyncStorage.setItem("plan_actuel", planIdNormalise);
+      // Mémorise la date d'expiration de l'abonnement pour faire respecter
+      // la fin de période MÊME HORS LIGNE (sinon le cache « premium »
+      // donnait l'accès indéfiniment sans réseau).
+      if (planIdNormalise === "gratuit") {
+        await AsyncStorage.removeItem(CLE_EXPIRATION);
+      } else {
+        const { data: abo } = await avecTimeout(supabase
+          .from("abonnements")
+          .select("date_expiration")
+          .eq("user_id", user.id)
+          .eq("statut", "actif")
+          .order("date_expiration", { ascending: false })
+          .limit(1)
+          .maybeSingle(), 6000);
+        if (abo?.date_expiration) await AsyncStorage.setItem(CLE_EXPIRATION, abo.date_expiration);
+      }
       notifier();
     }
   } catch {
