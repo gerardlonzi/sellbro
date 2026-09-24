@@ -270,6 +270,8 @@ const traductions = {
     categories_supprimer_confirmer: "Supprimer",
 
     notifications_reglage_titre: "Notifications",
+    notif_heures_titre: "Heures de rappel",
+    notif_heures_aide: (n: number) => `${n} rappel${n > 1 ? "s" : ""} par jour aux heures choisies`,
     notifications_page_titre: "Notifications",
     notifications_vide: "Aucune notification pour l'instant",
     notif_lu: "Lu", notif_non_lu: "Non lu",
@@ -818,6 +820,8 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     categories_supprimer_confirmer: "Delete",
 
     notifications_reglage_titre: "Notifications",
+    notif_heures_titre: "Reminder times",
+    notif_heures_aide: (n: number) => `${n} reminder${n > 1 ? "s" : ""} a day at the chosen times`,
     notifications_page_titre: "Notifications",
     notifications_vide: "No notifications yet",
     notif_lu: "Read", notif_non_lu: "Unread",

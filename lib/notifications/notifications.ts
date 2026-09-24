@@ -48,6 +48,22 @@ const CLE_STOCK_FAIBLE = "notif_stock_faible_active";
 const CLE_CRANCE_RETARD = "notif_creance_retard_active";
 const CLE_ECHEANCE_PROCHE = "notif_echeance_proche_active";
 
+// Heures de rappel CHOISIES par l'utilisateur (Paramètres → Notifications).
+// Défaut : 3 rappels par jour (9h, 13h, 18h).
+export const CLE_HEURES_NOTIF = "notif_heures_rappel";
+const HEURES_DEFAUT = [9, 13, 18];
+
+export async function lireHeuresRappel(): Promise<number[]> {
+  try {
+    const brut = await AsyncStorage.getItem(CLE_HEURES_NOTIF);
+    if (brut) {
+      const heures = (JSON.parse(brut) as number[]).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
+      if (heures.length > 0) return heures.sort((a, b) => a - b);
+    }
+  } catch {}
+  return HEURES_DEFAUT;
+}
+
 async function estActive(cle: string): Promise<boolean> {
   try {
     const v = await AsyncStorage.getItem(cle);
@@ -108,43 +124,50 @@ export async function detecterAlertes() {
 }
 
 // Persiste les alertes (rupture + stock faible + créances en retard) dans la
-// table `notifications` Supabase, avec déduplication : chaque alerte n'est
-// insérée qu'une seule fois (par type + lien), tant qu'elle n'a pas été lue.
+// table `notifications` Supabase, avec déduplication STRICTE : une alerte
+// n'existe qu'EN UN SEUL EXEMPLAIRE (lue ou non) tant que le problème est
+// présent. Quand le problème disparaît (produit réapprovisionné, créance
+// payée), l'alerte est supprimée — elle pourra revenir si le problème revient.
 async function persisterAlertes(produitsRupture: ProduitAlerte[], produitsFaibles: ProduitAlerte[], creancesRetard: CreanceAlerte[]) {
   const userId = await obtenirUserId();
   if (!userId) return;
 
   try {
+    const TYPES = ["rupture_stock", "stock_faible", "creance_retard"];
     const { data: existantes } = await supabase
       .from("notifications")
-      .select("type, lien")
+      .select("id, type, lien")
       .eq("user_id", userId)
-      .eq("lu", false);
+      .in("type", TYPES);
+
+    // Alertes actuellement justifiées : type|lien → message (nom).
+    const actuelles = new Map<string, string>();
+    for (const p of produitsRupture) actuelles.set(`rupture_stock|/produit/${p.id}`, p.nom);
+    for (const p of produitsFaibles) actuelles.set(`stock_faible|/produit/${p.id}`, p.nom);
+    for (const c of creancesRetard) actuelles.set(`creance_retard|/creances/${c.id}`, c.nom);
 
     const dejaPresentes = new Set((existantes ?? []).map((n: any) => `${n.type}|${n.lien}`));
 
-    const aInserer: any[] = [];
-    // On stocke uniquement le NOM de l'item dans `message` ; le préfixe
-    // localisé est ajouté à l'affichage selon la langue de l'utilisateur.
-    for (const p of produitsRupture) {
-      const lien = `/produit/${p.id}`;
-      if (!dejaPresentes.has(`rupture_stock|${lien}`)) {
-        aInserer.push({ user_id: userId, type: "rupture_stock", message: p.nom, lien, lu: false });
-      }
+    // 1) Résolution : supprime les alertes dont le problème a disparu
+    //    (et les doublons éventuels déjà présents en base).
+    const vus = new Set<string>();
+    const aSupprimer: string[] = [];
+    for (const n of existantes ?? []) {
+      const cle = `${n.type}|${n.lien}`;
+      if (!actuelles.has(cle) || vus.has(cle)) aSupprimer.push(n.id);
+      else vus.add(cle);
     }
-    for (const p of produitsFaibles) {
-      const lien = `/produit/${p.id}`;
-      if (!dejaPresentes.has(`stock_faible|${lien}`)) {
-        aInserer.push({ user_id: userId, type: "stock_faible", message: p.nom, lien, lu: false });
-      }
-    }
-    for (const c of creancesRetard) {
-      const lien = `/creances/${c.id}`;
-      if (!dejaPresentes.has(`creance_retard|${lien}`)) {
-        aInserer.push({ user_id: userId, type: "creance_retard", message: c.nom, lien, lu: false });
-      }
+    if (aSupprimer.length > 0) {
+      await supabase.from("notifications").delete().in("id", aSupprimer);
     }
 
+    // 2) Insertion : uniquement les alertes absentes (peu importe lu/non-lu).
+    const aInserer: any[] = [];
+    for (const [cle, nom] of actuelles) {
+      if (dejaPresentes.has(cle)) continue;
+      const [type, lien] = cle.split("|");
+      aInserer.push({ user_id: userId, type, message: nom, lien, lu: false });
+    }
     if (aInserer.length > 0) {
       await supabase.from("notifications").insert(aInserer);
     }
@@ -294,9 +317,11 @@ export async function verifierAlertesEtNotifier() {
 
   if (messages.length === 0) return;
 
-  // Six rappels quotidiens : 8h, 10h, 12h, 14h, 16h, 18h. Planifiés localement,
-  // donc délivrés par le système même si l'app est fermée.
-  for (const heure of [8, 10, 12, 14, 16, 18, 20]) {
+  // Rappels quotidiens aux heures CHOISIES par l'utilisateur (défaut : 9h,
+  // 13h, 18h). Planifiés localement, donc délivrés par le système même si
+  // l'app est fermée.
+  const heures = await lireHeuresRappel();
+  for (const heure of heures) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: t("notif_alertes_titre", langue),
