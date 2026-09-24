@@ -76,6 +76,7 @@ const traductions = {
     paiement_checkout_ouvert: "Une page de confirmation a été ouverte dans ton navigateur pour finaliser le paiement.",
     boutique_nous_contacter: "Une question ? Contacte-nous sur WhatsApp",
     premium_mode: "Mode Premium",
+    premium_puce_active: "Activé",
     premium_expire_dans: (jours: number) => `Tu es en mode Premium, expire dans ${jours} jours.`,
     ajouter_manuellement: "Ajouter un produit / une vente",
     ventes_recentes: "Ventes récentes",
