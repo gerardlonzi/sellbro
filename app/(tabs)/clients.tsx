@@ -73,7 +73,15 @@ export default function Clients() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 10, alignItems: "center", justifyContent: "space-between" }}>
-        <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary, marginBottom: 12 }}>{t("clients_titre", langue)}</Text>
+
+      <View style={styles.enteteGauche}>
+         <Pressable onPress={() => router.push("/reglages")} hitSlop={10}>
+            <Feather name="menu" size={22} color={colors.textPrimary} />
+          </Pressable>
+          <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("clients_titre", langue)}</Text>
+
+
+        </View>
         <View style={{flexDirection:"row", gap: 3}}>
           <Pressable
             onPress={() => setRechercheOuverte(true)}
@@ -230,6 +238,7 @@ const styles = StyleSheet.create({
   },
   contenu: {  paddingBottom: 70 },
 
+  enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
 
 
 });
