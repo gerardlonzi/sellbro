@@ -2,14 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { useEssai } from "@/lib/trial/useEssai";
 import { useAbonnement } from "@/lib/plan/useAbonnement";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { definirPlanTest, definirEtatNeutreTest, definirEtatTrialTest } from "@/lib/plan/planTest";
 import { Carte, EnteteEcran } from "@/components/UI";
 import { sAbonnerSync, EtatSync } from "@/lib/sync/syncStatus";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
@@ -18,7 +16,7 @@ import { useConnexion } from "@/lib/useConnexion";
 export default function Reglages() {
   const { colors, mode, setMode } = useTheme();
   const { langue } = useLangue();
-  const { planId, plan } = usePlanActuel();
+  const { plan } = usePlanActuel();
   const essai = useEssai();
   const { expire: abonnementExpire, joursRestants: joursAbonnement } = useAbonnement();
   const { formater } = useCurrency();
@@ -58,7 +56,7 @@ export default function Reglages() {
                       </Text>
 
                     </View>
-                    <View style={{ backgroundColor: colors.onp, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <View style={{ backgroundColor: colors.proBg, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 , marginLeft:25}}>
                       <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{t("premium_puce_active", langue)}</Text>
                     </View>
                     {/* Puce de statut : l'abonnement est actif. */}
@@ -154,31 +152,7 @@ export default function Reglages() {
           <LigneReglage icone="headphones" label={t("reglages_contact", langue)} onPress={() => router.push("/contact")} dernier />
         </Carte>
 
-        {__DEV__ && (
-          <>
-            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 6, marginBottom: 8 }}>🧪 TEST — Forcer un statut</Text>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-              {(["gratuit", "essai", "premium"] as const).map((p) => (
-                <Pressable
-                  key={p}
-                  onPress={() => (p === "gratuit" ? definirEtatNeutreTest() : p === "essai" ? definirEtatTrialTest() : definirPlanTest("premium"))}
-                  style={{ flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: (p === "gratuit" && planId === "gratuit") || (p === "premium" && planId === "premium") ? 2 : 1, borderColor: colors.border, alignItems: "center" }}
-                >
-                  <Text style={{ fontSize: 11, color: colors.textPrimary }}>{p === "gratuit" ? "Free" : p === "essai" ? "Essai" : "Pro"}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable
-              onPress={async () => {
-                await AsyncStorage.multiRemove(["onboarding_termine", "plan_actuel", "plan_choisi_en_attente"]);
-                router.replace("/");
-              }}
-              style={{ padding: 12, borderRadius: 8, backgroundColor: colors.dangerBg }}
-            >
-              <Text style={{ color: colors.danger, fontSize: 12, textAlign: "center" }}>🧪 {t("reglages_test_reinitialiser", langue)}</Text>
-            </Pressable>
-          </>
-        )}
+
       </ScrollView>
     </View>
   );
