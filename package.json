@@ -5,6 +5,8 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
+    "android:release": "expo run:android --variant release",
+    "build:apk": "cd android && ./gradlew assembleRelease",
     "ios": "expo run:ios",
     "postinstall": "patch-package"
   },

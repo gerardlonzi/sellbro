@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
-    "icon": "./assets/logo-icon.jpg",
+    "icon": "./assets/logo-icon.jpeg",
 
     "ios": {
       "supportsTablet": false,
@@ -17,7 +17,7 @@
     "android": {
       "package": "com.eyetech.cikap",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo-icon.jpg",
+        "foregroundImage": "./assets/logo-icon.jpeg",
         "backgroundColor": "#FFFFFF"
       }
     },
