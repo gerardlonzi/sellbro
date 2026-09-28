@@ -89,7 +89,7 @@ export default function VerificationOtp() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Image
-        source={require("../../assets/splash-logo.jpg")}
+        source={require("../../assets/splash-logo.png")}
         style={styles.icone}
         resizeMode="contain"
       />

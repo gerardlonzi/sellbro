@@ -86,7 +86,7 @@ export default function Connexion() {
         <Feather name="arrow-left" size={22} color={colors.textPrimary} />
       </Pressable>
       <Image
-        source={require("../../assets/splash-logo.jpg")}
+        source={require("../../assets/splash-logo.png")}
         style={styles.icone}
         resizeMode="contain"
       />
