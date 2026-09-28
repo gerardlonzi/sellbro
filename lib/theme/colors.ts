@@ -2,14 +2,14 @@ export type ThemeColors = typeof lightColors;
 
 
 export const lightColors = {
-  background: "#FFFFFF",
-  surface: "#f9f9f9",
+  background: "#f7f7f7",
+  surface: "#ffffff",
   border: "#e8e8e8",
   textPrimary: "#181815",
   textSecondary: "#5C5B54",
   textMuted: "#898880",
-  accent: "#1a9a65",
-  accentBg: "#DCF2EA",
+  accent: "#4c3cc0",
+  accentBg: "#4b3cc025",
   success: "#1a9a65",
   successBg: "#DFF3EB",
   warning: "#7A4A0A",
