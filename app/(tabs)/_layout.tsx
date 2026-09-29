@@ -20,7 +20,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border },
-        tabBarIcon: ({ color, size }) => <Feather name={ICONES[route.name]} size={size} color={color} />,
+        tabBarIcon: ({ color, size }) => <Feather name={ICONES[route.name]} size={size} color={color}   />,
       })}
     >
       <Tabs.Screen name="accueil" options={{ title: "Accueil" }} />

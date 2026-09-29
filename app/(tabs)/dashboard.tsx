@@ -86,11 +86,13 @@ export default function Dashboard() {
   // Si l'essai expire (passage en « free mode »), on réinitialise le filtre
   // personnalisé pour masquer les cartes de dates.
   useEffect(() => {
-    if (!essai.estPremium && !essai.actif) {
+    // `verifie` est indispensable ici : tant qu'on ignore le statut, `actif`
+    // vaut false et le filtre personnalisé serait remis à zéro à tort.
+    if (essai.verifie && !essai.estPremium && !essai.actif) {
       setPersonnalise(false);
       setAfficherDatePicker(null);
     }
-  }, [essai.estPremium, essai.actif]);
+  }, [essai.verifie, essai.estPremium, essai.actif]);
 
   useFocusEffect(
     useCallback(() => {

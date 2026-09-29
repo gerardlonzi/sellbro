@@ -194,7 +194,9 @@ export default function Accueil() {
       </View>
 
       <ScrollView contentContainerStyle={styles.contenu}>
-      {!estPremium && !essai.actif && (
+      {/* `verifie` évite que la bannière « essai expiré » clignote pour un
+          abonné Pro le temps que son plan soit lu. */}
+      {essai.verifie && !estPremium && !essai.actif && (
         <Pressable onPress={() => router.push("/premium")} style={[styles.banniereEssai, { backgroundColor: colors.proBg, borderColor: colors.borderPro }]}>
           <Feather name="lock" size={16} color={colors.pro} />
           <Text style={{ color: colors.pro, fontSize: 13, flex: 1 }}>{t("essai_expire", langue)}</Text>
