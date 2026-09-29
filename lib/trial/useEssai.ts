@@ -71,6 +71,11 @@ export type EssaiInfo = {
   prix: number | null;
   dateFin: string | null;
   pret: boolean;
+  // `verifie` = on SAIT à quoi cet utilisateur a droit. `pret` ne le dit pas :
+  // il passe à true dès la lecture locale, qui ne trouve rien sur une
+  // installation neuve. Toute UI qui affiche un statut (ou un pop-up d'essai)
+  // doit attendre `verifie`, sinon elle affiche « essai gratuit » à un Pro.
+  verifie: boolean;
   recharger: () => Promise<void>;
 };
 
@@ -78,8 +83,8 @@ export type EssaiInfo = {
 // pop-ups) et la logique de rappels. La durée totale et le prix viennent de la
 // base, les jours restants sont recalculés localement depuis dateFin.
 export function useEssai(): EssaiInfo {
-  const { planId, pret: planPret } = usePlanActuel();
-  const [etat, setEtat] = useState<EtatEssai>({ actif: true, joursRestants: 0, dateFin: null });
+  const { planId, pret: planPret, verifie: planVerifie } = usePlanActuel();
+  const [etat, setEtat] = useState<EtatEssai>({ actif: false, joursRestants: 0, dateFin: null, connu: false });
   const [config, setConfig] = useState<ConfigEssai>({ dureeTotale: null, prix: null });
   const [pret, setPret] = useState(false);
 
@@ -116,6 +121,10 @@ export function useEssai(): EssaiInfo {
 
   const estPremium = planId === "premium";
   const statut = calculerStatut(estPremium, etat.actif);
+  // Un abonné Pro est vérifié dès que son plan l'est : inutile de connaître
+  // l'essai, qui ne le concerne pas. Pour les autres, il faut aussi savoir où
+  // en est l'essai — sinon « inconnu » se lirait comme « terminé ».
+  const verifie = planVerifie && (estPremium || etat.connu);
 
   // Recharge l'état de l'essai (jours restants recalculés depuis dateFin).
   // À appeler au focus pour que « X jours restants » reste à jour.
@@ -132,14 +141,17 @@ export function useEssai(): EssaiInfo {
     // `actif` = accès complet (PRO ou essai actif) — conservé pour compat.
     actif: estPremium || etat.actif,
     statut,
-    // Essai pas encore démarré côté serveur (dateFin null) : on affiche la
-    // durée totale plutôt que « 0 jours ». Sinon, jours recalculés depuis dateFin.
-    joursRestants: etat.dateFin ? etat.joursRestants : (config.dureeTotale ?? 0),
+    // Sans date de fin, on ne connaît RIEN de l'essai de ce compte : on renvoie
+    // 0 et l'appelant affiche un état neutre. Afficher `dureeTotale` ici faisait
+    // apparaître « 3 jours restants » sur des comptes dont l'essai était expiré
+    // depuis longtemps.
+    joursRestants: etat.dateFin ? etat.joursRestants : 0,
     dureeTotale: config.dureeTotale,
     prix: config.prix,
     dateFin: etat.dateFin,
     recharger,
     // Prêt quand le plan ET l'essai ET la config sont chargés (évite le flash).
     pret: planPret && pret,
+    verifie,
   };
 }

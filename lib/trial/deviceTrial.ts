@@ -15,7 +15,12 @@ export async function obtenirIdentifiantAppareil(): Promise<string> {
   return id ?? "inconnu-ios";
 }
 
-export type EtatEssai = { actif: boolean; joursRestants: number; dateFin: string | null };
+// `connu` distingue « l'essai est terminé » de « on n'a pas encore pu savoir ».
+// Sans cette distinction, l'absence de cache (installation neuve, compte ancien
+// jamais connecté sur cet appareil) était lue comme « essai actif » — d'où un
+// compte Pro affiché en essai gratuit et un vieux compte affiché avec 3 jours
+// restants à perpétuité.
+export type EtatEssai = { actif: boolean; joursRestants: number; dateFin: string | null; connu: boolean };
 
 // Cache local : permet d'appliquer les sanctions MÊME HORS LIGNE.
 // La date de fin provient du SERVEUR (jamais de la date du téléphone),
@@ -23,7 +28,9 @@ export type EtatEssai = { actif: boolean; joursRestants: number; dateFin: string
 async function lireCache(): Promise<EtatEssai | null> {
   try {
     const brut = await AsyncStorage.getItem(CLE_ESSAI);
-    return brut ? (JSON.parse(brut) as EtatEssai) : null;
+    if (!brut) return null;
+    // Un cache écrit vient toujours d'une réponse serveur : c'est une connaissance.
+    return { ...(JSON.parse(brut) as EtatEssai), connu: true };
   } catch {
     return null;
   }
@@ -38,7 +45,9 @@ async function ecrireCache(etat: EtatEssai) {
 // Vérification 100% locale (hors ligne) de l'essai.
 export async function estEssaiActifLocal(): Promise<boolean> {
   const cache = await lireCache();
-  if (!cache || !cache.dateFin) return true; // essai jamais démarré → actif
+  // Sans cache, on ne peut PAS présumer d'un droit qu'on n'a jamais vérifié.
+  // Répondre `true` ici ouvrait l'écriture à un compte dont l'essai est expiré.
+  if (!cache || !cache.dateFin) return false;
   return new Date(cache.dateFin).getTime() > Date.now();
 }
 
@@ -54,10 +63,12 @@ export async function obtenirEtatEssaiLocal(): Promise<EtatEssai> {
       actif: joursRestants > 0,
       joursRestants: Math.max(0, joursRestants),
       dateFin: cache.dateFin,
+      connu: true,
     };
   }
-  // Essai jamais démarré (ou hors ligne sans cache) → considéré actif.
-  return { actif: true, joursRestants: 0, dateFin: null };
+  // Aucun cache : on ne sait rien. L'appelant doit afficher un état neutre et
+  // attendre la réponse serveur, jamais conclure « essai actif ».
+  return { actif: false, joursRestants: 0, dateFin: null, connu: false };
 }
 
 // Démarre ou vérifie l'essai via le SERVEUR (autorité), puis met à jour le cache.
@@ -68,6 +79,7 @@ export async function simulerEssaiExpire(): Promise<void> {
     actif: false,
     joursRestants: 0,
     dateFin: new Date(Date.now() - 86400000).toISOString(),
+    connu: true,
   });
 }
 
@@ -77,6 +89,7 @@ export async function simulerEssaiActif(): Promise<void> {
     actif: true,
     joursRestants: 3,
     dateFin: new Date(Date.now() + 3 * 86400000).toISOString(),
+    connu: true,
   });
 }
 
@@ -93,6 +106,7 @@ export async function demarrerOuVerifierEssaiGratuit(): Promise<EtatEssai> {
           actif: r.jours_restants > 0,
           joursRestants: r.jours_restants,
           dateFin: r.date_fin,
+          connu: true,
         };
         await ecrireCache(etat);
         return etat;
@@ -104,10 +118,11 @@ export async function demarrerOuVerifierEssaiGratuit(): Promise<EtatEssai> {
 
   const cache = await lireCache();
   if (cache) {
-    const actif = cache.dateFin ? new Date(cache.dateFin).getTime() > Date.now() : true;
+    const actif = cache.dateFin ? new Date(cache.dateFin).getTime() > Date.now() : false;
     return { ...cache, actif };
   }
-  // Jamais démarré / hors ligne sans cache : dateFin null → l'UI affiche la
-  // durée lue depuis app_config (dureeTotale), aucune valeur en dur ici.
-  return { actif: true, joursRestants: 0, dateFin: null };
+  // Hors ligne sans cache : on ne sait rien. L'appelant affiche un état neutre
+  // plutôt qu'un « X jours restants » calculé sur une durée qu'on n'a pas
+  // confirmée pour CE compte.
+  return { actif: false, joursRestants: 0, dateFin: null, connu: false };
 }
