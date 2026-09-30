@@ -17,6 +17,7 @@ import { useTourGuide } from "@/lib/onboarding/useTourGuide";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 import { AvatarNom } from "@/components/AvatarNom";
 import { Skeleton, Badge } from "@/components/UI";
+import { PuceIcone } from "@/components/PuceIcone";
 import { WelcomeTrial } from "@/components/WelcomeTrial";
 import { IndicateurSync } from "@/components/SyncBanner";
 import { peutEcrire } from "@/lib/trial/gate";
@@ -116,7 +117,7 @@ export default function Accueil() {
       const tousLesProduits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
       const produitsParId = new Map((tousLesProduits as any[]).map((p) => [p.id, p]));
       setBenefice(calculerBenefice(ventesAujourdhui, produitsParId));
-      // « Ventes du jour » = nombre de TRANSACTIONS (regroupées par transactionId).
+      // « Ventes du jour » = nombre de TRANSACTIONS (regroupées par transactionId) ;
       // « Produits vendus » = total des unités.
       const transactions = new Set(
         (ventesAujourdhui as any[]).map((v) => {
@@ -168,7 +169,9 @@ export default function Accueil() {
           </Text>
         </View>
         <View style={styles.enteteDroite}>
-          {!planPret ? (
+          {/* Idem que le dashboard : rien de visible tant que le statut n'est
+              pas vérifié, sinon « Passer Pro » clignotait pour un abonné. */}
+          {!planPret || !essai.verifie ? (
             <ActivityIndicator size="small" color={colors.textMuted} />
           ) : (estPremium || essai.actif) ? (
             <Badge texte={t("version_pro", langue)} type="pro" />
@@ -204,55 +207,70 @@ export default function Accueil() {
         </Pressable>
       )}
       {/* Chiffre d'affaires */}
-      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border ,borderWidth:1 }]}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Feather name="dollar-sign" size={14} color={colors.textSecondary} />
+      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.enTeteMetrique}>
+          <PuceIcone icone="dollar-sign" ton="violet" taille={38} />
           <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500" }}>{t("ca_aujourdhui", langue)}</Text>
         </View>
         {chargementVentes ? (
           <Skeleton width="60%" height={26} style={{ marginVertical: 8 }} />
         ) : (
-          <Text style={{ color: colors.textPrimary, fontSize: 26, fontWeight: "700", marginVertical: 4 }}>{formater(ca)}</Text>
+          <Text style={{ color: colors.textPrimary, fontSize: 26, fontWeight: "700", marginTop: 12 }}>{formater(ca)}</Text>
         )}
-        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{!chargementVentes && ca === 0 ? t("aucune_vente_jour", langue) : ""}</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 10,fontStyle:"italic" }}>{!chargementVentes && ca === 0 ? t("aucune_vente_jour", langue) : ""}</Text>
         </View>
 
       <View style={styles.ligneDeuxCartes}>
-        <View style={[styles.cartePetite, { backgroundColor: colors.warningBg, borderColor: colors.border }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-            <Feather name="package" size={13} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("produits_vendus", langue)}</Text>
-          </View>
-          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.warning, fontSize: 18, fontWeight: "700" }}>{nbProduitsVendus}</Text>}
+        {/* Le ton de la pastille porte la couleur : le chiffre reste neutre,
+            sinon la couleur se répète deux fois dans la même carte. */}
+        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <PuceIcone icone="package" ton="ambre" taille={32} />
+          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop:10}}>{nbProduitsVendus}</Text>}
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("produits_vendus", langue)}</Text>
 
         </View>
-        <View style={[styles.cartePetite, { backgroundColor: colors.accentBg, borderColor: colors.border }]}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          <Feather name="trending-up" size={13} color={colors.textSecondary} />
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("benefice_estime", langue)}</Text>
-        </View>
-        {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.success, fontSize: 18, fontWeight: "700" }}>{formater(benefice)}</Text>}
+        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <PuceIcone icone="trending-up" ton="vert" taille={32} />
+        {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop:10 }}>{formater(benefice)}</Text>}
+        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8}}>{t("benefice_estime", langue)}</Text>
       </View>
 
+      </View>
+
+      {/* 4e carte : nombre de ventes du jour (transactions, pas unités) */}
+      <View style={[styles.ligneDeuxCartes, { marginTop: 10 }]}>
+        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <PuceIcone icone="shopping-bag" ton="bleu" taille={32} />
+          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{nbVentes}</Text>}
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("ventes_du_jour", langue)}</Text>
+        </View>
+        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <PuceIcone icone="repeat" ton="lilas" taille={32} />
+          {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{formater(onTeDoit + tuDois)}</Text>}
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("creances_dettes", langue)}</Text>
+        </View>
       </View>
 
 
       {/* Créances et dettes */}
-      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 ,borderWidth:1}]}>
+      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
         <Pressable onPress={() => router.push("/creances")} style={styles.enTeteCreances}>
-          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{t("creances_dettes", langue)}</Text>
+          <View style={styles.enTeteMetrique}>
+            <PuceIcone icone="repeat" ton="bleu" taille={30} />
+            <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{t("creances_dettes", langue)}</Text>
+          </View>
           <Feather name="chevron-right" size={16} color={colors.textMuted} />
         </Pressable>
         <Pressable style={styles.ligneCreance} onPress={() => router.push("/creances")}>
           <View style={styles.ligneGauche}>
-            <Feather name="arrow-down-left" size={15} color={colors.success} />
+            <PuceIcone icone="arrow-down-left" ton="vert" taille={28} />
             <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("on_te_doit", langue)}</Text>
           </View>
           {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.success, fontSize: 14, fontWeight: "700" }}>{formater(onTeDoit)}</Text>}
         </Pressable>
         <Pressable style={styles.ligneCreance} onPress={() => router.push("/creances")}>
           <View style={styles.ligneGauche}>
-            <Feather name="arrow-up-right" size={15} color={colors.danger} />
+            <PuceIcone icone="arrow-up-right" ton="rose" taille={28} />
             <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("tu_dois", langue)}</Text>
           </View>
           {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.danger, fontSize: 14, fontWeight: "700" }}>{formater(tuDois)}</Text>}
@@ -260,7 +278,7 @@ export default function Accueil() {
       </View>
 
       {/* Bloc Vocal/Scan — désactivés pour le MVP */}
-      <View style={[styles.barreAction, { borderColor: colors.borderPro, opacity: 0.6, marginTop: 14 }]}>
+      {/* <View style={[styles.barreAction, { borderColor: colors.borderPro, opacity: 0.6, marginTop: 14 }]}>
         <Text style={{ flex: 1, color: colors.pro, fontSize: 13 }}>{t("enregistrer_vente", langue)}</Text>
         <Pressable onPress={fonctionnaliteBientotDisponible} style={[styles.boutonRondPro, { backgroundColor: colors.proFill }]}>
           <Feather name="camera" size={18} color={colors.onPro} />
@@ -272,12 +290,12 @@ export default function Accueil() {
       <View style={styles.ligneInfo}>
         <Feather name="clock" size={12} color={colors.textMuted} />
         <Text style={{ color: colors.textMuted, fontSize: 11 }}>{t("bientot_disponible_texte", langue)}</Text>
-      </View>
+      </View> */}
 
 
 
       {/* Ventes récentes */}
-      <View style={{  marginBottom: 30, marginTop:30, gap:8 , borderRadius: 12, paddingVertical: 16}}>
+      <View style={{  marginBottom: 30, marginTop:15, gap:8 , borderRadius: 12, paddingVertical: 16}}>
         <View style={styles.enTeteVentes}>
           <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{t("ventes_recentes", langue)}</Text>
           <Pressable onPress={() => router.push("/(tabs)/ventes")}>
@@ -332,11 +350,14 @@ const styles = StyleSheet.create({
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 25 },
   enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
   enteteDroite: { flexDirection: "row", alignItems: "center", gap: 10 },
-  carte: {  borderRadius: 12, padding: 16, marginBottom: 12 },
+  // La bordure est portée par le style partagé plutôt que répétée en ligne sur
+  // chaque carte : elle restait sinon absente de certaines, et incohérente.
+  carte: { borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1 },
   ligneDeuxCartes: { flexDirection: "row", gap: 10 },
   cartePetite: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 12 },
-  ligneCreance: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
-  ligneGauche: { flexDirection: "row", alignItems: "center", gap: 8 },
+  ligneCreance: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
+  ligneGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
+  enTeteMetrique: { flexDirection: "row", alignItems: "center", gap: 10 },
   barreAction: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 24, padding: 8, paddingLeft: 16 },
   boutonRondPro: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   boutonPassePro: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },

@@ -9,7 +9,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  Image,
 } from "react-native";
 
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -28,6 +27,9 @@ import { useCategories } from "@/lib/categories/CategoriesProvider";
 
 import { Badge } from "@/components/UI";
 import { AvatarNom } from "@/components/AvatarNom";
+import { ImageCachee } from "@/components/ImageCachee";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { PanneauFiltre } from "@/components/PanneauFiltre";
 
@@ -63,6 +65,25 @@ type Produit = {
   image_uri: string | null;
 };
 
+// Trois façons de voir le stock : « liste » (complète, une ligne par produit,
+// le rendu historique), « grille » (grandes images, 2 colonnes, pour un
+// catalogue visuel) et « minimal » (compact, le maximum de produits à l'écran).
+// Le choix est mémorisé dans AsyncStorage : il survit à la fermeture de l'app.
+type ModeAffichage = "liste" | "grille" | "minimal";
+const CLE_MODE_AFFICHAGE = "stock_mode_affichage";
+// Ordre de bascule à chaque appui sur le bouton de l'en-tête.
+const ORDRE_MODES: ModeAffichage[] = ["liste", "grille", "minimal"];
+const ICONES_MODES: Record<ModeAffichage, keyof typeof Feather.glyphMap> = {
+  liste: "list",
+  grille: "grid",
+  minimal: "align-justify",
+};
+const CLES_MODES: Record<ModeAffichage, string> = {
+  liste: "stock_affichage_liste",
+  grille: "stock_affichage_grille",
+  minimal: "stock_affichage_minimal",
+};
+
 export default function Stock() {
   const { colors } = useTheme();
   const { langue } = useLangue();
@@ -88,6 +109,26 @@ export default function Stock() {
   );
 
   const [panneauOuvert, setPanneauOuvert] = useState(false);
+
+  const [modeAffichage, setModeAffichage] = useState<ModeAffichage>("liste");
+
+  // Restaure le mode choisi au démarrage, comme le fait le thème.
+  useEffect(() => {
+    AsyncStorage.getItem(CLE_MODE_AFFICHAGE).then((sauvegarde) => {
+      if (sauvegarde === "liste" || sauvegarde === "grille" || sauvegarde === "minimal") {
+        setModeAffichage(sauvegarde);
+      }
+    });
+  }, []);
+
+  // Un appui sur l'en-tête fait tourner les trois modes dans l'ordre fixe.
+  function basculerModeAffichage() {
+    setModeAffichage((actuel) => {
+      const prochain = ORDRE_MODES[(ORDRE_MODES.indexOf(actuel) + 1) % ORDRE_MODES.length];
+      AsyncStorage.setItem(CLE_MODE_AFFICHAGE, prochain).catch(() => {});
+      return prochain;
+    });
+  }
 
   const derniereVersion = useRef<number | null>(null);
 
@@ -212,6 +253,126 @@ export default function Stock() {
   const filtreActif =
     filtres.tri !== "" || filtres.statut !== "tous";
 
+  // Actions du menu contextuel d'un produit — identiques dans les trois modes
+  // d'affichage, d'où la factorisation.
+  async function supprimerProduit(p: Produit) {
+    if (enregistrement) return;
+    if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
+    setEnregistrement(true);
+    try {
+      const enreg = await database.get("produits").find(p.id);
+      await database.write(async () => {
+        await supprimerEnregistrement("produits", enreg as any);
+      });
+      await enregistrerActivite("produit", "suppression", `Produit supprimé : ${p.nom}`);
+      chargerProduits();
+    } finally {
+      setEnregistrement(false);
+    }
+  }
+
+  function actionsProduit(p: Produit) {
+    return [
+      {
+        label: t("produit_sauver", langue) === "Save" ? "Edit" : "Modifier",
+        icone: "edit-3" as const,
+        onPress: () => router.push(`/produit/${p.id}`),
+      },
+      {
+        label: t("categories_supprimer_confirmer", langue),
+        icone: "trash-2" as const,
+        destructif: true,
+        onPress: () => supprimerProduit(p),
+      },
+    ];
+  }
+
+  // Indicateur de stock partagé par les modes liste et grille.
+  function badgeStock(p: Produit) {
+    if (p.quantite_stock === 0) return <Badge texte={`${p.quantite_stock} ${t("stock_en_stock", langue)}`} type="danger" />;
+    if (p.quantite_stock <= p.seuil_alerte) return <Badge texte={`${p.quantite_stock} ${t("stock_en_stock", langue)}`} type="attention" />;
+    return <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{p.quantite_stock} {t("stock_en_stock", langue)}</Text>;
+  }
+
+  // Mode « liste » — le rendu historique, complet.
+  function rendreLigneListe(p: Produit) {
+    return (
+      <View key={p.id} style={[styles.ligneProduit, { borderBottomColor: colors.border }]}>
+        <Pressable onPress={() => router.push(`/produit/${p.id}`)} style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+          <AvatarNom nom={p.nom} imageUri={p.image_uri} taille={36} />
+          <View style={{ flexShrink: 1 }}>
+            <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{p.nom}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{formater(p.prix_vente)}</Text>
+          </View>
+        </Pressable>
+
+        <View style={{ width: 53, alignItems: "center", marginRight: 30, flexDirection: "row", gap: 4 }}>
+          <Text style={{ color: colors.textPrimary, fontSize: 10, fontWeight: "600" }}>{p.nb_vendus}</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "600" }}>{t("stock_vendus", langue)}</Text>
+        </View>
+
+        {badgeStock(p)}
+        <MenuContextuel actions={actionsProduit(p)} />
+      </View>
+    );
+  }
+
+  // Mode « grille » — grandes images, 2 colonnes, catalogue visuel.
+  function rendreCarteGrille(p: Produit) {
+    return (
+      <View key={p.id} style={[styles.carteGrille, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Pressable onPress={() => router.push(`/produit/${p.id}`)}>
+          {p.image_uri ? (
+            <ImageCachee uri={p.image_uri} style={styles.imageGrille} />
+          ) : (
+            <View style={[styles.imageGrille, { backgroundColor: colors.accentBg, alignItems: "center", justifyContent: "center" }]}>
+              <AvatarNom nom={p.nom} taille={44} />
+            </View>
+          )}
+        </Pressable>
+        <View style={styles.corpsGrille}>
+          <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{p.nom}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(p.prix_vente)}</Text>
+            <MenuContextuel actions={actionsProduit(p)} />
+          </View>
+          <View style={{ marginTop: 6, alignSelf: "flex-start" }}>{badgeStock(p)}</View>
+        </View>
+      </View>
+    );
+  }
+
+  // Mode « minimal » — compact : nom + prix + stock, le maximum de lignes.
+  function rendreLigneMinimal(p: Produit) {
+    return (
+      <View key={p.id} style={[styles.ligneMinimal, { borderBottomColor: colors.border }]}>
+        <Pressable onPress={() => router.push(`/produit/${p.id}`)} style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+          <AvatarNom nom={p.nom} imageUri={p.image_uri} taille={26} />
+          <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, flexShrink: 1 }}>{p.nom}</Text>
+        </Pressable>
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginRight: 8 }}>{formater(p.prix_vente)}</Text>
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: "600",
+            color: p.quantite_stock === 0 ? colors.danger : p.quantite_stock <= p.seuil_alerte ? colors.warning : colors.textPrimary,
+          }}
+        >
+          {p.quantite_stock}
+        </Text>
+        <MenuContextuel actions={actionsProduit(p)} />
+      </View>
+    );
+  }
+
+  // Grille en lignes de 2 explicites : flexWrap dans le contentContainer d'un
+  // ScrollView n'affichait rien sur l'architecture legacy — avec des lignes
+  // simples (flexDirection: "row"), le rendu est garanti.
+  const pairesGrille: Produit[][] = [];
+  if (modeAffichage === "grille") {
+    for (let i = 0; i < produitsFiltres.length; i += 2) pairesGrille.push(produitsFiltres.slice(i, i + 2));
+  }
+
   return (
     <View
       style={{
@@ -264,6 +425,16 @@ export default function Stock() {
               size={17}
               color={colors.textSecondary}
             />
+          </Pressable>
+
+          {/* Bascule entre les modes d'affichage. L'icône montre le mode
+              courant ; le libellé du mode est exposé pour l'accessibilité. */}
+          <Pressable
+            onPress={basculerModeAffichage}
+            accessibilityLabel={t(CLES_MODES[modeAffichage] as any, langue) as string}
+            style={[styles.boutonEntete, { borderColor: colors.border, borderWidth: 1 }]}
+          >
+            <Feather name={ICONES_MODES[modeAffichage]} size={16} color={colors.textSecondary} />
           </Pressable>
 
           {/* Bouton filtre */}
@@ -455,128 +626,18 @@ export default function Stock() {
           )}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.contenu}
->
-          {produitsFiltres.map((p) => (
-            <View
-              key={p.id}
-              style={[
-                styles.ligneProduit,
-                {
-                  borderBottomColor: colors.border,
-                },
-              ]}
-            >
-              <Pressable
-                onPress={() => router.push(`/produit/${p.id}`)}
-                style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
-              >
-                {/* Colonne 1 : image du produit, ou avatar avec initiales */}
-                <AvatarNom nom={p.nom} imageUri={p.image_uri} taille={36} />
-                {/* Colonne 2 : nom + prix unitaire en dessous */}
-                <View style={{ flexShrink: 1 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: colors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: "500",
-                    }}
-                  >
-                    {p.nom}
-                  </Text>
-
-                  <Text
-                    style={{
-                      color: colors.textSecondary,
-                      fontSize: 11,
-                    }}
-                  >
-                    {formater(p.prix_vente)}
-                  </Text>
+        <ScrollView contentContainerStyle={styles.contenu}>
+          {modeAffichage === "grille"
+            ? pairesGrille.map((paire, i) => (
+                <View key={i} style={styles.rangGrille}>
+                  {paire.map(rendreCarteGrille)}
+                  {/* Cellule vide pour garder la colonne de droite alignée. */}
+                  {paire.length === 1 && <View style={{ flex: 1 }} />}
                 </View>
-              </Pressable>
-
-              {/* Colonne 3 : nombre de ventes (« vendue » en dessous) */}
-              <View style={{ width: 53, alignItems: "center", marginRight: 30, flexDirection:"row", gap:4 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 10, fontWeight: "600" }}>
-                  {p.nb_vendus}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "600" }}>
-                  {t("stock_vendus", langue)}
-                </Text>
-              </View>
-
-              {/* Colonne 4 : quantité en stock */}
-              {p.quantite_stock === 0 ? (
-                <Badge
-                  texte={`${p.quantite_stock} ${t(
-                    "stock_en_stock",
-                    langue
-                  )}`}
-                  type="danger"
-                />
-              ) : p.quantite_stock <= p.seuil_alerte ? (
-                <Badge
-                  texte={`${p.quantite_stock} ${t(
-                    "stock_en_stock",
-                    langue
-                  )}`}
-                  type="attention"
-                />
-              ) : (
-                <Text
-                  style={{
-                    color: colors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: "500",
-                  }}
-                >
-                  {p.quantite_stock}{" "}
-                  {t("stock_en_stock", langue)}
-                </Text>
-              )}
-
-              <MenuContextuel
-                actions={[
-                  {
-                    label:
-                      t("produit_sauver", langue) === "Save"
-                        ? "Edit"
-                        : "Modifier",
-                    icone: "edit-3",
-                    onPress: () =>
-                      router.push(`/produit/${p.id}`),
-                  },
-                  {
-                    label: t(
-                      "categories_supprimer_confirmer",
-                      langue
-                    ),
-                    icone: "trash-2",
-                    destructif: true,
-                    onPress: async () => {
-                      if (enregistrement) return;
-                      if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
-                      setEnregistrement(true);
-                      try {
-                        const enreg = await database
-                          .get("produits")
-                          .find(p.id);
-                        await database.write(async () => {
-                          await supprimerEnregistrement("produits", enreg as any);
-                        });
-                        await enregistrerActivite("produit", "suppression", `Produit supprimé : ${p.nom}`);
-                        chargerProduits();
-                      } finally {
-                        setEnregistrement(false);
-                      }
-                    },
-                  },
-                ]}
-              />
-            </View>
-          ))}
+              ))
+            : modeAffichage === "minimal"
+              ? produitsFiltres.map(rendreLigneMinimal)
+              : produitsFiltres.map(rendreLigneListe)}
         </ScrollView>
       )}
 
@@ -725,6 +786,27 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+
+  // Mode « grille » : lignes de 2 cartes (pas de flexWrap — voir le commentaire
+  // au-dessus de pairesGrille).
+  rangGrille: { flexDirection: "row", gap: 10, marginBottom: 10 },
+  carteGrille: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  imageGrille: { width: "100%", aspectRatio: 1, resizeMode: "cover" },
+  corpsGrille: { padding: 10 },
+
+  // Mode « minimal » : lignes serrées, sans image de colonne dédiée au stock.
+  ligneMinimal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
     borderBottomWidth: 1,
   },
 

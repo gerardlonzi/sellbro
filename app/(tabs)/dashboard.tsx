@@ -16,6 +16,10 @@ import { PLANS_PAR_DEFAUT } from "@/lib/plan/quotas";
 import { calculerBenefice } from "@/lib/ventes/benefice";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
 import { Carte, Skeleton, Badge } from "@/components/UI";
+import { BoutonRapport } from "@/components/BoutonRapport";
+import { useToast } from "@/lib/toast/ToastProvider";
+import { genererRapportPdf, SectionRapport } from "@/lib/export/genererPdf";
+import { formaterDate } from "@/lib/formatDate";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 type Stats = {
@@ -28,9 +32,11 @@ type Stats = {
   topProduits: { nom: string; ventes: number; montant: number }[];
   topRevenus: { nom: string; montant: number; ventes: number }[];
   topClients: { nom: string; montant: number }[];
+  // Liste brute des ventes de la période, pour le rapport téléchargeable.
+  ventesListe: { date: Date; produit: string; client: string; quantite: number; montant: number; paiement: string }[];
 };
 
-const STATS_VIDES: Stats = { ca: 0, ventes: 0, produitsVendus: 0, benefice: 0, parPaiement: {}, parCategorie: [], topProduits: [], topRevenus: [], topClients: [] };
+const STATS_VIDES: Stats = { ca: 0, ventes: 0, produitsVendus: 0, benefice: 0, parPaiement: {}, parCategorie: [], topProduits: [], topRevenus: [], topClients: [], ventesListe: [] };
 
 // Valeurs de la période précédente, pour les flèches de tendance.
 type Tendance = { ca: number; ventes: number; benefice: number };
@@ -78,6 +84,8 @@ export default function Dashboard() {
   const [finPerso, setFinPerso] = useState(new Date());
   const [afficherDatePicker, setAfficherDatePicker] = useState<"debut" | "fin" | null>(null);
   const [chargement, setChargement] = useState(true);
+  const [generationRapport, setGenerationRapport] = useState(false);
+  const { showToast } = useToast();
   const {pret: planPret } = usePlanActuel();
   const estPremium = planId === "premium";
 
@@ -170,7 +178,7 @@ export default function Dashboard() {
       parPaiement[mode] = (parPaiement[mode] ?? 0) + montantLigne;
 
       const produit = v.produitId ? produitsParId.get(v.produitId) : null;
-      const categorie = produit?.categorieNom ?? "Sans catégorie";
+      const categorie = produit?.categorieNom ?? t("dashboard_sans_categorie", langue);
       parCategorieMap[categorie] = (parCategorieMap[categorie] ?? 0) + montantLigne;
 
       const nomProduit = v.produitNom ?? produit?.nom ?? "—";
@@ -196,11 +204,96 @@ export default function Dashboard() {
     );
     const produitsVendus = ventes.reduce((s, v) => s + (v.quantite || 0), 0);
 
-    setStats({ ca, ventes: transactions.size, produitsVendus, benefice: calculerBenefice(ventes, produitsParId), parPaiement, parCategorie, topProduits, topRevenus, topClients });
+    // Liste détaillée des ventes (la plus récente d'abord) pour le rapport PDF.
+    const ventesListe = [...ventes]
+      .sort((a, b) => b.creeLe.getTime() - a.creeLe.getTime())
+      .map((v) => ({
+        date: v.creeLe,
+        produit: v.produitNom ?? produitsParId.get(v.produitId)?.nom ?? "—",
+        client: v.clientNom ?? "—",
+        quantite: v.quantite,
+        montant: v.quantite * v.prixUnitaire,
+        paiement: v.modePaiement ?? "—",
+      }));
+
+    setStats({ ca, ventes: transactions.size, produitsVendus, benefice: calculerBenefice(ventes, produitsParId), parPaiement, parCategorie, topProduits, topRevenus, topClients, ventesListe });
     setChargement(false);
   }
 
   const maxCategorie = Math.max(1, ...stats.parCategorie.map((c) => c.montant));
+
+  // Pourcentage de variation, avec signe : « +12 % » / « -5 % ». Renvoie null
+  // si la période précédente est à zéro (division impossible — on n'affiche
+  // alors rien plutôt qu'un « +∞ % » absurde).
+  function variation(actuel: number, precedent: number): string | null {
+    if (precedent <= 0) return null;
+    const pct = Math.round(((actuel - precedent) / precedent) * 100);
+    return `${pct > 0 ? "+" : ""}${pct} %`;
+  }
+
+  // Rapport complet de la période affichée : tous les indicateurs, les tops,
+  // les répartitions, les mouvements de stock et le détail de chaque vente.
+  async function genererRapport() {
+    if (generationRapport) return;
+    setGenerationRapport(true);
+    try {
+      const periodeLabel = personnalise
+        ? `${formaterDate(debutPerso, langue)} – ${formaterDate(finPerso, langue)}`
+        : (t(`periode_${periode}` as any, langue) as string);
+
+      const indicateurs: (string | number)[][] = [
+        [t("dashboard_ca", langue), formater(stats.ca)],
+        [t("dashboard_benefice", langue), formater(stats.benefice)],
+        [t("dashboard_ventes", langue), stats.ventes],
+        [t("dashboard_produits_vendus", langue), stats.produitsVendus],
+        [t("dashboard_ruptures", langue), ruptures],
+        [t("dashboard_stock_faible", langue), alertes],
+      ];
+      // L'évolution n'a de sens que sur une période standard (pas de
+      // « période précédente » définie pour une plage personnalisée).
+      if (!personnalise) {
+        const evol = [variation(stats.ca, precedente.ca), variation(stats.ventes, precedente.ventes), variation(stats.benefice, precedente.benefice)]
+          .filter(Boolean)
+          .join(" · ");
+        if (evol) indicateurs.push([t("rapport_evolution", langue), evol]);
+      }
+
+      const sections: SectionRapport[] = [
+        { titre: t("rapport_indicateurs", langue), colonnes: [{ libelle: t("rapport_col_indicateur", langue) }, { libelle: t("rapport_col_valeur", langue), aligneDroite: true }], lignes: indicateurs },
+        { titre: t("dashboard_par_categorie", langue), colonnes: [{ libelle: t("produit_categorie_label", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.parCategorie.map((c) => [c.nom, formater(c.montant)]) },
+        { titre: t("dashboard_top_produits", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("dashboard_ventes", langue), aligneDroite: true }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topProduits.map((p) => [p.nom, p.ventes, formater(p.montant)]) },
+        { titre: t("dashboard_top_revenus", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topRevenus.map((p) => [p.nom, formater(p.montant)]) },
+        { titre: t("dashboard_top_clients", langue), colonnes: [{ libelle: t("rapport_col_client", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topClients.map((c) => [c.nom, formater(c.montant)]) },
+        { titre: t("dashboard_par_paiement", langue), colonnes: [{ libelle: t("rapport_col_paiement", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: Object.entries(stats.parPaiement).map(([mode, montant]) => [mode, formater(montant)]) },
+        { titre: t("dashboard_mouvements", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("rapport_col_quantite", langue), aligneDroite: true }], lignes: mouvements.map((m) => [m.nomProduit, `${m.quantite >= 0 ? "+" : ""}${m.quantite}`]) },
+        {
+          titre: t("rapport_detail_ventes", langue),
+          colonnes: [
+            { libelle: t("rapport_col_date", langue) },
+            { libelle: t("rapport_col_produit", langue) },
+            { libelle: t("rapport_col_client", langue) },
+            { libelle: t("rapport_col_quantite", langue), aligneDroite: true },
+            { libelle: t("rapport_col_montant", langue), aligneDroite: true },
+            { libelle: t("rapport_col_paiement", langue), aligneDroite: true },
+          ],
+          lignes: stats.ventesListe.map((v) => [formaterDate(v.date, langue), v.produit, v.client, v.quantite, formater(v.montant), v.paiement]),
+        },
+      ];
+
+      await genererRapportPdf({
+        titre: `${t("rapport_titre", langue)} — ${t("dashboard_titre", langue)}`,
+        sousTitre: periodeLabel,
+        sections,
+        langue,
+        nomFichier: `Rapport-${periodeLabel.replace(/\s+/g, "-")}.pdf`,
+        descriptionActivite: `Rapport dashboard généré (${periodeLabel})`,
+      });
+    } catch {
+      showToast(t("rapport_erreur", langue), "error");
+    } finally {
+      setGenerationRapport(false);
+    }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
@@ -212,14 +305,18 @@ export default function Dashboard() {
           <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
         </View>
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-        {!planPret ? (
+        {!planPret || !essai.verifie ? (
+            // Tant que le statut n'est pas vérifié, on n'affiche ni le badge
+            // Pro ni le bouton « Passer Pro » — sinon ce dernier clignotait à
+            // tort pour un abonné au démarrage.
             <ActivityIndicator size="small" color={colors.textMuted} />
           ) : (estPremium || essai.actif) ? (
             <>
             <Badge texte={t("version_pro", langue)} type="pro" />
-            <Pressable onPress={() => router.push("/export")} style={[styles.boutonExport, { borderColor: colors.border }]}>
-               <Feather name="download" size={14} color={colors.textSecondary} />
-            </Pressable>
+            {/* Le bouton génère le rapport de la période affichée, au lieu de
+                renvoyer vers l'écran d'export : le rapport doit contenir tout
+                ce que le dashboard montre. */}
+            <BoutonRapport onPress={genererRapport} enCours={generationRapport} />
             </>
           ) : (
             <Pressable onPress={() => router.push("/premium")} style={{ backgroundColor: colors.proBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
@@ -253,11 +350,11 @@ export default function Dashboard() {
         {personnalise && (
           <View style={styles.blocPersonnalise}>
             <Pressable onPress={() => setAfficherDatePicker("debut")} style={[styles.champDate, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Du</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_du", langue)}</Text>
               <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{debutPerso.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}</Text>
             </Pressable>
             <Pressable onPress={() => setAfficherDatePicker("fin")} style={[styles.champDate, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Au</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_au", langue)}</Text>
               <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{finPerso.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}</Text>
             </Pressable>
           </View>
@@ -370,7 +467,7 @@ export default function Dashboard() {
             {/* Répartition par catégorie */}
             {stats.parCategorie.length > 0 && (
               <Carte style={{ marginTop: 12 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 12 }}>Par catégorie</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 12 }}>{t("dashboard_par_categorie", langue)}</Text>
                 {stats.parCategorie.map((c) => (
                   <View key={c.nom} style={{ marginBottom: 10 }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
@@ -387,7 +484,7 @@ export default function Dashboard() {
 
             {/* Top produits */}
             <Carte style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Produits les plus vendus</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_top_produits", langue)}</Text>
               {stats.topProduits.length === 0 ? (
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
               ) : (
@@ -404,7 +501,7 @@ export default function Dashboard() {
 
             {/* Produits générant le plus de revenus */}
             <Carte style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Produits générant le plus de revenus</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_top_revenus", langue)}</Text>
               {stats.topRevenus.length === 0 ? (
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
               ) : (
@@ -420,7 +517,7 @@ export default function Dashboard() {
 
             {/* Top clients */}
             <Carte style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Meilleurs clients</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_top_clients", langue)}</Text>
               {stats.topClients.length === 0 ? (
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
               ) : (
@@ -451,14 +548,14 @@ export default function Dashboard() {
 
             {/* Mouvements de stock */}
             <Carte style={{ marginTop: 12, marginBottom: 20 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>Mouvements de stock</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_mouvements", langue)}</Text>
               {mouvements.length === 0 ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>Aucun mouvement</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("mouvements_aucun", langue)}</Text>
               ) : (
                 mouvements.map((m, i) => (
                   <View key={m.id} style={[styles.ligneTop, i < mouvements.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                     <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{m.nomProduit}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted, marginRight: 10 }}>{m.type} {m.quantite > 0 ? "+" : ""}{m.quantite}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginRight: 10 }}>{t(`mouvement_type_${m.type}` as any, langue) as string} {m.quantite > 0 ? "+" : ""}{m.quantite}</Text>
                     <Text style={{ fontSize: 11, color: colors.textSecondary }}>{m.stockAvant} → {m.stockApres}</Text>
                   </View>
                 ))
@@ -474,7 +571,6 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: { paddingTop: 15 },
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 },
-  boutonExport: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   boutonPersonnalise: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-end", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 5 },
   blocPersonnalise: { flexDirection: "row", gap: 10, marginTop: 2, marginBottom: 8 },
   champDate: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
