@@ -21,7 +21,7 @@ const traductions = {
     sync_en_cours: "Synchronisation de vos données…",
     sync_terminee: "Synchronisation terminée",
     connexion_requise: "Connexion internet requise pour cette fonctionnalité",
-    ca_aujourdhui: "Chiffre d'affaires aujourd'hui",
+    ca_aujourdhui: "Revenu du jour",
     aucune_vente_jour: "Aucune vente aujourd'hui",
     ventes_du_jour: "Ventes du jour",
     produits_vendus: "Produits vendus",
@@ -372,6 +372,7 @@ const traductions = {
     label_email: "Adresse email",
     placeholder_email: "ton@email.com",
     erreur_email_invalide: "Entre une adresse email valide",
+    erreur_email_existe: "Cette adresse email est déjà utilisée. Connecte-toi plutôt.",
     erreur_trop_de_comptes: "Trop de comptes créés depuis cet appareil. Contacte-nous si besoin.",
     otp_titre: "Vérifie ton email",
     otp_sous_titre: (email: string) => `Nous t'avons envoyé un code par email (${email})`,
@@ -470,6 +471,7 @@ fournisseurs_ajouter: "Nouveau fournisseur",
 fournisseurs_vide: "Aucun fournisseur enregistré",
 fournisseurs_nom: "Nom du fournisseur",
 fournisseurs_telephone: "Téléphone (facultatif)",
+fournisseurs_erreur_nom: "Le nom du fournisseur est nécessaire.",
 fournisseurs_du: "Doit",
 factures_titre: "Factures",
 factures_vide: "Aucune facture pour l'instant",
@@ -522,6 +524,10 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     achats_quantite_recue: "Quantité reçue",
     achats_enregistrer: "Enregistrer",
     achats_erreur_montant: "Le montant est nécessaire.",
+    achats_choisir_fournisseur: "Choisir un fournisseur",
+    achats_nouveau_fournisseur: "Nouveau fournisseur…",
+    achats_a_credit: "Achat à crédit (enregistré comme dette)",
+    achats_credit_fournisseur_requis: "Indique le fournisseur pour un achat à crédit.",
 
     // Journal d'activité
     journal_titre: "Journal d'activité",
@@ -561,7 +567,145 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     scan_facture_titre: "Scanner une facture",
     scan_facture_aide: "Aligne la facture dans le cadre",
     mois_title:"mois",
-    jour_title:"jour"
+    jour_title:"jour",
+
+    // ---- Barre d'onglets ----
+    onglet_accueil: "Accueil",
+    onglet_stock: "Stock",
+    onglet_ventes: "Ventes",
+    onglet_plus: "Plus",
+    onglet_dashboard: "Dashboard",
+
+    // ---- Page « Plus » ----
+    plus_titre: "Plus",
+    plus_sous_titre: "Toutes les fonctionnalités",
+    plus_section_ventes_clients: "Ventes & clients",
+    plus_section_achats_depenses: "Achats & dépenses",
+    plus_section_comptabilite: "Comptabilité",
+    plus_section_autres: "Autres",
+    plus_clients: "Clients",
+    plus_creances: "Créances et dettes",
+    plus_achats: "Achats",
+    plus_export: "Export comptable",
+    plus_journal: "Journal d'activité",
+    plus_mouvements: "Mouvements de stock",
+    plus_reglages: "Réglages",
+
+    // ---- Réglages : entrées ajoutées ----
+    reglages_export_comptable: "Export comptable",
+    reglages_journal: "Journal d'activité",
+    reglages_section_compte: "Compte",
+    compte_titre: "Mon compte",
+
+    // ---- Stock : modes d'affichage ----
+    stock_affichage_liste: "Liste",
+    stock_affichage_grille: "Grille",
+    stock_affichage_minimal: "Minimaliste",
+
+    // ---- Produit : scan de code-barres ----
+    produit_scanner_code_barre: "Scanner le code-barres",
+    produit_reference_placeholder: "Ex : 3001234567890",
+
+    // ---- Mouvements de stock ----
+    mouvements_titre: "Mouvements de stock",
+    mouvements_aucun: "Aucun mouvement sur cette période",
+    mouvement_type_achat: "Achat",
+    mouvement_type_vente: "Vente",
+    mouvement_type_retour: "Retour",
+    mouvement_type_casse: "Casse",
+    mouvement_type_ajustement: "Ajustement",
+    mouvement_type_peremption: "Péremption",
+
+    // ---- Dashboard : titres de cartes (étaient en dur en français) ----
+    dashboard_par_categorie: "Par catégorie",
+    dashboard_top_produits: "Produits les plus vendus",
+    dashboard_top_revenus: "Produits générant le plus de revenus",
+    dashboard_top_clients: "Meilleurs clients",
+    dashboard_mouvements: "Mouvements de stock",
+    dashboard_produits_vendus: "Produits vendus",
+    dashboard_ruptures: "Ruptures",
+    dashboard_stock_faible: "Stock faible",
+    dashboard_sans_categorie: "Sans catégorie",
+    dashboard_du: "Du",
+    dashboard_au: "Au",
+    dashboard_section_ventes: "Ventes",
+    dashboard_section_sorties: "Sorties d'argent",
+    dashboard_section_analyse: "Analyse",
+
+    // ---- Rapports téléchargeables ----
+    rapport_telecharger: "Télécharger le rapport",
+    rapport_titre: "Rapport",
+    rapport_periode: "Période",
+    rapport_indicateurs: "Indicateurs",
+    rapport_detail_ventes: "Détail des ventes",
+    rapport_aucune_vente: "Aucune vente sur cette période",
+    rapport_meilleur_client: "Meilleur client",
+    rapport_meilleur_produit: "Meilleur produit",
+    rapport_evolution: "Évolution vs période précédente",
+    rapport_erreur: "Impossible de générer le rapport. Réessaie.",
+    rapport_col_date: "Date",
+    rapport_col_produit: "Produit",
+    rapport_col_client: "Client",
+    rapport_col_quantite: "Qté",
+    rapport_col_montant: "Montant",
+    rapport_col_paiement: "Paiement",
+    rapport_col_valeur: "Valeur",
+    rapport_col_nombre: "Nombre",
+    rapport_col_indicateur: "Indicateur",
+
+    // ---- Export comptable ----
+    export_titre: "Export comptable",
+    export_format: "Format",
+    export_apercu: "Aperçu",
+    export_generer: "Générer et partager",
+
+    // ---- Compte : suppression ----
+    compte_email: "Adresse email",
+    compte_supprimer_titre: "Supprimer mon compte",
+    compte_supprimer_avertissement: "Cette action est définitive et ne peut pas être annulée.",
+    compte_supprimer_donnees: "Tout sera effacé : tes produits, ventes, clients, créances, dépenses, fournisseurs, factures, mouvements de stock et ton journal d'activité.",
+    compte_supprimer_saisie: (mot: string) => `Tape « ${mot} » pour confirmer`,
+    compte_supprimer_mot: "SUPPRIMER",
+    compte_supprimer_bouton: "Supprimer définitivement",
+    compte_supprimer_annuler: "Annuler",
+    compte_supprimer_encours: "Suppression en cours…",
+    compte_supprimer_erreur: "La suppression a échoué. Vérifie ta connexion internet, puis réessaie.",
+    compte_supprimer_confirmation_titre: "Dernière confirmation",
+    compte_supprimer_confirmation_texte: "Toutes tes données seront définitivement effacées. Continuer ?",
+    compte_supprimer_ok: "Mon compte a été supprimé.",
+
+    // ---- Reçu client ----
+    recu_partager: "Envoyer le reçu",
+    recu_proposer_titre: "Vente enregistrée",
+    recu_proposer_texte: "Veux-tu envoyer le reçu au client ?",
+    recu_modal_nom: "Nom du client (facultatif)",
+    recu_modal_telephone: "Numéro WhatsApp du client",
+    recu_whatsapp_message: "Bonjour, voici votre reçu. Merci pour votre achat !",
+
+    // ---- Fiche client : envoi WhatsApp ----
+    client_envoyer_whatsapp: "Envoyer la facture par WhatsApp",
+    client_aucune_facture: "Aucune facture pour ce client",
+    client_numero_requis_titre: "Numéro WhatsApp manquant",
+    client_numero_requis_texte: (nom: string) => `Renseigne le numéro de ${nom || "ce client"} pour lui envoyer sa facture. Il sera enregistré pour les prochaines fois.`,
+    client_numero_placeholder: "Ex : 6 12 34 56 78",
+    client_numero_enregistrer: "Enregistrer et envoyer",
+
+    // ---- Objectif du jour ----
+    objectif_titre: "Objectif du jour",
+    objectif_definir: "Définis un objectif de vente pour suivre ta progression",
+    objectif_modal_texte: "Quel chiffre d'affaires veux-tu atteindre aujourd'hui ?",
+    objectif_placeholder: "Ex : 50000",
+
+    // ---- Bilan du jour (partage) ----
+    bilan_partager: "Partager le bilan du jour",
+    bilan_ligne_ca: "Chiffre d'affaires",
+    bilan_ligne_ventes: "Ventes",
+    bilan_ligne_produits: "Produits vendus",
+    bilan_ligne_top: "Produit star",
+
+    // ---- Liste de réapprovisionnement ----
+    reappro_titre: "Produits à commander",
+    reappro_aucun: "Aucun produit en rupture ou en stock faible"
 
   },
   en: {
@@ -923,6 +1067,7 @@ erreur_enregistrement_boutique: "Impossible d'enregistrer la boutique, réessaie
     label_email: "Email address",
     placeholder_email: "you@email.com",
     erreur_email_invalide: "Enter a valid email address",
+    erreur_email_existe: "This email address is already in use. Please log in instead.",
     erreur_trop_de_comptes: "Too many accounts created from this device. Contact us if needed.",
     otp_titre: "Check your email",
     otp_sous_titre: (email: string) => `We sent you a code by email (${email})`,
@@ -1021,6 +1166,7 @@ fournisseurs_ajouter: "New supplier",
 fournisseurs_vide: "No suppliers recorded",
 fournisseurs_nom: "Supplier name",
 fournisseurs_telephone: "Phone (optional)",
+fournisseurs_erreur_nom: "The supplier name is required.",
 fournisseurs_du: "Owed",
 factures_titre: "Invoices",
 factures_vide: "No invoices yet",
@@ -1073,6 +1219,10 @@ erreur_enregistrement_boutique: "Impossible to save the shop, try again.",
     achats_quantite_recue: "Quantity received",
     achats_enregistrer: "Save",
     achats_erreur_montant: "The amount is required.",
+    achats_choisir_fournisseur: "Choose a supplier",
+    achats_nouveau_fournisseur: "New supplier…",
+    achats_a_credit: "Purchase on credit (recorded as a debt)",
+    achats_credit_fournisseur_requis: "Enter the supplier for a credit purchase.",
 
     // Activity log
     journal_titre: "Activity log",
@@ -1112,7 +1262,145 @@ erreur_enregistrement_boutique: "Impossible to save the shop, try again.",
     scan_facture_titre: "Scan an invoice",
     scan_facture_aide: "Align the invoice in the frame",
     mois_title:"month",
-    jour_title:"day"
+    jour_title:"day",
+
+    // ---- Tab bar ----
+    onglet_accueil: "Home",
+    onglet_stock: "Stock",
+    onglet_ventes: "Sales",
+    onglet_plus: "More",
+    onglet_dashboard: "Dashboard",
+
+    // ---- "More" page ----
+    plus_titre: "More",
+    plus_sous_titre: "All features",
+    plus_section_ventes_clients: "Sales & customers",
+    plus_section_achats_depenses: "Purchases & expenses",
+    plus_section_comptabilite: "Accounting",
+    plus_section_autres: "Other",
+    plus_clients: "Customers",
+    plus_creances: "Debts & credits",
+    plus_achats: "Purchases",
+    plus_export: "Accounting export",
+    plus_journal: "Activity log",
+    plus_mouvements: "Stock movements",
+    plus_reglages: "Settings",
+
+    // ---- Settings: added entries ----
+    reglages_export_comptable: "Accounting export",
+    reglages_journal: "Activity log",
+    reglages_section_compte: "Account",
+    compte_titre: "My account",
+
+    // ---- Stock: display modes ----
+    stock_affichage_liste: "List",
+    stock_affichage_grille: "Grid",
+    stock_affichage_minimal: "Compact",
+
+    // ---- Product: barcode scan ----
+    produit_scanner_code_barre: "Scan barcode",
+    produit_reference_placeholder: "E.g: 3001234567890",
+
+    // ---- Stock movements ----
+    mouvements_titre: "Stock movements",
+    mouvements_aucun: "No movements in this period",
+    mouvement_type_achat: "Purchase",
+    mouvement_type_vente: "Sale",
+    mouvement_type_retour: "Return",
+    mouvement_type_casse: "Breakage",
+    mouvement_type_ajustement: "Adjustment",
+    mouvement_type_peremption: "Expiry",
+
+    // ---- Dashboard: card titles (were hardcoded in French) ----
+    dashboard_par_categorie: "By category",
+    dashboard_top_produits: "Best-selling products",
+    dashboard_top_revenus: "Top revenue products",
+    dashboard_top_clients: "Top customers",
+    dashboard_mouvements: "Stock movements",
+    dashboard_produits_vendus: "Products sold",
+    dashboard_ruptures: "Out of stock",
+    dashboard_stock_faible: "Low stock",
+    dashboard_sans_categorie: "Uncategorized",
+    dashboard_du: "From",
+    dashboard_au: "To",
+    dashboard_section_ventes: "Sales",
+    dashboard_section_sorties: "Money out",
+    dashboard_section_analyse: "Analysis",
+
+    // ---- Downloadable reports ----
+    rapport_telecharger: "Download report",
+    rapport_titre: "Report",
+    rapport_periode: "Period",
+    rapport_indicateurs: "Key figures",
+    rapport_detail_ventes: "Sales detail",
+    rapport_aucune_vente: "No sales in this period",
+    rapport_meilleur_client: "Top customer",
+    rapport_meilleur_produit: "Top product",
+    rapport_evolution: "Change vs previous period",
+    rapport_erreur: "Couldn't generate the report. Try again.",
+    rapport_col_date: "Date",
+    rapport_col_produit: "Product",
+    rapport_col_client: "Customer",
+    rapport_col_quantite: "Qty",
+    rapport_col_montant: "Amount",
+    rapport_col_paiement: "Payment",
+    rapport_col_valeur: "Value",
+    rapport_col_nombre: "Count",
+    rapport_col_indicateur: "Indicator",
+
+    // ---- Accounting export ----
+    export_titre: "Accounting export",
+    export_format: "Format",
+    export_apercu: "Preview",
+    export_generer: "Generate and share",
+
+    // ---- Account: deletion ----
+    compte_email: "Email address",
+    compte_supprimer_titre: "Delete my account",
+    compte_supprimer_avertissement: "This action is permanent and cannot be undone.",
+    compte_supprimer_donnees: "Everything will be erased: your products, sales, customers, debts, expenses, suppliers, invoices, stock movements and your activity log.",
+    compte_supprimer_saisie: (mot: string) => `Type "${mot}" to confirm`,
+    compte_supprimer_mot: "DELETE",
+    compte_supprimer_bouton: "Delete permanently",
+    compte_supprimer_annuler: "Cancel",
+    compte_supprimer_encours: "Deleting…",
+    compte_supprimer_erreur: "Deletion failed. Check your internet connection, then try again.",
+    compte_supprimer_confirmation_titre: "Final confirmation",
+    compte_supprimer_confirmation_texte: "All your data will be permanently erased. Continue?",
+    compte_supprimer_ok: "Your account has been deleted.",
+
+    // ---- Customer receipt ----
+    recu_partager: "Send receipt",
+    recu_proposer_titre: "Sale recorded",
+    recu_proposer_texte: "Do you want to send the receipt to the customer?",
+    recu_modal_nom: "Customer name (optional)",
+    recu_modal_telephone: "Customer WhatsApp number",
+    recu_whatsapp_message: "Hello, here is your receipt. Thank you for your purchase!",
+
+    // ---- Customer page: WhatsApp sending ----
+    client_envoyer_whatsapp: "Send invoice via WhatsApp",
+    client_aucune_facture: "No invoice for this customer",
+    client_numero_requis_titre: "Missing WhatsApp number",
+    client_numero_requis_texte: (nom: string) => `Enter ${nom || "this customer"}'s number to send their invoice. It will be saved for next time.`,
+    client_numero_placeholder: "E.g: 6 12 34 56 78",
+    client_numero_enregistrer: "Save and send",
+
+    // ---- Daily goal ----
+    objectif_titre: "Daily goal",
+    objectif_definir: "Set a sales goal to track your progress",
+    objectif_modal_texte: "What revenue do you want to reach today?",
+    objectif_placeholder: "E.g: 50000",
+
+    // ---- Daily summary (sharing) ----
+    bilan_partager: "Share today's summary",
+    bilan_ligne_ca: "Revenue",
+    bilan_ligne_ventes: "Sales",
+    bilan_ligne_produits: "Products sold",
+    bilan_ligne_top: "Top product",
+
+    // ---- Restock list ----
+    reappro_titre: "Products to reorder",
+    reappro_aucun: "No product out of stock or low on stock"
   },
 };
 

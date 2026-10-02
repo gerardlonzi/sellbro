@@ -5,7 +5,6 @@ import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";

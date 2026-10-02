@@ -3,7 +3,6 @@ import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { peutEcrire } from "@/lib/trial/gate";
@@ -16,7 +15,6 @@ import { genererFacturePdf } from "@/lib/export/genererPdf";
 export default function DetailFacture() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { showToast } = useToast();
   const { formater } = useCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [facture, setFacture] = useState<any>(null);

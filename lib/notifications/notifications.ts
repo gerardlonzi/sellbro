@@ -46,7 +46,6 @@ Notifications.setNotificationHandler({
 // Clés des interrupteurs (Paramètres → Notifications).
 const CLE_STOCK_FAIBLE = "notif_stock_faible_active";
 const CLE_CRANCE_RETARD = "notif_creance_retard_active";
-const CLE_ECHEANCE_PROCHE = "notif_echeance_proche_active";
 
 // Heures de rappel CHOISIES par l'utilisateur (Paramètres → Notifications).
 // Défaut : 3 rappels par jour (9h, 13h, 18h).

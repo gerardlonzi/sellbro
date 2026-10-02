@@ -504,6 +504,35 @@ end;
 $$;
 
 grant execute on function public.sauvegarder_profil_inscription(text, text, text, text, text, text) to anon, authenticated;
+
+-- UPSERT de secours : si le trigger `on_auth_user_created` n'a pas créé la
+-- ligne `profiles` (ou pas encore), un simple UPDATE ne matche rien et le
+-- compte reste absent de la base. Cette version INSÈRE la ligne si besoin.
+create or replace function public.sauvegarder_profil_inscription(
+  p_email text,
+  p_nom_boutique text,
+  p_telephone text,
+  p_langue text,
+  p_devise text,
+  p_pays_code text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, nom_boutique, telephone, langue, devise, pays_code)
+  select u.id, p_email, p_nom_boutique, p_telephone, p_langue, p_devise, p_pays_code
+    from auth.users u where u.email = p_email
+  on conflict (id) do update
+    set nom_boutique = excluded.nom_boutique,
+        telephone = excluded.telephone,
+        langue = excluded.langue,
+        devise = excluded.devise,
+        pays_code = excluded.pays_code;
+end;
+$$;
 -- ------------------------------------------------------------
 -- 23. JOURNAL D'ACTIVITÉ — audit local synchronisé dans le cloud
 -- ------------------------------------------------------------

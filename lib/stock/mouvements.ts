@@ -1,6 +1,5 @@
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
-import { enregistrerActivite } from "@/lib/audit/journal";
 
 type TypeMouvement = "achat" | "vente" | "retour" | "casse" | "ajustement" | "peremption";
 

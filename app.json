@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
-    "icon": "./assets/logo-icon.jpeg",
+    "icon": "./assets/logo-icon.png",
 
     "ios": {
       "supportsTablet": false,
@@ -17,7 +17,7 @@
     "android": {
       "package": "com.eyetech.cikap",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo-icon.jpeg",
+        "foregroundImage": "./assets/logo-icon.png",
         "backgroundColor": "#FFFFFF"
       }
     },
@@ -27,10 +27,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-logo.jpg",
+          "image": "./assets/splash-logo.png",
           "backgroundColor": "#FFFFFF",
           "dark": {
-            "image": "./assets/splash-logo.jpg",
+            "image": "./assets/splash-logo.png",
             "backgroundColor": "#121212"
           },
           "imageWidth": 200
@@ -51,6 +51,11 @@
           "cameraPermission": "Autoriser l'accès à la caméra pour photographier vos produits."
         }
       ]
-    ]
+    ],
+
+    "locales": {
+      "fr": "./locales/fr.json",
+      "en": "./locales/en.json"
+    }
   }
 }
