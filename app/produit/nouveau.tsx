@@ -1,7 +1,7 @@
 import { useState,useEffect,useRef } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform, Modal, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -91,6 +91,11 @@ export default function NouveauProduit() {
   const [images, setImages] = useState<string[]>([]);
   const [chargement, setChargement] = useState(false);
   const [cameraOuverte, setCameraOuverte] = useState(false);
+  const [scanOuvert, setScanOuvert] = useState(false);
+  // Le scanner émet en continu tant que le code est dans le champ : sans ce
+  // verrou, la même lecture remplirait la référence (et refermerait le modal)
+  // plusieurs fois de suite.
+  const scanTraite = useRef(false);
   const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const {plan} = usePlanActuel();
@@ -108,6 +113,24 @@ export default function NouveauProduit() {
   }, [reference]);
   function basculerChamp(cle: string) {
     setChampsActifs((actuels) => (actuels.includes(cle) ? actuels.filter((c) => c !== cle) : [...actuels, cle]));
+  }
+
+  // Scanner le code-barres remplit le champ référence, comme le ferait la
+  // saisie manuelle. Même besoin de permission caméra que la capture photo.
+  async function ouvrirScan() {
+    if (!permissionCamera?.granted) {
+      const permission = await demanderPermissionCamera();
+      if (!permission.granted) return;
+    }
+    scanTraite.current = false;
+    setScanOuvert(true);
+  }
+
+  function surBarcodeScanne({ data }: { data: string }) {
+    if (scanTraite.current) return;
+    scanTraite.current = true;
+    setValeursTexte((prev) => ({ ...prev, reference: data }));
+    setScanOuvert(false);
   }
 
   async function ajouterImages() {
@@ -268,14 +291,25 @@ async function prendrePhoto() {
         <View style={{ width: 40 }} />
       </View>
 
-      {reference ? (
-        <ChampTexte
-          label={t("produit_champ_reference", langue)}
-          valeur={valeursTexte.reference ?? ""}
-          onChange={(v: string) => setValeursTexte((prev) => ({ ...prev, reference: v }))}
-          placeholder=""
+      {/* Référence : désormais toujours visible, avec un bouton de scan de
+          code-barres. Avant, elle n'apparaissait que si on arrivait d'un scan. */}
+      <Text style={[styles.label, { color: colors.textSecondary }]}>{t("produit_champ_reference", langue)}</Text>
+      <View style={styles.ligneReference}>
+        <TextInput
+          value={valeursTexte.reference ?? ""}
+          onChangeText={(v: string) => setValeursTexte((prev) => ({ ...prev, reference: v }))}
+          placeholder={t("produit_reference_placeholder", langue)}
+          placeholderTextColor={colors.textMuted}
+          style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, flex: 1, marginBottom: 0 }]}
         />
-      ) : null}
+        <Pressable
+          onPress={ouvrirScan}
+          accessibilityLabel={t("produit_scanner_code_barre", langue)}
+          style={[styles.boutonScan, { borderColor: colors.border, backgroundColor: colors.surface }]}
+        >
+          <MaterialCommunityIcons name="barcode-scan" size={20} color={colors.textSecondary} />
+        </Pressable>
+      </View>
 
       <ChampTexte label={t("produit_nom_label", langue)} valeur={nom} onChange={setNom} placeholder={t("produit_nom_placeholder", langue)} />
 
@@ -417,6 +451,30 @@ async function prendrePhoto() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal de scan de code-barres. Même principe que le scanner de vente
+          (app/vente/nouvelle.tsx) : les types de codes couvrent le commerce
+          alimentaire et la librairie. */}
+      <Modal visible={scanOuvert} animationType="slide" onRequestClose={() => setScanOuvert(false)}>
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          {permissionCamera?.granted && (
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              onBarcodeScanned={surBarcodeScanne}
+              barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "code93", "qr"] }}
+            />
+          )}
+          <View style={styles.overlayCamera}>
+            <Pressable onPress={() => setScanOuvert(false)} style={styles.boutonFermerCamera}>
+              <Feather name="x" size={22} color="#fff" />
+            </Pressable>
+            <Text style={{ color: "#fff", fontSize: 14, textAlign: "center", opacity: 0.9 }}>
+              {t("produit_scanner_code_barre", langue)}
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -445,6 +503,8 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14 },
   selecteur: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 14 },
   ligneDeuxChamps: { flexDirection: "row", gap: 10 },
+  ligneReference: { flexDirection: "row", alignItems: "stretch", gap: 8, marginBottom: 14 },
+  boutonScan: { width: 46, borderWidth: 1, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   ligneChamps: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   pucheChamp: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   paletteCouleurs: { flexDirection: "row", flexWrap: "wrap", gap: 10 },

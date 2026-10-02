@@ -17,7 +17,6 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { useTheme } from "@/lib/theme/ThemeProvider";
 
-import { useToast } from "@/lib/toast/ToastProvider";
 
 import { useLangue, t } from "@/lib/i18n";
 import { peutEcrire } from "@/lib/trial/gate";
@@ -87,7 +86,6 @@ const CLES_MODES: Record<ModeAffichage, string> = {
 export default function Stock() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { showToast } = useToast();
   const { plan } = usePlanActuel();
   const { formater } = useCurrency();
   const { categories } = useCategories();
@@ -452,6 +450,8 @@ export default function Stock() {
               }
             />
           </Pressable>
+
+          {/* La liste de réapprovisionnement se partage depuis la page Dépenses. */}
 
           {/* Bouton export */}
           {plan?.exportComptable && (

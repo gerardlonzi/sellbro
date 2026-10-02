@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Image, Modal } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Modal } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -195,7 +195,14 @@ export default function DetailProduit() {
     }
   }
 
-  function confirmerSuppression() {
+  async function confirmerSuppression() {
+    // Même garde que la suppression depuis la liste du stock : sans elle, un
+    // compte en essai expiré pouvait supprimer depuis cet écran mais pas
+    // depuis la liste.
+    if (!(await peutEcrire())) {
+      afficherPaywall(langue, () => router.push("/premium"));
+      return;
+    }
     Alert.alert(t("categories_supprimer_confirmer", langue), "", [
       { text: t("popup_non", langue), style: "cancel" },
       {
@@ -237,6 +244,12 @@ export default function DetailProduit() {
         <Pressable onPress={() => router.push(`/produit/mouvements/${id}`)} style={{ marginLeft: 12 }}>
   <Feather name="clock" size={18} color={colors.textSecondary} />
 </Pressable>
+        {/* Suppression déplacée ici, en icône discrète : en bas du formulaire
+            elle se confondait avec le bouton « Enregistrer » et se déclenchait
+            par erreur. */}
+        <Pressable onPress={confirmerSuppression} hitSlop={10} style={{ marginLeft: 14 }}>
+          <Feather name="trash-2" size={18} color={colors.danger} />
+        </Pressable>
       </View>
 
       {/* Statistiques du produit */}
@@ -338,10 +351,6 @@ export default function DetailProduit() {
         <Champ label={t("produit_seuil", langue)} valeur={seuilAlerte} onChange={setSeuilAlerte} numerique colors={colors} style={{ flex: 1 }} />
       </View>
 
-      <Pressable onPress={confirmerSuppression} style={[styles.boutonSupprimer, { backgroundColor: colors.dangerBg, marginTop: 20 }]}>
-        <Feather name="trash-2" size={15} color={colors.danger} />
-        <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "500" }}>{t("categories_supprimer_confirmer", langue)}</Text>
-      </Pressable>
     </ScrollView>
 
       <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
@@ -386,7 +395,6 @@ const styles = StyleSheet.create({
   container: { padding: 16, paddingTop: 50 },
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   ligneDeux: { flexDirection: "row", gap: 10 },
-  boutonSupprimer: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, borderRadius: 8 },
   imageProduit: { width: "100%", height: 160, borderRadius: 12, marginBottom: 16 },
   ligneImages: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   miniatureImage: { width: 80, height: 80, borderRadius: 8 },
