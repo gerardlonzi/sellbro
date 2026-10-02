@@ -3,7 +3,9 @@ import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
 import { avecTimeout } from "@/lib/timeout";
+import { Platform } from "react-native";
 import { enregistrerActivite } from "@/lib/audit/journal";
+import { t } from "@/lib/i18n";
 
 export type InfosBoutique = {
   nom: string;
@@ -111,22 +113,6 @@ function piedHtml(langue: "fr" | "en" = "fr"): string {
   return `<div style="margin-top:30px;padding-top:12px;border-top:1px solid #E5E3DC;font-size:9px;color:#9B9A93;text-align:center;line-height:1.5;">${L[langue].mentions}</div>`;
 }
 
-// Bloc client : nom, téléphone, localité (deux colonnes entreprise | client).
-function blocClientHtml(facture: any, langue: "fr" | "en"): string {
-  const l = L[langue];
-  const lignes = [
-    facture.clientNom ?? "",
-    facture.clientTelephone ? `${l.telephone} : ${facture.clientTelephone}` : "",
-    facture.clientLocalite ? `${l.localite} : ${facture.clientLocalite}` : "",
-  ].filter(Boolean);
-  if (lignes.length === 0) return "";
-  return `
-    <div style="margin:16px 0;padding:12px;border:1px solid #E5E3DC;border-radius:8px;background:#FAFAF8;">
-      <div style="font-size:11px;font-weight:bold;color:#6B6A64;margin-bottom:4px;">${l.client}</div>
-      ${lignes.map((x) => `<div style="font-size:12px;color:#1A1A18;">${x}</div>`).join("")}
-    </div>`;
-}
-
 const STYLE = `<style>
   * { font-family: Arial, sans-serif; }
   body { padding: 24px; color: #1A1A18; }
@@ -136,6 +122,21 @@ const STYLE = `<style>
   .droite { text-align: right; }
   .total { font-size: 14px; font-weight: bold; }
 </style>`;
+
+// Nom de fichier lisible pour une facture : « Facture-Paul-2026-10-01.pdf ».
+// Le nom du client est nettoyé (pas d'accents ni de caractères interdits dans
+// un nom de fichier) ; à défaut, on utilise le numéro de facture.
+function nomFichierFacture(facture: any, langue: "fr" | "en"): string {
+  const date = facture.creeLe ? new Date(facture.creeLe) : new Date();
+  const jj = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const aaaa = date.getFullYear();
+  const client = (facture.clientNom ?? "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const base = langue === "fr" ? "Facture" : "Invoice";
+  return client ? `${base}-${client}-${aaaa}-${mm}-${jj}.pdf` : `${base}-${facture.numero}.pdf`;
+}
 
 async function partager(html: string, nomFichier: string, ticket = false) {
   const options = ticket
@@ -148,7 +149,16 @@ async function partager(html: string, nomFichier: string, ticket = false) {
 }
 
 // Envoie directement vers l'écran d'impression du téléphone (sans partage).
+// Sur Android, printAsync IGNORE width/height (cf. PrintModule.getAttributesFromOptions)
+// : un ticket 80 mm passé en HTML s'affichait sur du A4. On génère donc d'abord
+// le PDF à la bonne taille, puis on imprime le FICHIER — le dialogue d'impression
+// reçoit alors des pages 80 mm, ce que les imprimantes thermiques attendent.
 async function imprimerDirectement(html: string, ticket = false) {
+  if (ticket && Platform.OS === "android") {
+    const { uri } = await Print.printToFileAsync({ html, width: LARGEUR_TICKET_PT, height: HAUTEUR_TICKET_PT });
+    await Print.printAsync({ uri });
+    return;
+  }
   await Print.printAsync(ticket ? { html, width: LARGEUR_TICKET_PT, height: HAUTEUR_TICKET_PT } : { html });
 }
 
@@ -176,11 +186,9 @@ const STYLE_TICKET = `<style>
   .merci { text-align: center; font-size: 9px; color: #555; margin-top: 14px; line-height: 1.5; }
 </style>`;
 
-// Génère une facture PDF au format ticket de caisse. Par défaut, ouvre
-// directement l'écran d'impression ; `exporter = true` génère un fichier à
-// partager/télécharger.
-export async function genererFacturePdf(facture: any, lignes: any[], langue: "fr" | "en" = "fr", exporter = false) {
-  const infos = await obtenirInfosBoutique();
+// Construit le HTML ticket d'une facture (partagé par l'impression, le partage
+// et l'envoi WhatsApp).
+function construireHtmlFacture(infos: InfosBoutique, facture: any, lignes: any[], langue: "fr" | "en"): string {
   const l = L[langue];
 
   const date = facture.creeLe ? new Date(facture.creeLe) : new Date();
@@ -223,12 +231,96 @@ export async function genererFacturePdf(facture: any, lignes: any[], langue: "fr
     <div class="merci">${l.mentions}</div>
   </body></html>`;
 
+  return html;
+}
+
+// Génère le FICHIER PDF d'une facture et renvoie son URI locale (sans ouvrir
+// quoi que ce soit) — utilisé pour l'envoi WhatsApp depuis la fiche client.
+export async function genererFichierFacturePdf(facture: any, lignes: any[], langue: "fr" | "en" = "fr"): Promise<string> {
+  const infos = await obtenirInfosBoutique();
+  const html = construireHtmlFacture(infos, facture, lignes, langue);
+  const { uri } = await Print.printToFileAsync({ html, width: LARGEUR_TICKET_PT, height: HAUTEUR_TICKET_PT });
+  return uri;
+}
+
+// Génère une facture PDF au format ticket de caisse. Par défaut, ouvre
+// directement l'écran d'impression ; `exporter = true` génère un fichier à
+// partager/télécharger.
+export async function genererFacturePdf(facture: any, lignes: any[], langue: "fr" | "en" = "fr", exporter = false) {
+  const infos = await obtenirInfosBoutique();
+  const html = construireHtmlFacture(infos, facture, lignes, langue);
+
   if (exporter) {
-    await partager(html, `Facture-${facture.numero}.pdf`, true);
+    // Nom de fichier lisible : client + date (ex. Facture-Paul-2026-10-01.pdf),
+    // au lieu d'un numéro technique seul.
+    await partager(html, nomFichierFacture(facture, langue), true);
   } else {
     await imprimerDirectement(html, true);
   }
   await enregistrerActivite("impression", "ajout", `Facture ${facture.numero} imprimée`);
+}
+
+// ------------------------------------------------------------
+// Rapports génériques : un utilitaire unique pour tout PDF « tableau ».
+// Chaque page de l'app qui expose « Télécharger le rapport » construit ses
+// sections et appelle genererRapportPdf — plus de HTML dupliqué.
+// ------------------------------------------------------------
+
+export type SectionRapport = {
+  titre: string;
+  colonnes: { libelle: string; aligneDroite?: boolean }[];
+  lignes: (string | number)[][];
+};
+
+// Échappe les valeurs avant de les injecter dans le HTML : un nom de produit
+// ou de client contenant `<` ou `&` casserait autrement le document.
+function echapper(valeur: string): string {
+  return valeur.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export async function genererRapportPdf({
+  titre,
+  sousTitre,
+  sections,
+  langue = "fr",
+  nomFichier = "Rapport.pdf",
+  descriptionActivite = "Rapport généré",
+}: {
+  titre: string;
+  sousTitre?: string;
+  sections: SectionRapport[];
+  langue?: "fr" | "en";
+  nomFichier?: string;
+  descriptionActivite?: string;
+}) {
+  const infos = await obtenirInfosBoutique();
+
+  const sectionsHtml = sections
+    .filter((s) => s.lignes.length > 0)
+    .map((s) => {
+      const tete = s.colonnes
+        .map((c) => `<th${c.aligneDroite ? ' class="droite"' : ""}>${echapper(c.libelle)}</th>`)
+        .join("");
+      const corps = s.lignes
+        .map(
+          (ligne) =>
+            `<tr>${ligne
+              .map((cellule, i) => `<td${s.colonnes[i]?.aligneDroite ? ' class="droite"' : ""}>${echapper(String(cellule))}</td>`)
+              .join("")}</tr>`
+        )
+        .join("");
+      return `<div style="font-size:13px;font-weight:bold;margin-top:18px;">${echapper(s.titre)}</div><table><tr>${tete}</tr>${corps}</table>`;
+    })
+    .join("");
+
+  const html = `<html><head>${STYLE}</head><body>
+    ${enteteHtml(infos, titre, sousTitre)}
+    ${sectionsHtml}
+    ${piedHtml(langue)}
+  </body></html>`;
+
+  await partager(html, nomFichier);
+  await enregistrerActivite("impression", "ajout", descriptionActivite);
 }
 
 // Génère et partage un export comptable PDF (document complet).
@@ -239,71 +331,102 @@ export async function genererExportPdf(
     topProduits?: { nom: string; ventes: number; montant: number }[];
     topClients?: { nom: string; montant: number }[];
   },
-  periodeLabel: string
+  periodeLabel: string,
+  langue: "fr" | "en" = "fr"
 ) {
-  const infos = await obtenirInfosBoutique();
-  const paiementHtml = Object.entries(stats.parPaiement)
-    .map(([mode, montant]) => `<tr><td>${mode}</td><td class="droite">${montant.toLocaleString()} F</td></tr>`)
-    .join("");
+  const sections: SectionRapport[] = [
+    {
+      titre: t("rapport_indicateurs", langue),
+      colonnes: [{ libelle: t("rapport_col_indicateur", langue) }, { libelle: t("rapport_col_valeur", langue), aligneDroite: true }],
+      lignes: [
+        [t("dashboard_ca", langue), `${stats.ca.toLocaleString()} F`],
+        [t("dashboard_benefice", langue), `${stats.benefice.toLocaleString()} F`],
+        [t("dashboard_ventes", langue), stats.ventes],
+        ...(stats.produitsEnStock != null ? [[t("export_produits_stock", langue), stats.produitsEnStock] as (string | number)[]] : []),
+        ...(stats.ruptures != null ? [[t("export_ruptures", langue), stats.ruptures] as (string | number)[]] : []),
+      ],
+    },
+    {
+      titre: t("dashboard_par_paiement", langue),
+      colonnes: [{ libelle: t("rapport_col_paiement", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }],
+      lignes: Object.entries(stats.parPaiement).map(([mode, montant]) => [mode, `${montant.toLocaleString()} F`]),
+    },
+    {
+      titre: t("dashboard_top_produits", langue),
+      colonnes: [
+        { libelle: t("rapport_col_produit", langue) },
+        { libelle: t("dashboard_ventes", langue), aligneDroite: true },
+        { libelle: t("rapport_col_montant", langue), aligneDroite: true },
+      ],
+      lignes: (stats.topProduits ?? []).map((p) => [p.nom, p.ventes, `${p.montant.toLocaleString()} F`]),
+    },
+    {
+      titre: t("dashboard_top_clients", langue),
+      colonnes: [{ libelle: t("rapport_col_client", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }],
+      lignes: (stats.topClients ?? []).map((c) => [c.nom, `${c.montant.toLocaleString()} F`]),
+    },
+  ];
 
-  const topProduitsHtml = (stats.topProduits ?? [])
-    .map((p) => `<tr><td>${p.nom}</td><td class="droite">${p.ventes}</td><td class="droite">${p.montant.toLocaleString()} F</td></tr>`)
-    .join("");
-  const topClientsHtml = (stats.topClients ?? [])
-    .map((c) => `<tr><td>${c.nom}</td><td class="droite">${c.montant.toLocaleString()} F</td></tr>`)
-    .join("");
-
-  const html = `<html><head>${STYLE}</head><body>
-    ${enteteHtml(infos, "EXPORT COMPTABLE", periodeLabel)}
-    <table>
-      <tr><th>Indicateur</th><th class="droite">Valeur</th></tr>
-      <tr><td>Chiffre d'affaires</td><td class="droite">${stats.ca.toLocaleString()} F</td></tr>
-      <tr><td>Bénéfice estimé</td><td class="droite">${stats.benefice.toLocaleString()} F</td></tr>
-      <tr><td>Nombre de ventes</td><td class="droite">${stats.ventes}</td></tr>
-      ${stats.produitsEnStock != null ? `<tr><td>Produits en stock</td><td class="droite">${stats.produitsEnStock}</td></tr>` : ""}
-      ${stats.ruptures != null ? `<tr><td>Produits en rupture</td><td class="droite">${stats.ruptures}</td></tr>` : ""}
-    </table>
-    ${paiementHtml ? `<div style="font-size:13px;font-weight:bold;margin-top:16px;">Par mode de paiement</div><table><tr><th>Mode</th><th class="droite">Montant</th></tr>${paiementHtml}</table>` : ""}
-    ${topProduitsHtml ? `<div style="font-size:13px;font-weight:bold;margin-top:16px;">Produits les plus vendus</div><table><tr><th>Produit</th><th class="droite">Ventes</th><th class="droite">Montant</th></tr>${topProduitsHtml}</table>` : ""}
-    ${topClientsHtml ? `<div style="font-size:13px;font-weight:bold;margin-top:16px;">Meilleurs clients</div><table><tr><th>Client</th><th class="droite">Montant</th></tr>${topClientsHtml}</table>` : ""}
-    ${piedHtml()}
-  </body></html>`;
-
-  await partager(html, `Export-comptable.pdf`);
-  await enregistrerActivite("impression", "ajout", "Export comptable généré");
+  await genererRapportPdf({
+    titre: t("export_titre", langue).toUpperCase(),
+    sousTitre: periodeLabel,
+    sections,
+    langue,
+    nomFichier: "Export-comptable.pdf",
+    descriptionActivite: "Export comptable généré",
+  });
 }
 
-// Génère et partage un reçu de vente (ticket) PDF.
+// Génère et partage un reçu de vente au format TICKET 80 mm (pas A4) : c'est
+// le document qu'on envoie au client ou qu'on imprime sur imprimante thermique.
 export async function genererRecuPdf(
   client: string | null,
   telephone: string | null,
   lignes: { nom: string; quantite: number; prixUnitaire: number }[],
-  total: number
+  total: number,
+  langue: "fr" | "en" = "fr"
 ) {
   const infos = await obtenirInfosBoutique();
+  const l = L[langue];
+
+  const dateFormatee = new Date().toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US");
+
   const lignesHtml = lignes
     .map(
-      (l) => `<tr>
-        <td>${l.nom}</td>
-        <td class="droite">${l.quantite}</td>
-        <td class="droite">${(l.quantite * l.prixUnitaire).toLocaleString()} F</td>
-      </tr>`
+      (x) => `<div class="ligne">
+        <div>
+          <div>${echapper(x.nom)}</div>
+          <div class="detail">${x.quantite} × ${(x.prixUnitaire || 0).toLocaleString()} F</div>
+        </div>
+        <div>${((x.quantite || 0) * (x.prixUnitaire || 0)).toLocaleString()} F</div>
+      </div>`
     )
     .join("");
 
-  const html = `<html><head>${STYLE}</head><body>
-    ${enteteHtml(infos, "REÇU DE VENTE", new Date().toLocaleString())}
-    ${client ? `<div style="font-size:12px;margin-bottom:8px;"><b>Client :</b> ${client}${telephone ? ` — ${telephone}` : ""}</div>` : ""}
-    <table>
-      <tr><th>Produit</th><th class="droite">Qté</th><th class="droite">Montant</th></tr>
-      ${lignesHtml}
-    </table>
-    <table style="width:auto;margin-left:auto;min-width:180px;">
-      <tr><td class="total">Total</td><td class="droite total">${total.toLocaleString()} F</td></tr>
-    </table>
-    ${piedHtml()}
+  const html = `<html><head>${STYLE_TICKET}</head><body>
+    <div class="centre">
+      <div class="boutique">${echapper(infos.nom)}</div>
+      ${infos.telephone ? `<div class="contact">${echapper(infos.telephone)}</div>` : ""}
+      ${infos.email ? `<div class="contact">${echapper(infos.email)}</div>` : ""}
+    </div>
+    <div class="separateur"></div>
+    <div class="ligne"><div>${langue === "fr" ? "REÇU" : "RECEIPT"}</div><div>${dateFormatee}</div></div>
+    ${client ? `<div class="ligne"><div>${l.client}</div><div>${echapper(client)}</div></div>` : ""}
+    ${telephone ? `<div class="ligne"><div>${l.telephone}</div><div>${echapper(telephone)}</div></div>` : ""}
+    <div class="separateur"></div>
+    ${lignesHtml}
+    <div class="separateur"></div>
+    <div class="ligne total"><div>${l.total}</div><div>${(total || 0).toLocaleString()} F</div></div>
+    <div class="merci">${l.mentions}</div>
   </body></html>`;
 
-  await partager(html, `Recu-vente.pdf`);
-  await enregistrerActivite("impression", "ajout", "Reçu de vente imprimé");
+  // Nom de fichier lisible : « Recu-Paul-2026-10-01.pdf » (client + date).
+  const d = new Date();
+  const jj = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const aaaa = d.getFullYear();
+  const clientNettoye = (client ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const base = langue === "fr" ? "Recu" : "Receipt";
+  await partager(html, clientNettoye ? `${base}-${clientNettoye}-${aaaa}-${mm}-${jj}.pdf` : `${base}-${aaaa}-${mm}-${jj}.pdf`, true);
+  await enregistrerActivite("impression", "ajout", "Reçu de vente partagé");
 }

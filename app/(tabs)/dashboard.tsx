@@ -27,6 +27,8 @@ type Stats = {
   ventes: number;
   produitsVendus: number;
   benefice: number;
+  depenses: number;
+  achats: number;
   parPaiement: Record<string, number>;
   parCategorie: { nom: string; montant: number }[];
   topProduits: { nom: string; ventes: number; montant: number }[];
@@ -36,7 +38,7 @@ type Stats = {
   ventesListe: { date: Date; produit: string; client: string; quantite: number; montant: number; paiement: string }[];
 };
 
-const STATS_VIDES: Stats = { ca: 0, ventes: 0, produitsVendus: 0, benefice: 0, parPaiement: {}, parCategorie: [], topProduits: [], topRevenus: [], topClients: [], ventesListe: [] };
+const STATS_VIDES: Stats = { ca: 0, ventes: 0, produitsVendus: 0, benefice: 0, depenses: 0, achats: 0, parPaiement: {}, parCategorie: [], topProduits: [], topRevenus: [], topClients: [], ventesListe: [] };
 
 // Valeurs de la période précédente, pour les flèches de tendance.
 type Tendance = { ca: number; ventes: number; benefice: number };
@@ -159,8 +161,18 @@ export default function Dashboard() {
       }))
     );
 
+    // Dépenses et achats de la période : même filtre de dates que les ventes.
+    // Chargés AVANT le cas « 0 vente » : le dashboard doit montrer les dépenses
+    // même sans vente sur la période.
+    const [toutesLesDepenses, tousLesAchats] = await Promise.all([
+      database.get("depenses").query(Q.where("user_id", userId)).fetch(),
+      database.get("achats").query(Q.where("user_id", userId)).fetch(),
+    ]);
+    const totalDepenses = (toutesLesDepenses as any[]).filter((d) => d.creeLe >= debut && d.creeLe <= fin).reduce((s, d) => s + d.montant, 0);
+    const totalAchats = (tousLesAchats as any[]).filter((a) => a.creeLe >= debut && a.creeLe <= fin).reduce((s, a) => s + a.montant, 0);
+
     if (ventes.length === 0) {
-      setStats(STATS_VIDES);
+      setStats({ ...STATS_VIDES, depenses: totalDepenses, achats: totalAchats });
       setChargement(false);
       return;
     }
@@ -216,7 +228,7 @@ export default function Dashboard() {
         paiement: v.modePaiement ?? "—",
       }));
 
-    setStats({ ca, ventes: transactions.size, produitsVendus, benefice: calculerBenefice(ventes, produitsParId), parPaiement, parCategorie, topProduits, topRevenus, topClients, ventesListe });
+    setStats({ ca, ventes: transactions.size, produitsVendus, benefice: calculerBenefice(ventes, produitsParId), depenses: totalDepenses, achats: totalAchats, parPaiement, parCategorie, topProduits, topRevenus, topClients, ventesListe });
     setChargement(false);
   }
 
@@ -246,6 +258,8 @@ export default function Dashboard() {
         [t("dashboard_benefice", langue), formater(stats.benefice)],
         [t("dashboard_ventes", langue), stats.ventes],
         [t("dashboard_produits_vendus", langue), stats.produitsVendus],
+        [t("depenses_titre", langue), formater(stats.depenses)],
+        [t("plus_achats", langue), formater(stats.achats)],
         [t("dashboard_ruptures", langue), ruptures],
         [t("dashboard_stock_faible", langue), alertes],
       ];
@@ -401,6 +415,7 @@ export default function Dashboard() {
           </View>
         ) : (
           <>
+            <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("dashboard_section_ventes", langue)}</Text>
             <View style={styles.ligneDeuxCartes}>
               <Carte style={{ flex: 1 }}>
                 <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("dashboard_ca", langue)}</Text>
@@ -464,7 +479,31 @@ export default function Dashboard() {
               </Pressable>
             </View>
 
+            {/* Section sorties : dépenses et achats de la période */}
+            <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("dashboard_section_sorties", langue)}</Text>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pressable onPress={() => router.push("/depenses")} style={{ flex: 1 }}>
+                <Carte>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Feather name="credit-card" size={13} color={colors.danger} />
+                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("depenses_titre", langue)}</Text>
+                  </View>
+                  <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: "500", marginTop: 4 }}>{formater(stats.depenses)}</Text>
+                </Carte>
+              </Pressable>
+              <Pressable onPress={() => router.push("/achats")} style={{ flex: 1 }}>
+                <Carte>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Feather name="truck" size={13} color={colors.puceAmbre} />
+                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("plus_achats", langue)}</Text>
+                  </View>
+                  <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: "500", marginTop: 4 }}>{formater(stats.achats)}</Text>
+                </Carte>
+              </Pressable>
+            </View>
+
             {/* Répartition par catégorie */}
+            <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("dashboard_section_analyse", langue)}</Text>
             {stats.parCategorie.length > 0 && (
               <Carte style={{ marginTop: 12 }}>
                 <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 12 }}>{t("dashboard_par_categorie", langue)}</Text>
@@ -570,6 +609,7 @@ export default function Dashboard() {
 
 const styles = StyleSheet.create({
   container: { paddingTop: 15 },
+  titreSection: { fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 18, marginBottom: 8, marginLeft: 2 },
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 },
   boutonPersonnalise: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-end", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 5 },
   blocPersonnalise: { flexDirection: "row", gap: 10, marginTop: 2, marginBottom: 8 },

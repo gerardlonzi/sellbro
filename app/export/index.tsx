@@ -50,12 +50,14 @@ export default function Export() {
 
   async function calculerStats() {
     setChargementStats(true);
-    const { debut } = plageDates(periode);
+    const { debut, fin } = plageDates(periode);
     const userId = await obtenirUserId();
     if (!userId) { setChargementStats(false); return; }
 
     const tousLesVentes = await database.get("ventes").query(Q.where("user_id", userId)).fetch();
-    const ventes = (tousLesVentes as any[]).filter((v) => v.creeLe >= debut);
+    // La borne de fin manquait : sans elle, un export « semaine » incluait aussi
+    // les ventes des jours APRÈS la fin de la période affichée.
+    const ventes = (tousLesVentes as any[]).filter((v) => v.creeLe >= debut && v.creeLe <= fin);
     const ca = ventes.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
 
     const parPaiement: Record<string, number> = {};
@@ -88,20 +90,20 @@ export default function Export() {
     const periodeLabel = t(`periode_${periode}` as any, langue) as string;
 
     if (format === "pdf") {
-      await genererExportPdf(stats, periodeLabel);
+      await genererExportPdf(stats, periodeLabel, langue);
     } else {
       const infos = await obtenirInfosBoutique();
       const paiements = Object.entries(stats.parPaiement).map(([mode, montant]) => `${mode};${montant}`).join("\n");
       const csv = [
-        `Boutique;${infos.nom}`,
-        `Période;${periodeLabel}`,
-        `Chiffre d'affaires;${stats.ca}`,
-        `Bénéfice estimé;${stats.benefice}`,
-        `Nombre de ventes;${stats.ventes}`,
-        `Mode;Montant`,
+        `${t("reglages_section_boutique", langue)};${infos.nom}`,
+        `${t("rapport_periode", langue)};${periodeLabel}`,
+        `${t("dashboard_ca", langue)};${stats.ca}`,
+        `${t("dashboard_benefice", langue)};${stats.benefice}`,
+        `${t("dashboard_ventes", langue)};${stats.ventes}`,
+        `${t("rapport_col_paiement", langue)};${t("rapport_col_montant", langue)}`,
         paiements,
       ].join("\n");
-      await Share.share({ message: csv, title: "Export comptable CSV" });
+      await Share.share({ message: csv, title: `${t("export_titre", langue)} CSV` });
     }
     setChargement(false);
   }
@@ -109,7 +111,7 @@ export default function Export() {
   if (plan && !plan.exportComptable) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, padding: 16, paddingTop: 50 }}>
-        <EnteteEcran titre="Export comptable" onRetour={() => router.back()} />
+        <EnteteEcran titre={t("export_titre", langue)} onRetour={() => router.back()} />
         <View style={{ alignItems: "center", marginTop: 60, paddingHorizontal: 20 }}>
           <View style={[styles.iconeVerrou, { backgroundColor: colors.proBg }]}>
             <Feather name="lock" size={22} color={colors.pro} />
@@ -130,11 +132,11 @@ export default function Export() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 16, paddingTop: 50 }}>
-      <EnteteEcran titre="Export comptable" onRetour={() => router.back()} />
+      <EnteteEcran titre={t("export_titre", langue)} onRetour={() => router.back()} />
 
       <SelecteurPeriode periode={periode} onChange={setPeriode} plan={planEffectif} />
 
-      <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, marginTop: 8 }}>Format</Text>
+      <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, marginTop: 8 }}>{t("export_format", langue)}</Text>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
         <Pressable
           onPress={() => setFormat("pdf")}
@@ -153,7 +155,7 @@ export default function Export() {
       </View>
 
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={{ fontSize: 12, fontWeight: "500", color: colors.textPrimary, marginBottom: 10 }}>Aperçu</Text>
+        <Text style={{ fontSize: 12, fontWeight: "500", color: colors.textPrimary, marginBottom: 10 }}>{t("export_apercu", langue)}</Text>
         {chargementStats ? (
           <View style={{ gap: 12 }}>
             <Skeleton width="70%" height={14} />
@@ -177,7 +179,7 @@ export default function Export() {
         disabled={chargement}
       >
         <Feather name="share" size={15} color="#fff" />
-        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : "Générer et partager"}</Text>
+        <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("export_generer", langue)}</Text>
       </Pressable>
     </View>
   );
