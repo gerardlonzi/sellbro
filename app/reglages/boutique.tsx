@@ -13,9 +13,6 @@ import { televerserImage } from "@/lib/storage/images";
 import { ImageCachee } from "@/components/ImageCachee";
 import { usePays } from "@/lib/pays/PaysProvider";
 
-// Numéro WhatsApp du support (même que la page Contact).
-const NUMERO_SUPPORT = "+237671986281";
-
 export default function InfosBoutique() {
   const { colors } = useTheme();
   const { langue } = useLangue();

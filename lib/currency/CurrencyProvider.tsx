@@ -25,6 +25,9 @@ type CurrencyContextValue = {
   devise: Devise;
   setDevise: (d: Devise) => void;
   formater: (montant: number) => string;
+  // Variante compacte pour les cartes : abrège les grands montants
+  // (100 000 → « 100K », 1 500 000 → « 1,5M ») au lieu de déborder.
+  formaterCompact: (montant: number) => string;
 };
 
 const CurrencyContext = createContext<CurrencyContextValue | null>(null);
@@ -72,8 +75,24 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     return `${converti.toLocaleString()} ${devise.symbole}`;
   }
 
+  function formaterCompact(montant: number) {
+    const converti = convertirDepuisFcfa(montant, devise.code);
+    const absolu = Math.abs(converti);
+    let texte: string;
+    if (absolu >= 1_000_000) {
+      // Un chiffre après la virgule, retiré s'il vaut 0 (1,5M mais 2M).
+      const m = converti / 1_000_000;
+      texte = `${m % 1 === 0 ? m : m.toFixed(1)}M`;
+    } else if (absolu >= 100_000) {
+      texte = `${Math.round(converti / 1_000)}K`;
+    } else {
+      texte = converti.toLocaleString();
+    }
+    return `${texte} ${devise.symbole}`;
+  }
+
   return (
-    <CurrencyContext.Provider value={{ devise, setDevise, formater }}>
+    <CurrencyContext.Provider value={{ devise, setDevise, formater, formaterCompact }}>
       {children}
     </CurrencyContext.Provider>
   );

@@ -113,7 +113,6 @@ Deno.serve(async (req) => {
         description: "Abonnement Cikap Pro",
         // Les frais sont AJOUTÉS au montant affiché : c'est le payeur qui les
         // prend en charge (2000 F + frais débités), tu reçois le prix exact.
-        fee_charge_mode: "INCLUDED",
         customer_email: user.email,
         customer_name: customerName,
         customer_phone: profil?.telephone ?? "",

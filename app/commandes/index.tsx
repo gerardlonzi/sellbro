@@ -3,7 +3,6 @@ import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndic
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
@@ -31,7 +30,6 @@ const ICONES_SOURCE: Record<string, any> = { vocal: "mic", scan: "camera", manue
 export default function Commandes() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { showToast } = useToast();
   const { formater } = useCurrency();
   const [recherche, setRecherche] = useState("");
   const [ventes, setVentes] = useState<Vente[]>([]);
