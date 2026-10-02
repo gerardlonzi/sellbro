@@ -1,12 +1,11 @@
-import { useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal } from "react-native";
+import { useState, useRef } from "react";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Linking, KeyboardAvoidingView, Platform } from "react-native";
 import { router } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
-import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
@@ -20,12 +19,14 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { formaterDateSeule } from "@/lib/formatDate";
+import { genererRecuPdf } from "@/lib/export/genererPdf";
+import { versionDonnees } from "@/lib/dataVersion";
 import { usePays } from "@/lib/pays/PaysProvider";
 import { validerTelephone } from "@/lib/pays/validation";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 
-type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number };
-type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number };
+type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number; imageUri: string | null };
+type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number; imageUri: string | null };
 type Client = { nom: string; telephone: string | null };
 
 export default function NouvelleVente() {
@@ -51,15 +52,43 @@ export default function NouvelleVente() {
   const [resultatScan, setResultatScan] = useState<{ type: "trouve"; produit: Produit & { reference: string } } | { type: "introuvable"; reference: string } | null>(null);
   const [catalogue, setCatalogue] = useState<(Produit & { reference: string | null })[]>([]);
   const [quantitesBrouillon, setQuantitesBrouillon] = useState<Record<number, string>>({});
+  const [rechercheProduit, setRechercheProduit] = useState("");
+  // Fenêtre « Envoyer le reçu » après enregistrement : nom facultatif,
+  // numéro obligatoire (c'est lui qui porte le message WhatsApp).
+  const [modalRecuOuvert, setModalRecuOuvert] = useState(false);
+  const [recuNom, setRecuNom] = useState("");
+  const [recuTelephone, setRecuTelephone] = useState("");
+  const [recuPanier, setRecuPanier] = useState<{ nom: string; quantite: number; prixUnitaire: number }[]>([]);
+  const [recuTotal, setRecuTotal] = useState(0);
   const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
 
+  // Extrait la 1re image d'un produit (champsSupplementaires.images est un
+  // tableau JSON d'URI ; on accepte aussi l'ancienne clé « image_uri »).
+  function imageDeProduit(p: any): string | null {
+    const supp = p.champsSupplementaires ?? {};
+    if (supp.images) {
+      try { return JSON.parse(supp.images)[0] ?? null; } catch { return null; }
+    }
+    return supp.image_uri ?? null;
+  }
+
+  // Les produits du sélecteur sont gardés en mémoire : ils ne sont rechargés
+  // que si les données ont changé (versionDonnees) — avant, chaque ouverture
+  // du sélecteur relançait une requête complète, même sans modification.
+  const versionProduits = useRef<number | null>(null);
+
   async function ouvrirSelecteurProduit() {
+    setSelectionProduits(new Set());
+    setRechercheProduit("");
+    setSelecteurProduitOuvert(true);
+
+    if (versionProduits.current !== null && versionDonnees() === versionProduits.current) return;
+    versionProduits.current = versionDonnees();
+
     const userId = await obtenirUserId();
     if (!userId) return;
     const resultats = await database.get("produits").query(Q.where("user_id", userId)).fetch();
-    setProduits((resultats as any[]).map((p) => ({ id: p.id, nom: p.nom, prixVente: p.prixVente, quantiteStock: p.quantiteStock })));
-    setSelectionProduits(new Set());
-    setSelecteurProduitOuvert(true);
+    setProduits((resultats as any[]).map((p) => ({ id: p.id, nom: p.nom, prixVente: p.prixVente, quantiteStock: p.quantiteStock, imageUri: imageDeProduit(p) })));
   }
 
   function ajouterAuPanier(p: Produit) {
@@ -68,7 +97,7 @@ export default function NouvelleVente() {
       if (existant) {
         return actuel.map((l) => (l.produitId === p.id ? { ...l, quantite: l.quantite + 1 } : l));
       }
-      return [...actuel, { produitId: p.id, nom: p.nom, quantite: 1, prixUnitaire: p.prixVente }];
+      return [...actuel, { produitId: p.id, nom: p.nom, quantite: 1, prixUnitaire: p.prixVente, imageUri: p.imageUri }];
     });
   }
 
@@ -95,6 +124,7 @@ export default function NouvelleVente() {
     setCatalogue((resultats as any[]).map((p) => ({
       id: p.id, nom: p.nom, prixVente: p.prixVente, quantiteStock: p.quantiteStock,
       reference: p.champsSupplementaires?.reference ?? null,
+      imageUri: imageDeProduit(p),
     })));
     setScannerOuvert(true);
   }
@@ -309,6 +339,35 @@ export default function NouvelleVente() {
     }
 
     setChargement(false);
+    // Après l'enregistrement : proposer d'envoyer le reçu au client. La fenêtre
+    // demande le nom (facultatif) et le numéro (obligatoire pour l'envoi).
+    setRecuPanier(panier.map((l) => ({ nom: l.nom, quantite: l.quantite, prixUnitaire: l.prixUnitaire })));
+    setRecuTotal(total);
+    setRecuNom(client.trim());
+    setRecuTelephone(clientTelephone.trim());
+    setModalRecuOuvert(true);
+  }
+
+  // Envoi du reçu : le numéro est obligatoire ici (le client doit pouvoir
+  // recevoir le message). Le nom reste facultatif.
+  async function envoyerRecu() {
+    const validation = validerTelephone(recuTelephone.trim(), pays);
+    if (!validation.valide) {
+      showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
+      return;
+    }
+    const telephoneComplet = `${pays.indicatif}${recuTelephone.replace(/\s/g, "")}`;
+    await genererRecuPdf(
+      recuNom.trim() || null,
+      telephoneComplet,
+      recuPanier,
+      recuTotal,
+      langue
+    );
+    // Ouvre la conversation WhatsApp du client : le PDF partagé s'y joint.
+    const numero = telephoneComplet.replace(/[^0-9]/g, "");
+    await Linking.openURL(`https://wa.me/${numero}?text=${encodeURIComponent(t("recu_whatsapp_message", langue))}`).catch(() => {});
+    setModalRecuOuvert(false);
     router.back();
   }
 
@@ -323,15 +382,29 @@ export default function NouvelleVente() {
         </Text>
       )}
       {panier.map((ligne, i) => (
-        <View key={i} style={[styles.lignePanier, { borderColor: colors.border }]}>
-          {/* Colonne 1 : avatar avec initiales du produit */}
-          <AvatarNom nom={ligne.nom} taille={32} />
-          {/* Colonne 2 : nom du produit */}
-          <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, flex: 1, marginLeft: 8 }}>{ligne.nom}</Text>
-          {/* Colonne 3 : quantité (contrôles groupés) */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Pressable onPress={() => modifierQuantite(i, -1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
-              <Feather name="minus" size={16} color={colors.textPrimary} />
+        // Carte par article : image du produit, nom + prix unitaire, stepper de
+        // quantité centré, total de ligne à droite. Plus lisible qu'une ligne
+        // dense — le geste principal (ajuster la quantité) est au centre.
+        <View key={i} style={[styles.cartePanier, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Pressable onPress={() => retirerDuPanier(i)} hitSlop={10} style={styles.boutonRetirerLigne}>
+            <Feather name="x" size={13} color={colors.textMuted} />
+          </Pressable>
+
+          <View style={styles.lignePanierHaut}>
+            <AvatarNom nom={ligne.nom} imageUri={ligne.imageUri} taille={44} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "600" }}>{ligne.nom}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{formater(ligne.prixUnitaire)}</Text>
+            </View>
+            <Text style={{ color: colors.accent, fontSize: 15, fontWeight: "700" }}>
+              {formater(ligne.quantite * ligne.prixUnitaire)}
+            </Text>
+          </View>
+
+          {/* Stepper de quantité : la quantité au milieu, en grand. */}
+          <View style={[styles.stepper, { backgroundColor: colors.background }]}>
+            <Pressable onPress={() => modifierQuantite(i, -1)} style={[styles.boutonStepper, { borderColor: colors.border }]}>
+              <Feather name="minus" size={18} color={colors.textPrimary} />
             </Pressable>
             <TextInput
               value={quantitesBrouillon[i] ?? String(ligne.quantite)}
@@ -339,19 +412,12 @@ export default function NouvelleVente() {
               onEndEditing={() => validerQuantiteManuelle(i)}
               onBlur={() => validerQuantiteManuelle(i)}
               keyboardType="numeric"
-              style={{ width: 36, textAlign: "center", color: colors.textPrimary, fontSize: 15, fontWeight: "700", borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 2 }}
+              style={{ width: 56, textAlign: "center", color: colors.textPrimary, fontSize: 18, fontWeight: "700" }}
             />
-            <Pressable onPress={() => modifierQuantite(i, 1)} style={[styles.boutonQte, { borderColor: colors.border }]}>
-              <Feather name="plus" size={16} color={colors.textPrimary} />
+            <Pressable onPress={() => modifierQuantite(i, 1)} style={[styles.boutonStepper, { borderColor: colors.border }]}>
+              <Feather name="plus" size={18} color={colors.textPrimary} />
             </Pressable>
           </View>
-          {/* Colonne 4 : prix total de la ligne */}
-          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "700", width: 70, textAlign: "right", marginLeft: 8 }}>
-            {formater(ligne.quantite * ligne.prixUnitaire)}
-          </Text>
-          <Pressable onPress={() => retirerDuPanier(i)} hitSlop={8} style={{ marginLeft: 6 }}>
-            <Feather name="x" size={16} color={colors.danger} />
-          </Pressable>
         </View>
       ))}
 
@@ -400,22 +466,6 @@ export default function NouvelleVente() {
           style={[styles.input, { flex: 1, borderColor: colors.border, color: colors.textPrimary }]}
         />
       </View>
-
-      <Text style={[styles.label, { marginTop: 4 }]}>{t("vente_mode_paiement", langue)}</Text>
-      <View style={styles.ligneDeux}>
-        {(["cash", "momo", "credit"] as const).map((m) => (
-          <Pressable
-            key={m}
-            onPress={() => setModePaiement(m)}
-            style={[styles.choix, { borderColor: modePaiement === m ? colors.accent : colors.border, borderWidth: modePaiement === m ? 2 : 1 }]}
-          >
-            <Text style={{ color: modePaiement === m ? colors.accent : colors.textPrimary, fontSize: 12 }}>
-              {t(`vente_paiement_${m}` as any, langue)}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
       {modePaiement === "credit" && (
         <>
           <Text style={[styles.label, { marginTop: 12 }]}>{t("nouvelle_creance_echeance", langue)}</Text>
@@ -438,21 +488,74 @@ export default function NouvelleVente() {
         </>
       )}
 
+      <Text style={[styles.label, { marginTop: 4 }]}>{t("vente_mode_paiement", langue)}</Text>
+      <View style={styles.ligneDeux}>
+        {(["cash", "momo", "credit"] as const).map((m) => (
+          <Pressable
+            key={m}
+            onPress={() => setModePaiement(m)}
+            style={[styles.choix, { borderColor: modePaiement === m ? colors.accent : colors.border, borderWidth: modePaiement === m ? 2 : 1 }]}
+          >
+            <Text style={{ color: modePaiement === m ? colors.accent : colors.textPrimary, fontSize: 12 }}>
+              {t(`vente_paiement_${m}` as any, langue)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+     
+
       <Modal visible={selecteurProduitOuvert} transparent animationType="slide">
         <Pressable style={styles.fondModal} onPress={() => setSelecteurProduitOuvert(false)}>
           <Pressable style={[styles.feuille, { backgroundColor: colors.surface }]} onPress={() => {}}>
-            <ScrollView>
-              {produits.map((p) => {
+            {/* Recherche dans le catalogue : indispensable dès que la liste
+                dépasse quelques produits. */}
+            <View style={[styles.rechercheSelecteur, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <Feather name="search" size={15} color={colors.textMuted} />
+              <TextInput
+                value={rechercheProduit}
+                onChangeText={setRechercheProduit}
+                placeholder={t("stock_recherche", langue)}
+                placeholderTextColor={colors.textMuted}
+                style={{ flex: 1, marginLeft: 8, color: colors.textPrimary, fontSize: 14, paddingVertical: 0 }}
+              />
+            </View>
+            {/* État vide : aucun produit → message + raccourci vers l'ajout,
+                au lieu d'une liste vide muette. */}
+            {produits.length === 0 ? (
+              <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                <Feather name="package" size={28} color={colors.textMuted} />
+                <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 10, textAlign: "center" }}>
+                  {t("stock_aucun_resultat", langue)}
+                </Text>
+                <Pressable
+                  onPress={() => { setSelecteurProduitOuvert(false); router.push("/produit/nouveau"); }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 14, backgroundColor: colors.accent, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 }}
+                >
+                  <Feather name="plus" size={14} color="#fff" />
+                  <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{t("stock_ajouter_produit", langue)}</Text>
+                </Pressable>
+              </View>
+            ) : (
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {produits
+                .filter((p) => p.nom.toLowerCase().includes(rechercheProduit.toLowerCase()))
+                .map((p) => {
                 const selectionne = selectionProduits.has(p.id);
+                const rupture = p.quantiteStock <= 0;
                 return (
                   <Pressable key={p.id} onPress={() => basculerSelectionProduit(p.id)} style={[styles.ligneChoixModal, { borderBottomColor: colors.border }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
                       <View style={[styles.checkbox, { borderColor: selectionne ? colors.accent : colors.border, backgroundColor: selectionne ? colors.accent : "transparent" }]}>
                         {selectionne && <Feather name="check" size={12} color="#fff" />}
                       </View>
+                      {/* Image du produit : on repère un article d'un coup d'œil. */}
+                      <AvatarNom nom={p.nom} imageUri={p.imageUri} taille={38} />
                       <View>
                         <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{p.nom}</Text>
-                        <Text style={{ color: colors.textMuted, fontSize: 11 }}>{t("vente_en_stock_court", langue)} {p.quantiteStock}</Text>
+                        <Text style={{ color: rupture ? colors.danger : colors.textMuted, fontSize: 11 }}>
+                          {rupture ? t("stock_statut_rupture", langue) : `${t("vente_en_stock_court", langue)} ${p.quantiteStock}`}
+                        </Text>
                       </View>
                     </View>
                     <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(p.prixVente)}</Text>
@@ -460,6 +563,7 @@ export default function NouvelleVente() {
                 );
               })}
             </ScrollView>
+            )}
             <Pressable
               onPress={confirmerSelection}
               disabled={selectionProduits.size === 0}
@@ -476,13 +580,23 @@ export default function NouvelleVente() {
       <Modal visible={selecteurClientOuvert} transparent animationType="slide">
         <Pressable style={styles.fondModal} onPress={() => setSelecteurClientOuvert(false)}>
           <View style={[styles.feuille, { backgroundColor: colors.surface }]}>
-            <ScrollView>
-              {clients.map((c) => (
-                <Pressable key={c.nom} onPress={() => importerClient(c)} style={[styles.ligneChoixModal, { borderBottomColor: colors.border }]}>
-                  <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{c.nom}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            {/* État vide : aucun client connu → message clair. */}
+            {clients.length === 0 ? (
+              <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                <Feather name="users" size={28} color={colors.textMuted} />
+                <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 10, textAlign: "center" }}>
+                  {t("clients_vide_titre", langue)}
+                </Text>
+              </View>
+            ) : (
+              <ScrollView>
+                {clients.map((c) => (
+                  <Pressable key={c.nom} onPress={() => importerClient(c)} style={[styles.ligneChoixModal, { borderBottomColor: colors.border }]}>
+                    <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{c.nom}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </Pressable>
       </Modal>
@@ -547,6 +661,52 @@ export default function NouvelleVente() {
           )}
         </View>
       </Modal>
+
+      {/* Après l'enregistrement : proposition d'envoi du reçu au client.
+          Le nom est facultatif, le numéro WhatsApp obligatoire. */}
+      <Modal visible={modalRecuOuvert} transparent animationType="fade" onRequestClose={() => { setModalRecuOuvert(false); router.back(); }}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+          <View style={styles.fondModalCentre}>
+            <View style={[styles.carteModalCentre, { backgroundColor: colors.surface }]}>
+              <View style={[styles.iconeModalCentre, { backgroundColor: colors.successBg }]}>
+                <Feather name="check-circle" size={24} color={colors.success} />
+              </View>
+              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: "600", textAlign: "center" }}>
+                {t("recu_proposer_titre", langue)}
+              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: "center", marginTop: 6 }}>
+                {t("recu_proposer_texte", langue)}
+              </Text>
+
+              <TextInput
+                value={recuNom}
+                onChangeText={setRecuNom}
+                placeholder={t("recu_modal_nom", langue)}
+                placeholderTextColor={colors.textMuted}
+                style={[styles.inputModal, { borderColor: colors.border, color: colors.textPrimary }]}
+              />
+              <TextInput
+                value={recuTelephone}
+                onChangeText={setRecuTelephone}
+                placeholder={t("recu_modal_telephone", langue)}
+                placeholderTextColor={colors.textMuted}
+                keyboardType="phone-pad"
+                style={[styles.inputModal, { borderColor: colors.border, color: colors.textPrimary }]}
+              />
+
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 16, alignSelf: "stretch" }}>
+                <Pressable onPress={() => { setModalRecuOuvert(false); router.back(); }} style={[styles.boutonModal, { borderColor: colors.border, borderWidth: 1 }]}>
+                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500" }}>{t("rappel_essai_plus_tard", langue)}</Text>
+                </Pressable>
+                <Pressable onPress={envoyerRecu} style={[styles.boutonModal, { backgroundColor: "#25D366" }]}>
+                  <Feather name="send" size={14} color="#fff" />
+                  <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{t("recu_partager", langue)}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
 
       <View style={{ flexDirection: "row", gap: 10, padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
@@ -567,6 +727,11 @@ const styles = StyleSheet.create({
   container: { padding: 16, paddingTop: 50 },
   label: { fontSize: 12, marginBottom: 8, color: "#888" },
   lignePanier: { flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: 1, paddingVertical: 8 },
+  cartePanier: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 10 },
+  lignePanierHaut: { flexDirection: "row", alignItems: "center" },
+  boutonRetirerLigne: { position: "absolute", top: 8, right: 8, zIndex: 1 },
+  stepper: { flexDirection: "row", alignItems: "center", justifyContent: "center", alignSelf: "center", gap: 4, marginTop: 10, borderRadius: 24, padding: 4 },
+  boutonStepper: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   boutonQte: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   boutonAjouterProduit: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderStyle: "dashed", borderRadius: 8, paddingVertical: 11, marginTop: 20, marginBottom: 14 },
   bandeauTotal: { padding: 12, borderRadius: 10, marginBottom: 16, alignItems: "center" },
@@ -580,7 +745,8 @@ const styles = StyleSheet.create({
   choix: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
   boutonSauver: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: 10, marginTop: 10 },
   fondModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  feuille: { maxHeight: "60%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 },
+  feuille: { maxHeight: "75%", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 },
+  rechercheSelecteur: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 42, marginBottom: 10 },
   ligneChoixModal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1 },
   checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   boutonConfirmer: { paddingVertical: 13, borderRadius: 10, alignItems: "center", marginTop: 12 },
@@ -591,4 +757,9 @@ const styles = StyleSheet.create({
   overlayResultatScan: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", padding: 24 },
   carteResultatScan: { width: "100%", maxWidth: 340, borderRadius: 16, padding: 20, alignItems: "center" },
   boutonResultatScan: { alignSelf: "stretch", paddingVertical: 12, borderRadius: 8, alignItems: "center", justifyContent: "center", marginTop: 10 },
+  fondModalCentre: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 24 },
+  carteModalCentre: { width: "100%", maxWidth: 340, borderRadius: 16, padding: 24, alignItems: "center" },
+  iconeModalCentre: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 14 },
+  inputModal: { alignSelf: "stretch", borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, marginTop: 10 },
+  boutonModal: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
 });

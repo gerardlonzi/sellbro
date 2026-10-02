@@ -7,15 +7,18 @@ import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
+import { Q } from "@nozbe/watermelondb";
 import { enregistrerActivite } from "@/lib/audit/journal";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { supprimerEnregistrement } from "@/lib/database/supprimer";
 import { EnteteEcran } from "@/components/UI";
 
+import { genererRecuPdf } from "@/lib/export/genererPdf";
+
 type Vente = {
   id: string; quantite: number; prix_unitaire: number; produit_nom: string | null; client_nom: string | null;
-  mode_paiement: string | null; source: string; audio_url: string | null; created_at: string;
+  client_telephone: string | null; mode_paiement: string | null; source: string; audio_url: string | null; created_at: string;
 };
 
 export default function DetailTransaction() {
@@ -25,6 +28,7 @@ export default function DetailTransaction() {
   const { formater } = useCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [vente, setVente] = useState<Vente | null>(null);
+  const [lignesTransaction, setLignesTransaction] = useState<{ nom: string; quantite: number; prixUnitaire: number }[]>([]);
   const [chargement, setChargement] = useState(true);
   const [enregistrement, setEnregistrement] = useState(false);
 
@@ -35,8 +39,25 @@ export default function DetailTransaction() {
   async function charger() {
     setChargement(true);
     const v = (await database.get("ventes").find(id)) as any;
+    // Toutes les lignes de la même transaction : le reçu couvre tout le panier,
+    // pas seulement la ligne touchée.
+    let transactionId: string | null = null;
+    try { transactionId = JSON.parse(v.donneesSupplementairesJson || "{}").transactionId ?? null; } catch {}
+    if (transactionId) {
+      const toutes = (await database.get("ventes").query(Q.where("user_id", v.userId)).fetch()) as any[];
+      setLignesTransaction(
+        toutes
+          .filter((x) => {
+            try { return JSON.parse(x.donneesSupplementairesJson || "{}").transactionId === transactionId; } catch { return false; }
+          })
+          .map((x) => ({ nom: x.produitNom ?? "—", quantite: x.quantite, prixUnitaire: x.prixUnitaire }))
+      );
+    } else {
+      setLignesTransaction([{ nom: v.produitNom ?? "—", quantite: v.quantite, prixUnitaire: v.prixUnitaire }]);
+    }
     setVente({
       id: v.id, quantite: v.quantite, prix_unitaire: v.prixUnitaire, produit_nom: v.produitNom, client_nom: v.clientNom,
+      client_telephone: v.clientTelephone ?? null,
       mode_paiement: v.modePaiement, source: v.source, audio_url: v.audioUrl,
       created_at: v.creeLe ? v.creeLe.toISOString() : new Date().toISOString(),
     });
@@ -85,7 +106,22 @@ export default function DetailTransaction() {
     );
   }
 
-  const total = vente.quantite * vente.prix_unitaire;
+  // Le total affiché couvre TOUTE la transaction (toutes les lignes du panier),
+  // pas seulement la ligne touchée — sinon le reçu et l'écran ne concordent pas.
+  const total = lignesTransaction.length > 0
+    ? lignesTransaction.reduce((s, l) => s + l.quantite * l.prixUnitaire, 0)
+    : vente.quantite * vente.prix_unitaire;
+
+  // Partage le reçu de la transaction au client (format ticket 80 mm).
+  async function partagerRecu() {
+    if (enregistrement) return;
+    setEnregistrement(true);
+    try {
+      await genererRecuPdf(vente!.client_nom, vente!.client_telephone, lignesTransaction, total, langue);
+    } finally {
+      setEnregistrement(false);
+    }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 16, paddingTop: 50 }}>
@@ -116,9 +152,11 @@ export default function DetailTransaction() {
       </View>
 
       <View style={{ flexDirection: "row", gap: 10, marginTop: 24 }}>
-        <Pressable style={[styles.boutonAction, { borderColor: colors.border, borderWidth: 1 }]} onPress={() => {}}>
-          <Feather name="edit-3" size={15} color={colors.textPrimary} />
-          <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("produit_sauver", langue) === "Save" ? "Edit" : "Modifier"}</Text>
+        {/* Reçu : génère le ticket PDF et ouvre la feuille de partage
+            (WhatsApp, SMS, imprimante thermique…). */}
+        <Pressable style={[styles.boutonAction, { backgroundColor: colors.accent }]} onPress={partagerRecu} disabled={enregistrement}>
+          <Feather name="share-2" size={15} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{t("recu_partager", langue)}</Text>
         </Pressable>
         <Pressable style={[styles.boutonAction, { backgroundColor: colors.dangerBg }]} onPress={supprimer}>
           <Feather name="trash-2" size={15} color={colors.danger} />

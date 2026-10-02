@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -6,16 +6,17 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
-import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";
 import { MenuContextuel } from "@/components/MenuContextuel";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
+import { AvatarNom } from "@/components/AvatarNom";
 import { creerFactureDepuisVentes } from "@/lib/factures/creerFacture";
 import { supprimerEnregistrement } from "@/lib/database/supprimer";
+import { versionDonnees } from "@/lib/dataVersion";
 
-type Vente = { id: string; quantite: number; prixUnitaire: number; produitNom: string | null; clientNom: string | null; source: string; creeLe: Date };
+type Vente = { id: string; quantite: number; prixUnitaire: number; produitNom: string | null; clientNom: string | null; source: string; creeLe: Date; imageUri: string | null };
 const ICONES_SOURCE: Record<string, any> = { vocal: "mic", scan: "camera", manuel: "edit-3" };
 
 export default function Ventes() {
@@ -31,9 +32,17 @@ export default function Ventes() {
   const [selectionnees, setSelectionnees] = useState<Set<string>>(new Set());
   const [creationEnCours, setCreationEnCours] = useState(false);
 
+  // Ne recharge la liste que si les données ont changé depuis la dernière
+  // visite : ouvrir la page affichait un chargement à chaque fois, même sans
+  // aucune modification. Même principe que Stock et Clients.
+  const derniereVersion = useRef<number | null>(null);
+
   useFocusEffect(
     useCallback(() => {
-      charger();
+      if (derniereVersion.current === null || versionDonnees() !== derniereVersion.current) {
+        derniereVersion.current = versionDonnees();
+        charger();
+      }
       // En quittant la page, on réinitialise le mode sélection (icône carrée)
       // pour ne pas rester « coincé » sur la sélection précédente au retour.
       return () => {
@@ -49,9 +58,25 @@ export default function Ventes() {
     if (!userId) { setChargement(false); return; }
 
     const resultats = await database.get("ventes").query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc)).fetch();
+
+    // Image du produit vendu : jointure avec le catalogue (la vente ne stocke
+    // que le nom). On reconstruit la même URI que la page Stock.
+    const tousLesProduits = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    const imageParId = new Map(
+      (tousLesProduits as any[]).map((p) => {
+        const supp = p.champsSupplementaires ?? {};
+        let image: string | null = supp.image_uri ?? null;
+        if (supp.images) {
+          try { image = JSON.parse(supp.images)[0] ?? null; } catch {}
+        }
+        return [p.id, image] as const;
+      })
+    );
+
     setVentes((resultats as any[]).map((v) => ({
       id: v.id, quantite: v.quantite, prixUnitaire: v.prixUnitaire,
       produitNom: v.produitNom, clientNom: v.clientNom, source: v.source, creeLe: v.creeLe,
+      imageUri: v.produitId ? imageParId.get(v.produitId) ?? null : null,
     })));
     setChargement(false);
   }
@@ -200,14 +225,19 @@ export default function Ventes() {
                   </View>
                 )}
                 <View style={styles.ligneGauche}>
-                  <Feather name={ICONES_SOURCE[v.source] ?? "edit-3"} size={14} color={colors.textMuted} />
+                  {/* Image du produit vendu (initiales en repli). L'icône de la
+                      source (vocal/scan/manuel) reste visible en pastille. */}
+                  <AvatarNom nom={v.produitNom ?? v.clientNom ?? "?"} imageUri={v.imageUri} taille={38} />
                   <View>
                     <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>
                       {v.produitNom ? `${v.produitNom} ×${v.quantite}` : v.clientNom ?? "—"}
                     </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                      {v.clientNom ? `${v.clientNom} · ` : ""}{v.creeLe.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Feather name={ICONES_SOURCE[v.source] ?? "edit-3"} size={10} color={colors.textMuted} />
+                      <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                        {v.clientNom ? `${v.clientNom} · ` : ""}{v.creeLe.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}
+                      </Text>
+                    </View>
                   </View>
                 </View>
                 <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: modeSelection ? 0 : 10 }}>
