@@ -31,13 +31,44 @@ export async function verifierCodeEmail(email: string, code: string) {
   // renvoyer null à cause d'une course de timing sur la session).
   const user = data.user;
   if (user) {
-    const { error: majError } = await supabase.from("profiles").update({ is_verified: true }).eq("id", user.id);
-    if (majError) {
-      console.warn("Échec update is_verified :", majError.message);
-    }
+    // On a maintenant une session : on réécrit le profil (nom boutique,
+    // téléphone, langue, devise, pays) à partir des valeurs saisies à
+    // l'inscription. C'est le filet de sécurité si l'appel RPC fait AVANT la
+    // vérification (sans session) avait échoué — le compte n'est plus jamais
+    // créé « vide ».
+    await reecrireProfilApresVerification(user.id);
   }
   await AsyncStorage.removeItem(CLE_EMAIL_EN_ATTENTE);
   return { error: null };
+}
+
+// Réécrit les infos du profil depuis les valeurs stockées localement à
+// l'inscription. À appeler UNIQUEMENT quand une session existe (après OTP).
+// On UPSERT (et non un simple UPDATE) : si le trigger `on_auth_user_created`
+// n'a pas tourné, la ligne profiles n'existe pas encore — l'UPDATE matcherait
+// 0 ligne silencieusement et le compte resterait absent de la base.
+async function reecrireProfilApresVerification(userId: string) {
+  try {
+    const [nomBoutique, telephone, langue, devise, paysCode, email] = await Promise.all([
+      AsyncStorage.getItem("boutika_nom_boutique"),
+      AsyncStorage.getItem("boutika_telephone"),
+      AsyncStorage.getItem("boutika_langue"),
+      AsyncStorage.getItem("boutika_devise"),
+      AsyncStorage.getItem("boutika_pays"),
+      AsyncStorage.getItem("boutika_email"),
+    ]);
+    const patch: Record<string, unknown> = { id: userId, is_verified: true };
+    if (email) patch.email = email;
+    if (nomBoutique) patch.nom_boutique = nomBoutique;
+    if (telephone) patch.telephone = telephone;
+    if (langue) patch.langue = langue;
+    if (devise) patch.devise = devise;
+    if (paysCode) patch.pays_code = paysCode;
+    const { error } = await supabase.from("profiles").upsert(patch, { onConflict: "id" });
+    if (error) console.warn("Échec sauvegarde profil après vérification :", error.message);
+  } catch (e) {
+    console.warn("Échec sauvegarde profil après vérification :", e);
+  }
 }
 
 // 3. Change l'email sans créer de doublon : envoie un nouveau code sur le

@@ -42,7 +42,12 @@ export function WelcomeTrial() {
   const [estRetour, setEstRetour] = useState(false);
 
   useEffect(() => {
-    if (essai.estPremium || !essai.pret) return;
+    // `verifie` et non `pret` : `pret` passe à true après la seule lecture
+    // locale, qui ne trouve rien sur une installation neuve. La garde laissait
+    // donc passer le pop-up d'essai vers un compte Pro qui venait de se
+    // connecter — le temps que le plan soit lu, ou indéfiniment si aucun
+    // rafraîchissement n'était redéclenché.
+    if (essai.estPremium || !essai.pret || !essai.verifie) return;
 
     (async () => {
       const [bienvenue, rappelsVus, expirationVue, retour] = await Promise.all([
@@ -76,7 +81,7 @@ export function WelcomeTrial() {
         if (expirationVue !== "true") setPopup({ type: "expiration" });
       }
     })();
-  }, [essai.estPremium, essai.pret, essai.statut, essai.joursRestants, essai.dureeTotale]);
+  }, [essai.estPremium, essai.pret, essai.verifie, essai.statut, essai.joursRestants, essai.dureeTotale]);
 
   async function fermer() {
     if (popup.type === "bienvenue") await AsyncStorage.setItem(CLE_BIENVENUE, "true");

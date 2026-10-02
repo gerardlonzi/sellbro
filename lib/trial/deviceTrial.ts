@@ -71,6 +71,14 @@ export async function obtenirEtatEssaiLocal(): Promise<EtatEssai> {
   return { actif: false, joursRestants: 0, dateFin: null, connu: false };
 }
 
+// À la déconnexion, le cache d'essai du compte sortant doit disparaître :
+// sinon le compte suivant hérite brièvement de son état (ex. « terminé »).
+export async function effacerCacheEssai(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(CLE_ESSAI);
+  } catch {}
+}
+
 // Démarre ou vérifie l'essai via le SERVEUR (autorité), puis met à jour le cache.
 // (Test/dev uniquement) Simule un essai expiré localement, pour vérifier que
 // les écritures sont bien bloquées en état « neutre » (ni essai ni Pro).

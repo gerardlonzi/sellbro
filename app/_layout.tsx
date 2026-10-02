@@ -20,6 +20,8 @@ import { PaywallPopup } from "@/components/PaywallPopup";
 import { SyncBanner } from "@/components/SyncBanner";
 import { supabase } from "@/lib/supabase/client";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import { rafraichirPlan, reinitialiserPlan } from "@/lib/plan/planStore";
+import { effacerCacheEssai } from "@/lib/trial/deviceTrial";
 
 // ---------------------------------------------------------
 // IMPORTANT : empêcher le splash de disparaître
@@ -38,12 +40,21 @@ function AppContent() {
   // Synchronise automatiquement dès qu'un utilisateur se connecte (login sur
   // un nouvel appareil) — évite de devoir forcer la fermeture/réouverture.
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((evenement, session) => {
       if (session?.user) {
         synchroniserPourUtilisateurCourant().catch(() => {});
         // Enregistre le token push : permet les notifications instantanées
         // envoyées par le serveur même quand l'app est fermée.
         enregistrerTokenPush().catch(() => {});
+        // Relit le plan APRÈS la connexion. Sans ça, le plan lu au démarrage
+        // (avant toute session, donc « gratuit ») restait figé : un abonné Pro
+        // voyait « essai gratuit » jusqu'au prochain redémarrage.
+        rafraichirPlan().catch(() => {});
+      } else if (evenement === "SIGNED_OUT") {
+        // Le plan et l'essai du compte précédent ne doivent pas survivre à la
+        // déconnexion, sinon le compte suivant en hérite brièvement.
+        reinitialiserPlan();
+        effacerCacheEssai().catch(() => {});
       }
     });
     return () => sub.subscription.unsubscribe();
