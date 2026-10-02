@@ -79,8 +79,10 @@ export default function Plus() {
                       { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
                     ]}
                   >
-                    <PuceIcone icone={entree.icone} ton={entree.ton} taille={40} />
-                    <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginTop: 10 }}>
+                    <PuceIcone icone={entree.icone} ton={entree.ton} taille={36} />
+                    {/* Le titre est À DROITE de l'icône, pas en dessous :
+                        plus compact et plus lisible en grille. */}
+                    <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginLeft: 10, flexShrink: 1 }}>
                       {t(entree.cle as any, langue)}
                     </Text>
                   </Pressable>
@@ -107,11 +109,12 @@ const styles = StyleSheet.create({
   rangGrille: { flexDirection: "row", gap: 10, marginBottom: 10 },
   carte: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderRadius: 14,
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-    alignItems: "flex-start",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
   carteVide: { flex: 1 },
 });

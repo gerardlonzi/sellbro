@@ -75,8 +75,10 @@ export default function Clients() {
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 10, alignItems: "center", justifyContent: "space-between" }}>
 
       <View style={styles.enteteGauche}>
-         <Pressable onPress={() => router.push("/reglages")} hitSlop={10}>
-            <Feather name="menu" size={22} color={colors.textPrimary} />
+         {/* Cet écran n'est plus un onglet mais une page poussée depuis « Plus » :
+            c'est donc un retour, et non le menu des réglages. */}
+         <Pressable onPress={() => router.back()} hitSlop={10}>
+            <Feather name="arrow-left" size={22} color={colors.textPrimary} />
           </Pressable>
           <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("clients_titre", langue)}</Text>
 
