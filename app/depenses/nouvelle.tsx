@@ -123,9 +123,18 @@ export default function NouvelleDepense() {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <EnteteEcran titre={t("depenses_ajouter", langue)} onRetour={() => router.back()} />
 
-      {/* Catégorie : prédéfinies + personnalisées + création manuelle */}
+      {/* Catégorie : une seule ligne scrollable horizontalement, avec
+          « Nouvelle catégorie » en premier (l'action de création est ainsi
+          toujours visible, sans scroller). */}
       <Text style={styles.label}>{t("depenses_categorie", langue)}</Text>
-      <View style={styles.ligneCategories}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ligneCategories} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
+        <Pressable
+          onPress={() => setSaisieCategorie(true)}
+          style={[styles.puce, { borderColor: saisieCategorie ? colors.accent : colors.border, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 4 }]}
+        >
+          <Feather name="plus" size={12} color={colors.textSecondary} />
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("depense_categorie_nouvelle", langue)}</Text>
+        </Pressable>
         {[...CATEGORIES_DEPENSES, ...categoriesPerso].map((c) => (
           <Pressable
             key={c}
@@ -135,14 +144,7 @@ export default function NouvelleDepense() {
             <Text style={{ color: categorie === c ? colors.accent : colors.textPrimary, fontSize: 12 }}>{libelleCategorieDepense(c, langue)}</Text>
           </Pressable>
         ))}
-        <Pressable
-          onPress={() => setSaisieCategorie(true)}
-          style={[styles.puce, { borderColor: saisieCategorie ? colors.accent : colors.border, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 4 }]}
-        >
-          <Feather name="plus" size={12} color={colors.textSecondary} />
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("depense_categorie_nouvelle", langue)}</Text>
-        </Pressable>
-      </View>
+      </ScrollView>
       {saisieCategorie && (
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
           <TextInput
@@ -256,27 +258,10 @@ export default function NouvelleDepense() {
 
       <Champ label={t("depenses_description", langue)} valeur={description} onChange={setDescription} colors={colors} />
 
-      {/* Champs personnalisés : nom + valeur, ajoutables/supprimables */}
+      {/* Champs personnalisés : les champs ajoutés apparaissent AU-DESSUS des
+          puces de suggestion — on voit immédiatement ce qu'on vient d'ajouter,
+          sans scroller. */}
       <Text style={styles.label}>{t("champs_personnalises", langue)}</Text>
-
-      {/* Suggestions rapides (même principe que "Informations supplémentaires" produit) */}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-        {["champ_sugg_recu", "champ_sugg_paiement", "champ_sugg_note"].map((cle) => {
-          const nom = t(cle as any, langue);
-          const dejaActif = champs.some((c) => c.nom === nom);
-          return (
-            <Pressable
-              key={cle}
-              disabled={dejaActif}
-              onPress={() => setChamps((actuel) => [...actuel, { nom, valeur: "" }])}
-              style={[styles.puce, { borderColor: dejaActif ? colors.border : colors.accent, borderWidth: 1, opacity: dejaActif ? 0.4 : 1, flexDirection: "row", alignItems: "center", gap: 4 }]}
-            >
-              <Feather name="plus" size={11} color={dejaActif ? colors.textMuted : colors.accent} />
-              <Text style={{ color: dejaActif ? colors.textMuted : colors.accent, fontSize: 12 }}>{nom}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
 
       {champs.map((c, i) => (
         <View key={i} style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}>
@@ -299,6 +284,26 @@ export default function NouvelleDepense() {
           </Pressable>
         </View>
       ))}
+
+      {/* Suggestions rapides (même principe que "Informations supplémentaires" produit) */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        {["champ_sugg_recu", "champ_sugg_paiement", "champ_sugg_note"].map((cle) => {
+          const nom = t(cle as any, langue);
+          const dejaActif = champs.some((c) => c.nom === nom);
+          return (
+            <Pressable
+              key={cle}
+              disabled={dejaActif}
+              onPress={() => setChamps((actuel) => [...actuel, { nom, valeur: "" }])}
+              style={[styles.puce, { borderColor: dejaActif ? colors.border : colors.accent, borderWidth: 1, opacity: dejaActif ? 0.4 : 1, flexDirection: "row", alignItems: "center", gap: 4 }]}
+            >
+              <Feather name="plus" size={11} color={dejaActif ? colors.textMuted : colors.accent} />
+              <Text style={{ color: dejaActif ? colors.textMuted : colors.accent, fontSize: 12 }}>{nom}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <Pressable
         onPress={() => setChamps((actuel) => [...actuel, { nom: "", valeur: "" }])}
         style={[styles.puce, { borderColor: colors.border, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginBottom: 16 }]}
@@ -335,7 +340,7 @@ function Champ({ label, valeur, onChange, numerique, colors }: any) {
 const styles = StyleSheet.create({
   container: { padding: 16, paddingTop: 50 },
   label: { fontSize: 12, marginBottom: 8, color: "#888" },
-  ligneCategories: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  ligneCategories: { marginBottom: 16 },
   puce: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, marginBottom: 14 },
   boutonAjouter: { width: 44, borderRadius: 8, alignItems: "center", justifyContent: "center" },

@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, TextInput } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, TextInput, Share } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -11,6 +11,7 @@ import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
+import { useToast } from "@/lib/toast/ToastProvider";
 import { libelleCategorieDepense } from "@/lib/depenses/categories";
 
 type Depense = {
@@ -31,6 +32,7 @@ export default function Depenses() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const { formater } = useCurrency();
+  const { showToast } = useToast();
   const [depenses, setDepenses] = useState<Depense[]>([]);
   const [revenusMois, setRevenusMois] = useState(0);
   const [chargement, setChargement] = useState(true);
@@ -49,11 +51,32 @@ export default function Depenses() {
     }, [])
   );
 
+  // Liste de réapprovisionnement (ruptures + stock faible), partagée en texte
+  // au fournisseur via la feuille système — WhatsApp, SMS, mail…
+  const [nbACommander, setNbACommander] = useState(0);
+  async function partagerReappro() {
+    const userId = await obtenirUserId();
+    if (!userId) return;
+    const tous = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    const aCommander = (tous as any[]).filter((p) => p.quantiteStock <= p.seuilAlerte);
+    if (aCommander.length === 0) {
+      showToast(t("reappro_aucun", langue), "info");
+      return;
+    }
+    const lignes = aCommander
+      .sort((a: any, b: any) => a.quantiteStock - b.quantiteStock)
+      .map((p: any) => `• ${p.nom} — ${p.quantiteStock === 0 ? t("stock_statut_rupture", langue) : `${p.quantiteStock} ${t("stock_en_stock", langue)}`}`);
+    await Share.share({ message: `${t("reappro_titre", langue)}\n\n${lignes.join("\n")}` }).catch(() => {});
+  }
+
   async function charger() {
     setChargement(true);
     const userId = await obtenirUserId();
     if (!userId) { setChargement(false); return; }
     const resultats = await database.get("depenses").query(Q.where("user_id", userId), Q.sortBy("cree_le", Q.desc)).fetch();
+    // Compte les produits à commander pour n'afficher le bouton que si besoin.
+    const tous = await database.get("produits").query(Q.where("user_id", userId)).fetch();
+    setNbACommander((tous as any[]).filter((p) => p.quantiteStock <= p.seuilAlerte).length);
     setDepenses((resultats as any[]).map((d) => {
       let supp: any = {};
       try { supp = JSON.parse(d.donneesSupplementairesJson || "{}"); } catch {}
@@ -136,13 +159,21 @@ export default function Depenses() {
         titre={t("depenses_titre", langue)}
         onRetour={() => router.back()}
         action={
-          <Pressable
-            onPress={() => setFiltresVisibles((v) => !v)}
-            style={[styles.boutonFiltre, { borderColor: filtreActif ? colors.accent : colors.border, borderWidth: filtreActif ? 1.5 : 1 }]}
-            hitSlop={8}
-          >
-            <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {/* Partage de la liste de réapprovisionnement au fournisseur. */}
+            {nbACommander > 0 && (
+              <Pressable onPress={partagerReappro} style={styles.boutonFiltre} hitSlop={8} accessibilityLabel={t("reappro_titre", langue)}>
+                <Feather name="truck" size={16} color={colors.textSecondary} />
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => setFiltresVisibles((v) => !v)}
+              style={[styles.boutonFiltre, { borderColor: filtreActif ? colors.accent : colors.border, borderWidth: filtreActif ? 1.5 : 1 }]}
+              hitSlop={8}
+            >
+              <Feather name="sliders" size={16} color={filtreActif ? colors.accent : colors.textSecondary} />
+            </Pressable>
+          </View>
         }
       />
 

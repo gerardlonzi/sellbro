@@ -230,20 +230,39 @@ export default function NouvelleCreance() {
         <Pressable style={styles.fondModal} onPress={() => setSelecteurProduitOuvert(false)}>
           <View style={[styles.feuilleModal, { backgroundColor: colors.surface }]}>
             <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "600", marginBottom: 10 }}>{t("nouvelle_creance_champ_produit", langue)}</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              {produits.map((p) => {
-                const selectionne = produitsSelectionnes.includes(p.nom);
-                return (
-                  <Pressable key={p.id} onPress={() => basculerProduit(p.nom)} style={[styles.ligneProduit, { borderBottomColor: colors.border }]}>
-                    <Feather name={selectionne ? "check-square" : "square"} size={16} color={selectionne ? colors.accent : colors.textMuted} />
-                    <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{p.nom}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <Pressable onPress={() => setSelecteurProduitOuvert(false)} style={[styles.boutonValider, { backgroundColor: colors.accent }]}>
-              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{t("popup_ok", langue)}</Text>
-            </Pressable>
+            {/* État vide : aucun produit → message + raccourci vers l'ajout. */}
+            {produits.length === 0 ? (
+              <View style={{ alignItems: "center", paddingVertical: 20 }}>
+                <Feather name="package" size={28} color={colors.textMuted} />
+                <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 10, textAlign: "center" }}>
+                  {t("stock_aucun_resultat", langue)}
+                </Text>
+                <Pressable
+                  onPress={() => { setSelecteurProduitOuvert(false); router.push("/produit/nouveau"); }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 14, backgroundColor: colors.accent, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 }}
+                >
+                  <Feather name="plus" size={14} color="#fff" />
+                  <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{t("stock_ajouter_produit", langue)}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 400 }}>
+                {produits.map((p) => {
+                  const selectionne = produitsSelectionnes.includes(p.nom);
+                  return (
+                    <Pressable key={p.id} onPress={() => basculerProduit(p.nom)} style={[styles.ligneProduit, { borderBottomColor: colors.border }]}>
+                      <Feather name={selectionne ? "check-square" : "square"} size={16} color={selectionne ? colors.accent : colors.textMuted} />
+                      <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{p.nom}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+            {produits.length > 0 && (
+              <Pressable onPress={() => setSelecteurProduitOuvert(false)} style={[styles.boutonValider, { backgroundColor: colors.accent }]}>
+                <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{t("popup_ok", langue)}</Text>
+              </Pressable>
+            )}
           </View>
         </Pressable>
       </Modal>
