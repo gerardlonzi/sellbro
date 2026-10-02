@@ -1,10 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator, Share } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useToast } from "@/lib/toast/ToastProvider";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
@@ -12,12 +11,11 @@ import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { obtenirUserId } from "@/lib/auth/userCache";
-import { TourGuide } from "@/components/TourGuide";
-import { useTourGuide } from "@/lib/onboarding/useTourGuide";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 import { AvatarNom } from "@/components/AvatarNom";
-import { Skeleton, Badge } from "@/components/UI";
+import { Skeleton } from "@/components/UI";
 import { PuceIcone } from "@/components/PuceIcone";
+import { ObjectifJour } from "@/components/ObjectifJour";
 import { WelcomeTrial } from "@/components/WelcomeTrial";
 import { IndicateurSync } from "@/components/SyncBanner";
 import { peutEcrire } from "@/lib/trial/gate";
@@ -41,9 +39,8 @@ const COULEURS_PAIEMENT: Record<string, { fond: string; texte: string }> = {
 
 export default function Accueil() {
   const { colors } = useTheme();
-  const { formater } = useCurrency();
+  const { formater, formaterCompact } = useCurrency();
   const { langue } = useLangue();
-  const { showToast } = useToast();
   const { planId, pret: planPret } = usePlanActuel();
   const [nomBoutique, setNomBoutique] = useState("");
   const [ca, setCa] = useState(0);
@@ -53,9 +50,9 @@ export default function Accueil() {
   const [onTeDoit, setOnTeDoit] = useState(0);
   const [tuDois, setTuDois] = useState(0);
   const [ventesRecentes, setVentesRecentes] = useState<VenteRecente[]>([]);
+  const [topProduitJour, setTopProduitJour] = useState<string | null>(null);
   const [chargementVentes, setChargementVentes] = useState(true);
   const [nbNotifsNonLues, setNbNotifsNonLues] = useState(0);
-  const { afficherTour, terminerTour } = useTourGuide();
 
   const derniereVersion = useRef<number | null>(null);
 
@@ -127,6 +124,14 @@ export default function Accueil() {
       );
       setNbVentes(transactions.size);
       setNbProduitsVendus((ventesAujourdhui as any[]).reduce((s, v) => s + (v.quantite || 0), 0));
+      // Produit star du jour (le plus vendu en unités) — utilisé par le bilan partageable.
+      const parProduit: Record<string, number> = {};
+      for (const v of ventesAujourdhui as any[]) {
+        const n = v.produitNom ?? "—";
+        parProduit[n] = (parProduit[n] ?? 0) + (v.quantite || 0);
+      }
+      const top = Object.entries(parProduit).sort((a, b) => b[1] - a[1])[0];
+      setTopProduitJour(top && top[0] !== "—" ? top[0] : null);
       setVentesRecentes((toutesLesVentes as any[]).slice(0, 5).map((v) => ({
         nom: v.produitNom ?? v.clientNom ?? "—",
         montant: v.quantite * v.prixUnitaire,
@@ -149,8 +154,18 @@ export default function Accueil() {
     setNbNotifsNonLues(total);
   }
 
-  function fonctionnaliteBientotDisponible() {
-    showToast(t("bientot_disponible_texte", langue), "info");
+  // Bilan du jour en texte, partagé via la feuille système (WhatsApp, SMS…).
+  // Le gérant l'envoie à son groupe ou le met en statut — sans rapport PDF.
+  async function partagerBilan() {
+    const boutique = nomBoutique || t("nom_boutique_par_defaut", langue);
+    const lignes = [
+      `*${boutique}* — ${new Date().toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}`,
+      `${t("bilan_ligne_ca", langue)} : ${formater(ca)}`,
+      `${t("bilan_ligne_ventes", langue)} : ${nbVentes}`,
+      `${t("bilan_ligne_produits", langue)} : ${nbProduitsVendus}`,
+      ...(topProduitJour ? [`${t("bilan_ligne_top", langue)} : ${topProduitJour}`] : []),
+    ];
+    await Share.share({ message: lignes.join("\n") }).catch(() => {});
   }
 
   const estPremium = planId === "premium";
@@ -167,22 +182,34 @@ export default function Accueil() {
           <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: "600" }}>
             {nomBoutique || t("nom_boutique_par_defaut", langue)}
           </Text>
+          {/* Puce « PRO » compacte à côté du nom (essai ou abonnement actif).
+              Remplace le badge « Version Pro » qui prenait trop de place dans
+              l'en-tête. */}
+          {(planPret && essai.verifie) && (estPremium || essai.actif) && (
+            <Pressable onPress={() => router.push("/premium")} style={[styles.pucePro, { backgroundColor: colors.proFill }]}>
+              <Text style={{ color: colors.onPro, fontSize: 9, fontWeight: "800", letterSpacing: 0.5 }}>PRO</Text>
+            </Pressable>
+          )}
         </View>
         <View style={styles.enteteDroite}>
-          {/* Idem que le dashboard : rien de visible tant que le statut n'est
-              pas vérifié, sinon « Passer Pro » clignotait pour un abonné. */}
-          {!planPret || !essai.verifie ? (
-            <ActivityIndicator size="small" color={colors.textMuted} />
-          ) : (estPremium || essai.actif) ? (
-            <Badge texte={t("version_pro", langue)} type="pro" />
-          ) : (
+          {/* Le bouton « Passer Pro » n'apparaît qu'aux comptes sans accès —
+              et seulement une fois le statut vérifié (sinon il clignotait
+              pour un abonné au démarrage). */}
+          {planPret && essai.verifie && !estPremium && !essai.actif && (
             <Pressable onPress={() => router.push("/premium")} style={{ backgroundColor: colors.proBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-            <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
-          </Pressable>
+              <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
+            </Pressable>
           )}
           {/* État de sync : petit cloud à gauche de la cloche (spinner pendant
               la sync, coche verte quelques secondes, cloud gris sinon). */}
           <IndicateurSync />
+          {/* Partage du bilan du jour (WhatsApp, SMS…) — visible seulement
+              quand il y a eu au moins une vente. */}
+          {!chargementVentes && nbVentes > 0 && (
+            <Pressable onPress={partagerBilan} hitSlop={8} accessibilityLabel={t("bilan_partager", langue)}>
+              <Feather name="share-2" size={18} color={colors.textSecondary} />
+            </Pressable>
+          )}
           <Pressable onPress={() => router.push("/notifications")} style={{ position: "relative" }}>
             <Feather name="bell" size={20} color={colors.textSecondary} />
             {nbNotifsNonLues > 0 && (
@@ -206,48 +233,32 @@ export default function Accueil() {
           <Feather name="chevron-right" size={16} color={colors.pro} />
         </Pressable>
       )}
-      {/* Chiffre d'affaires */}
-      <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={styles.enTeteMetrique}>
-          <PuceIcone icone="dollar-sign" ton="violet" taille={38} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500" }}>{t("ca_aujourdhui", langue)}</Text>
-        </View>
-        {chargementVentes ? (
-          <Skeleton width="60%" height={26} style={{ marginVertical: 8 }} />
-        ) : (
-          <Text style={{ color: colors.textPrimary, fontSize: 26, fontWeight: "700", marginTop: 12 }}>{formater(ca)}</Text>
-        )}
-        <Text style={{ color: colors.textMuted, fontSize: 10,fontStyle:"italic" }}>{!chargementVentes && ca === 0 ? t("aucune_vente_jour", langue) : ""}</Text>
-        </View>
-
+      {/* Quatre métriques en grille 2×2 : CA + Bénéfice sur la première ligne,
+          Produits vendus + Ventes du jour sur la seconde. Chaque pastille porte
+          sa couleur, le chiffre reste neutre. */}
       <View style={styles.ligneDeuxCartes}>
-        {/* Le ton de la pastille porte la couleur : le chiffre reste neutre,
-            sinon la couleur se répète deux fois dans la même carte. */}
+        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <PuceIcone icone="dollar-sign" ton="violet" taille={32} />
+          {chargementVentes ? <Skeleton width="60%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{formaterCompact(ca)}</Text>}
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("ca_aujourdhui", langue)}</Text>
+        </View>
+        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <PuceIcone icone="trending-up" ton="vert" taille={32} />
+          {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{formaterCompact(benefice)}</Text>}
+          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("benefice_estime", langue)}</Text>
+        </View>
+      </View>
+
+      <View style={[styles.ligneDeuxCartes, { marginTop: 10 }]}>
         <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <PuceIcone icone="package" ton="ambre" taille={32} />
-          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop:10}}>{nbProduitsVendus}</Text>}
+          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{nbProduitsVendus}</Text>}
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("produits_vendus", langue)}</Text>
-
         </View>
-        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <PuceIcone icone="trending-up" ton="vert" taille={32} />
-        {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop:10 }}>{formater(benefice)}</Text>}
-        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8}}>{t("benefice_estime", langue)}</Text>
-      </View>
-
-      </View>
-
-      {/* 4e carte : nombre de ventes du jour (transactions, pas unités) */}
-      <View style={[styles.ligneDeuxCartes, { marginTop: 10 }]}>
         <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <PuceIcone icone="shopping-bag" ton="bleu" taille={32} />
           {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{nbVentes}</Text>}
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("ventes_du_jour", langue)}</Text>
-        </View>
-        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <PuceIcone icone="repeat" ton="lilas" taille={32} />
-          {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{formater(onTeDoit + tuDois)}</Text>}
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("creances_dettes", langue)}</Text>
         </View>
       </View>
 
@@ -266,33 +277,19 @@ export default function Accueil() {
             <PuceIcone icone="arrow-down-left" ton="vert" taille={28} />
             <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("on_te_doit", langue)}</Text>
           </View>
-          {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.success, fontSize: 14, fontWeight: "700" }}>{formater(onTeDoit)}</Text>}
+          {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.success, fontSize: 14, fontWeight: "700" }}>{formaterCompact(onTeDoit)}</Text>}
         </Pressable>
         <Pressable style={styles.ligneCreance} onPress={() => router.push("/creances")}>
           <View style={styles.ligneGauche}>
             <PuceIcone icone="arrow-up-right" ton="rose" taille={28} />
             <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("tu_dois", langue)}</Text>
           </View>
-          {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.danger, fontSize: 14, fontWeight: "700" }}>{formater(tuDois)}</Text>}
+          {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.danger, fontSize: 14, fontWeight: "700" }}>{formaterCompact(tuDois)}</Text>}
         </Pressable>
       </View>
 
-      {/* Bloc Vocal/Scan — désactivés pour le MVP */}
-      {/* <View style={[styles.barreAction, { borderColor: colors.borderPro, opacity: 0.6, marginTop: 14 }]}>
-        <Text style={{ flex: 1, color: colors.pro, fontSize: 13 }}>{t("enregistrer_vente", langue)}</Text>
-        <Pressable onPress={fonctionnaliteBientotDisponible} style={[styles.boutonRondPro, { backgroundColor: colors.proFill }]}>
-          <Feather name="camera" size={18} color={colors.onPro} />
-        </Pressable>
-        <Pressable onPress={fonctionnaliteBientotDisponible} style={[styles.boutonRondPro, { backgroundColor: colors.proFill }]}>
-          <Feather name="mic" size={18} color={colors.onPro} />
-        </Pressable>
-      </View>
-      <View style={styles.ligneInfo}>
-        <Feather name="clock" size={12} color={colors.textMuted} />
-        <Text style={{ color: colors.textMuted, fontSize: 11 }}>{t("bientot_disponible_texte", langue)}</Text>
-      </View> */}
-
-
+      {/* Objectif du jour : progression du CA, modifiable d'un appui. */}
+      <ObjectifJour ca={ca} />
 
       {/* Ventes récentes */}
       <View style={{  marginBottom: 30, marginTop:15, gap:8 , borderRadius: 12, paddingVertical: 16}}>
@@ -335,7 +332,6 @@ export default function Accueil() {
       </ScrollView>
 
       <WelcomeTrial />
-      {/* <TourGuide visible={afficherTour} onTerminer={terminerTour} /> */}
       <BoutonFlottant onPress={async () => {
         if (!(await peutEcrire())) { afficherPaywall(langue, () => router.push("/premium")); return; }
         router.push("/produit/nouveau");
@@ -349,6 +345,7 @@ const styles = StyleSheet.create({
   contenu: {  paddingBottom: 90 },
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 25 },
   enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
+  pucePro: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   enteteDroite: { flexDirection: "row", alignItems: "center", gap: 10 },
   // La bordure est portée par le style partagé plutôt que répétée en ligne sur
   // chaque carte : elle restait sinon absente de certaines, et incohérente.

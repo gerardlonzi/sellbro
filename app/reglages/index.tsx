@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Switch } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -9,12 +9,13 @@ import { useEssai } from "@/lib/trial/useEssai";
 import { useAbonnement } from "@/lib/plan/useAbonnement";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { Carte, EnteteEcran } from "@/components/UI";
+import { PuceIcone, TonPuce } from "@/components/PuceIcone";
 import { sAbonnerSync, EtatSync } from "@/lib/sync/syncStatus";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { useConnexion } from "@/lib/useConnexion";
 
 export default function Reglages() {
-  const { colors, mode, setMode } = useTheme();
+  const { colors, mode, setMode, isDark } = useTheme();
   const { langue } = useLangue();
   const { plan } = usePlanActuel();
   const essai = useEssai();
@@ -40,7 +41,7 @@ export default function Reglages() {
         <Carte style={{ marginBottom: 12 }}>
           <View style={styles.ligneAbonnement}>
             <View>
-              {!essai.pret ? (
+              {!essai.pret || !essai.verifie ? (
                 <Text style={{ color: colors.textSecondary, fontSize: 13 }}>…</Text>
               ) : essai.estPremium ? (
                 <>
@@ -72,13 +73,13 @@ export default function Reglages() {
                   {abonnementExpire ? t("abonnement_termine_statut", langue) : t("essai_termine_statut", langue)}
                 </Text>
               )}
-              {essai.pret && plan && !essai.estPremium && essai.prix != null && (
+              {essai.pret && essai.verifie && plan && !essai.estPremium && essai.prix != null && (
                 <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
                   {t("version_pro", langue)} · {formater(essai.prix)} / {t("mois_title", langue)}
                 </Text>
               )}
             </View>
-            {essai.pret && !essai.estPremium && (
+            {essai.pret && essai.verifie && !essai.estPremium && (
               <Pressable onPress={() => router.push("/premium")} style={[styles.boutonPro, { backgroundColor: essai.actif ? colors.proFill : colors.danger }]}>
                 <Text style={{ color: essai.actif ? colors.onPro : "#fff", fontSize: 11 }}>
                   {essai.actif ? t("version_pro", langue) : abonnementExpire ? t("abonnement_termine_renew", langue) : t("reglages_upgrade", langue)}
@@ -92,7 +93,7 @@ export default function Reglages() {
         <Carte style={{ marginBottom: 12 }}>
           <View style={styles.ligneReglage}>
             <View style={styles.ligneReglageGauche}>
-              <Feather name="cloud" size={16} color={!enLigne ? colors.textMuted : etatSync === "error" ? colors.danger : colors.accent} />
+              <PuceIcone icone="cloud" ton={!enLigne ? "ambre" : etatSync === "error" ? "rose" : "vert"} taille={30} />
               <View>
                 <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("reglages_sync_titre", langue)}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>
@@ -124,32 +125,52 @@ export default function Reglages() {
 
         <SectionTitre titre={t("reglages_apparence", langue)} />
         <Carte style={{ marginBottom: 16 }}>
-          <View style={styles.ligneOptions}>
-            {(["clair", "sombre", "auto"] as const).map((m) => (
-              <Pressable key={m} onPress={() => setMode(m)} style={[styles.optionMode, { borderColor: mode === m ? colors.accent : colors.border, borderWidth: mode === m ? 2 : 1 }]}>
-                <Text style={{ color: mode === m ? colors.accent : colors.textPrimary, fontSize: 12 }}>{t(`reglages_theme_${m}` as any, langue)}</Text>
-              </Pressable>
-            ))}
+          <View style={styles.ligneReglage}>
+            <View style={styles.ligneReglageGauche}>
+              <PuceIcone icone={isDark ? "moon" : "sun"} ton="lilas" taille={30} />
+              <View>
+                <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("reglages_theme_sombre", langue)}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>
+                  {/* « auto » n'est pas une troisième position du switch : c'est
+                      l'état initial, tant que l'utilisateur n'a rien choisi.
+                      On l'affiche donc comme une information, pas comme un mode. */}
+                  {mode === "auto"
+                    ? `${t("reglages_theme_auto", langue)} · ${t(isDark ? "reglages_theme_sombre" : "reglages_theme_clair", langue)}`
+                    : t(`reglages_theme_${mode}` as any, langue)}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isDark}
+              onValueChange={(actif) => setMode(actif ? "sombre" : "clair")}
+              trackColor={{ false: colors.border, true: colors.accent }}
+              thumbColor={colors.surface}
+            />
           </View>
         </Carte>
 
         <SectionTitre titre={t("reglages_section_boutique", langue)} />
         <Carte style={{ marginBottom: 16 }}>
-          <LigneReglage icone="home" label={t("reglages_info_boutique", langue)} onPress={() => router.push("/reglages/boutique")} />
-          <LigneReglage icone="tag" label={t("reglages_categories", langue)} onPress={() => router.push("/reglages/categories")} />
-          <LigneReglage icone="users" label={t("employes_titre", langue)} onPress={() => router.push("/reglages/employes")} dernier />
+          <LigneReglage icone="home" ton="violet" label={t("reglages_info_boutique", langue)} onPress={() => router.push("/reglages/boutique")} />
+          <LigneReglage icone="tag" ton="lilas" label={t("reglages_categories", langue)} onPress={() => router.push("/reglages/categories")} />
+          <LigneReglage icone="users" ton="bleu" label={t("employes_titre", langue)} onPress={() => router.push("/reglages/employes")} dernier />
         </Carte>
 
         <SectionTitre titre={t("reglages_section_general", langue)} />
         <Carte style={{ marginBottom: 16 }}>
-          <LigneReglage icone="globe" label={t("reglages_langue_devise", langue)} onPress={() => router.push("/reglages/langue-devise")} />
-          <LigneReglage icone="bell" label={t("reglages_notifications", langue)} onPress={() => router.push("/reglages/notifications")} />
-          <LigneReglage icone="truck" label={t("fournisseurs_titre", langue)} onPress={() => router.push("/fournisseurs")} />
-          <LigneReglage icone="credit-card" label={t("depenses_titre", langue)} onPress={() => router.push("/depenses")} />
-          <LigneReglage icone="file-text" label="Export comptable" onPress={() => router.push("/export")} />
-          <LigneReglage icone="file-text" label={t("factures_titre", langue)} onPress={() => router.push("/factures")} />
-          <LigneReglage icone="activity" label="Journal d'activité" onPress={() => router.push("/journal")} />
-          <LigneReglage icone="headphones" label={t("reglages_contact", langue)} onPress={() => router.push("/contact")} dernier />
+          <LigneReglage icone="globe" ton="vert" label={t("reglages_langue_devise", langue)} onPress={() => router.push("/reglages/langue-devise")} />
+          <LigneReglage icone="bell" ton="ambre" label={t("reglages_notifications", langue)} onPress={() => router.push("/reglages/notifications")} />
+          <LigneReglage icone="truck" ton="rose" label={t("fournisseurs_titre", langue)} onPress={() => router.push("/fournisseurs")} />
+          <LigneReglage icone="credit-card" ton="bleu" label={t("depenses_titre", langue)} onPress={() => router.push("/depenses")} />
+          <LigneReglage icone="file-text" ton="violet" label={t("reglages_export_comptable", langue)} onPress={() => router.push("/export")} />
+          <LigneReglage icone="file-text" ton="lilas" label={t("factures_titre", langue)} onPress={() => router.push("/factures")} />
+          <LigneReglage icone="activity" ton="ambre" label={t("reglages_journal", langue)} onPress={() => router.push("/journal")} />
+          <LigneReglage icone="headphones" ton="vert" label={t("reglages_contact", langue)} onPress={() => router.push("/contact")} dernier />
+        </Carte>
+
+        <SectionTitre titre={t("reglages_section_compte", langue)} />
+        <Carte style={{ marginBottom: 16 }}>
+          <LigneReglage icone="user" ton="bleu" label={t("compte_titre", langue)} onPress={() => router.push("/reglages/compte")} dernier />
         </Carte>
 
 
@@ -163,12 +184,15 @@ function SectionTitre({ titre }: { titre: string }) {
   return <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 8, textTransform: "uppercase" }}>{titre}</Text>;
 }
 
-function LigneReglage({ icone, label, dernier, onPress }: { icone: any; label: string; dernier?: boolean; onPress?: () => void }) {
+// `ton` est explicite plutôt que déduit du nom d'icône : deux lignes voisines
+// peuvent partager la même icône (file-text sert à l'export et aux factures) et
+// doivent pourtant se distinguer d'un coup d'œil.
+function LigneReglage({ icone, ton, label, dernier, onPress }: { icone: any; ton: TonPuce; label: string; dernier?: boolean; onPress?: () => void }) {
   const { colors } = useTheme();
   return (
     <Pressable onPress={onPress} style={[styles.ligneReglage, !dernier && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
       <View style={styles.ligneReglageGauche}>
-        <Feather name={icone} size={16} color={colors.textSecondary} />
+        <PuceIcone icone={icone} ton={ton} taille={30} />
         <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{label}</Text>
       </View>
       <Feather name="chevron-right" size={16} color={colors.textMuted} />
@@ -180,8 +204,6 @@ const styles = StyleSheet.create({
   container: { padding: 14, paddingTop: 50 },
   ligneAbonnement: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   boutonPro: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  ligneOptions: { flexDirection: "row", gap: 8 },
-  optionMode: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: "center" },
-  ligneReglage: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12 },
+  ligneReglage: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10 },
   ligneReglageGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
 });

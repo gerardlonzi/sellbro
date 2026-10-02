@@ -23,6 +23,23 @@ export const lightColors = {
   proFill: "#7F77DD",
   onPro: "#FFFFFF",
   borderPro: "#A9A2EA",
+
+  // Tons des puces d'icônes (pastilles colorées). Chaque ton est une paire :
+  // `puceX` pour le trait, `puceXBg` pour le fond. Les teintes reprennent
+  // celles déjà employées ailleurs dans l'app (successBg, warningBg, infoBg…)
+  // plutôt qu'une gamme nouvelle, pour que l'ensemble reste cohérent.
+  puceViolet: "#4C3CC0",
+  puceVioletBg: "#ECEAFD",
+  puceLilas: "#6D4AA8",
+  puceLilasBg: "#F2E9FB",
+  puceBleu: "#1D4ED8",
+  puceBleuBg: "#E3EDFB",
+  puceVert: "#0E6A51",
+  puceVertBg: "#DFF3EB",
+  puceAmbre: "#8A6D00",
+  puceAmbreBg: "#FFF3CC",
+  puceRose: "#A32C6B",
+  puceRoseBg: "#FCE7F1",
 };
 
 export const darkColors = {
@@ -47,5 +64,20 @@ export const darkColors = {
   proFill: "#8179eb",
   onPro: "#ffffff",
   borderPro: "#908adc",
+
+  // Mêmes tons en sombre : fond profond, trait clair — la convention déjà
+  // suivie par successBg / warningBg / dangerBg ci-dessus.
+  puceViolet: "#CECBF6",
+  puceVioletBg: "#26215C",
+  puceLilas: "#D6C2F0",
+  puceLilasBg: "#3A2A57",
+  puceBleu: "#93C5FD",
+  puceBleuBg: "#1E3A5F",
+  puceVert: "#5DCAA5",
+  puceVertBg: "#085041",
+  puceAmbre: "#FAC775",
+  puceAmbreBg: "#4A3506",
+  puceRose: "#F0A6C8",
+  puceRoseBg: "#4E1B36",
 };
 
