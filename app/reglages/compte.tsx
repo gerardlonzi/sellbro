@@ -74,9 +74,12 @@ export default function Compte() {
       });
       await AsyncStorage.clear();
 
-      // 4) Déconnexion puis retour à l'écran de connexion.
+      // 4) Déconnexion puis RÉINITIALISATION de la navigation : dismissAll
+      //    vide la pile (sinon le bouton retour ramenait aux réglages, sur un
+      //    compte qui n'existe plus), puis on ouvre la connexion.
       await supabase.auth.signOut();
       showToast(t("compte_supprimer_ok", langue), "success");
+      router.dismissAll();
       router.replace("/(auth)/connexion");
     } catch {
       showToast(t("compte_supprimer_erreur", langue), "error");

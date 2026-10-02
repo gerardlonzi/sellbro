@@ -30,3 +30,28 @@ $$;
 -- Réservée aux utilisateurs authentifiés (jamais à anon).
 revoke execute on function public.supprimer_mon_compte() from anon;
 grant execute on function public.supprimer_mon_compte() to authenticated;
+
+-- ------------------------------------------------------------
+-- VÉRIFIER SI UN EMAIL EXISTE DÉJÀ (compte vérifié).
+-- Appelée AVANT l'envoi du code à l'inscription : un email déjà associé à un
+-- compte vérifié doit recevoir « cette adresse existe déjà », pas un nouveau
+-- code. On ne regarde que les profils VÉRIFIÉS (un profil non vérifié restant
+-- d'une tentative abandonnée ne bloque pas une nouvelle inscription).
+-- ------------------------------------------------------------
+create or replace function public.email_existe(p_email text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return exists(
+    select 1 from public.profiles
+    where lower(email) = lower(p_email)
+      and is_verified = true
+  );
+end;
+$$;
+
+-- Appelable sans session (l'inscription n'a pas encore de session).
+grant execute on function public.email_existe(text) to anon, authenticated;

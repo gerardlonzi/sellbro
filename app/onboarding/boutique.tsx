@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Image, Linking } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Linking } from "react-native";
 import { router } from "expo-router";
 import { Feather , MaterialCommunityIcons} from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -63,7 +63,21 @@ const [telephone, setTelephone] = useState("");
 
     if (telephone.trim()) {
       await AsyncStorage.setItem("boutika_telephone", `${pays.indicatif}${telephone.replace(/\s/g, "")}`);
-    }  
+    }
+
+    // Un email déjà associé à un compte VÉRIFIÉ ne peut pas se réinscrire :
+    // on bloque AVANT d'envoyer le code, avec un message clair.
+    try {
+      const { data: existe } = await supabase.rpc("email_existe", { p_email: email.trim().toLowerCase() });
+      if (existe) {
+        setVerificationEnCours(false);
+        showToast(t("erreur_email_existe", langue), "error");
+        return;
+      }
+    } catch {
+      // Hors ligne / erreur réseau : on laisse passer, le serveur tranchera.
+    }
+
     // Crée immédiatement la ligne en base (is_verified=false via le trigger)
     // et mémorise l'email en attente de vérification.
     const { error } = await envoyerCodeEmail(email);
