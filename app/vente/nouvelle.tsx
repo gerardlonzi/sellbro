@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Linking, KeyboardAvoidingView, Platform } from "react-native";
 import { router } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -24,6 +25,12 @@ import { versionDonnees } from "@/lib/dataVersion";
 import { usePays } from "@/lib/pays/PaysProvider";
 import { validerTelephone } from "@/lib/pays/validation";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
+
+// Bascule d'affichage du sélecteur de produits — même pattern que la page
+// Stock (état + AsyncStorage + icône Feather), mais 2 modes seulement et
+// GRILLE par défaut, comme demandé.
+type ModeAffichageSelecteur = "grille" | "liste";
+const CLE_MODE_SELECTEUR = "vente_mode_affichage";
 
 type Produit = { id: string; nom: string; prixVente: number; quantiteStock: number; imageUri: string | null };
 type LigneVente = { produitId: string | null; nom: string; quantite: number; prixUnitaire: number; imageUri: string | null };
@@ -53,6 +60,22 @@ export default function NouvelleVente() {
   const [catalogue, setCatalogue] = useState<(Produit & { reference: string | null })[]>([]);
   const [quantitesBrouillon, setQuantitesBrouillon] = useState<Record<number, string>>({});
   const [rechercheProduit, setRechercheProduit] = useState("");
+  const [modeAffichageSelecteur, setModeAffichageSelecteur] = useState<ModeAffichageSelecteur>("grille");
+
+  // Restauration du mode d'affichage choisi (grille par défaut).
+  useEffect(() => {
+    AsyncStorage.getItem(CLE_MODE_SELECTEUR).then((sauvegarde) => {
+      if (sauvegarde === "grille" || sauvegarde === "liste") setModeAffichageSelecteur(sauvegarde);
+    });
+  }, []);
+
+  function basculerModeSelecteur() {
+    setModeAffichageSelecteur((actuel) => {
+      const prochain = actuel === "grille" ? "liste" : "grille";
+      AsyncStorage.setItem(CLE_MODE_SELECTEUR, prochain).catch(() => {});
+      return prochain;
+    });
+  }
   // Fenêtre « Envoyer le reçu » après enregistrement : nom facultatif,
   // numéro obligatoire (c'est lui qui porte le message WhatsApp).
   const [modalRecuOuvert, setModalRecuOuvert] = useState(false);
@@ -510,15 +533,25 @@ export default function NouvelleVente() {
           <Pressable style={[styles.feuille, { backgroundColor: colors.surface }]} onPress={() => {}}>
             {/* Recherche dans le catalogue : indispensable dès que la liste
                 dépasse quelques produits. */}
-            <View style={[styles.rechercheSelecteur, { borderColor: colors.border, backgroundColor: colors.background }]}>
-              <Feather name="search" size={15} color={colors.textMuted} />
-              <TextInput
-                value={rechercheProduit}
-                onChangeText={setRechercheProduit}
-                placeholder={t("stock_recherche", langue)}
-                placeholderTextColor={colors.textMuted}
-                style={{ flex: 1, marginLeft: 8, color: colors.textPrimary, fontSize: 14, paddingVertical: 0 }}
-              />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={[styles.rechercheSelecteur, { flex: 1, borderColor: colors.border, backgroundColor: colors.background }]}>
+                <Feather name="search" size={15} color={colors.textMuted} />
+                <TextInput
+                  value={rechercheProduit}
+                  onChangeText={setRechercheProduit}
+                  placeholder={t("stock_recherche", langue)}
+                  placeholderTextColor={colors.textMuted}
+                  style={{ flex: 1, marginLeft: 8, color: colors.textPrimary, fontSize: 14, paddingVertical: 0 }}
+                />
+              </View>
+              {/* Bascule grille/liste — même bouton d'en-tête que la page Stock. */}
+              <Pressable
+                onPress={basculerModeSelecteur}
+                accessibilityLabel={t(modeAffichageSelecteur === "grille" ? "stock_affichage_grille" : "stock_affichage_liste", langue) as string}
+                style={[styles.boutonBascule, { borderColor: colors.border }]}
+              >
+                <Feather name={modeAffichageSelecteur === "grille" ? "grid" : "list"} size={16} color={colors.textSecondary} />
+              </Pressable>
             </View>
             {/* État vide : aucun produit → message + raccourci vers l'ajout,
                 au lieu d'une liste vide muette. */}
@@ -538,30 +571,65 @@ export default function NouvelleVente() {
               </View>
             ) : (
             <ScrollView keyboardShouldPersistTaps="handled">
-              {produits
-                .filter((p) => p.nom.toLowerCase().includes(rechercheProduit.toLowerCase()))
-                .map((p) => {
-                const selectionne = selectionProduits.has(p.id);
-                const rupture = p.quantiteStock <= 0;
-                return (
-                  <Pressable key={p.id} onPress={() => basculerSelectionProduit(p.id)} style={[styles.ligneChoixModal, { borderBottomColor: colors.border }]}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                      <View style={[styles.checkbox, { borderColor: selectionne ? colors.accent : colors.border, backgroundColor: selectionne ? colors.accent : "transparent" }]}>
+              {(() => {
+                const filtres = produits.filter((p) => p.nom.toLowerCase().includes(rechercheProduit.toLowerCase()));
+                const rendreCarteGrille = (p: Produit) => {
+                  const selectionne = selectionProduits.has(p.id);
+                  const rupture = p.quantiteStock <= 0;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => basculerSelectionProduit(p.id)}
+                      style={[styles.carteGrilleSelecteur, { borderColor: selectionne ? colors.accent : colors.border, backgroundColor: colors.background }]}
+                    >
+                      {/* Checkbox en surimpression : la sélection reste lisible en grille. */}
+                      <View style={[styles.checkbox, styles.checkboxGrille, { borderColor: selectionne ? colors.accent : colors.border, backgroundColor: selectionne ? colors.accent : colors.surface }]}>
                         {selectionne && <Feather name="check" size={12} color="#fff" />}
                       </View>
-                      {/* Image du produit : on repère un article d'un coup d'œil. */}
-                      <AvatarNom nom={p.nom} imageUri={p.imageUri} taille={38} />
-                      <View>
-                        <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{p.nom}</Text>
-                        <Text style={{ color: rupture ? colors.danger : colors.textMuted, fontSize: 11 }}>
-                          {rupture ? t("stock_statut_rupture", langue) : `${t("vente_en_stock_court", langue)} ${p.quantiteStock}`}
-                        </Text>
-                      </View>
+                      <AvatarNom nom={p.nom} imageUri={p.imageUri} taille={44} />
+                      <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, marginTop: 6 }}>{p.nom}</Text>
+                      <Text style={{ color: rupture ? colors.danger : colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                        {rupture ? t("stock_statut_rupture", langue) : `${t("vente_en_stock_court", langue)} ${p.quantiteStock}`}
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{formater(p.prixVente)}</Text>
+                    </Pressable>
+                  );
+                };
+                if (modeAffichageSelecteur === "grille") {
+                  // Grille 2 colonnes par paires (comme Stock : flexWrap ne
+                  // rendait rien sur l'architecture legacy).
+                  const paires: Produit[][] = [];
+                  for (let i = 0; i < filtres.length; i += 2) paires.push(filtres.slice(i, i + 2));
+                  return paires.map((paire, i) => (
+                    <View key={i} style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+                      {paire.map(rendreCarteGrille)}
+                      {paire.length === 1 && <View style={{ flex: 1 }} />}
                     </View>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(p.prixVente)}</Text>
-                  </Pressable>
-                );
-              })}
+                  ));
+                }
+                return filtres.map((p) => {
+                  const selectionne = selectionProduits.has(p.id);
+                  const rupture = p.quantiteStock <= 0;
+                  return (
+                    <Pressable key={p.id} onPress={() => basculerSelectionProduit(p.id)} style={[styles.ligneChoixModal, { borderBottomColor: colors.border }]}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                        <View style={[styles.checkbox, { borderColor: selectionne ? colors.accent : colors.border, backgroundColor: selectionne ? colors.accent : "transparent" }]}>
+                          {selectionne && <Feather name="check" size={12} color="#fff" />}
+                        </View>
+                        {/* Image du produit : on repère un article d'un coup d'œil. */}
+                        <AvatarNom nom={p.nom} imageUri={p.imageUri} taille={38} />
+                        <View>
+                          <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{p.nom}</Text>
+                          <Text style={{ color: rupture ? colors.danger : colors.textMuted, fontSize: 11 }}>
+                            {rupture ? t("stock_statut_rupture", langue) : `${t("vente_en_stock_court", langue)} ${p.quantiteStock}`}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(p.prixVente)}</Text>
+                    </Pressable>
+                  );
+                });
+              })()}
             </ScrollView>
             )}
             <Pressable
@@ -749,6 +817,9 @@ const styles = StyleSheet.create({
   rechercheSelecteur: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 42, marginBottom: 10 },
   ligneChoixModal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1 },
   checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  boutonBascule: { width: 42, height: 42, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center", marginBottom: 10 },
+  carteGrilleSelecteur: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 10, alignItems: "center" },
+  checkboxGrille: { position: "absolute", top: 8, right: 8, zIndex: 1 },
   boutonConfirmer: { paddingVertical: 13, borderRadius: 10, alignItems: "center", marginTop: 12 },
   scannerOverlay: { flex: 1, justifyContent: "space-between", padding: 16, paddingTop: 50, paddingBottom: 40 },
   scannerEntete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
