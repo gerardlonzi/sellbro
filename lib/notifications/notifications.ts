@@ -10,6 +10,7 @@ import { avecTimeout } from "@/lib/timeout";
 import { t, Langue, detecterLangueSysteme } from "@/lib/i18n";
 import { DEVISES } from "@/lib/currency/CurrencyProvider";
 import { convertirDepuisFcfa } from "@/lib/currency/taux";
+import { construireMorningBrief } from "@/lib/previsions/analyses";
 
 // Langue choisie dans l'app (pas celle du téléphone) : les notifications
 // planifiées sont générées en dehors de React, on lit donc le stockage local.
@@ -51,6 +52,73 @@ const CLE_CRANCE_RETARD = "notif_creance_retard_active";
 // Défaut : 3 rappels par jour (9h, 13h, 18h).
 export const CLE_HEURES_NOTIF = "notif_heures_rappel";
 const HEURES_DEFAUT = [9, 13, 18];
+
+// Réglages du Morning Brief : activé par défaut, heure choisie (défaut 7h30).
+export const CLE_BRIEF_ACTIF = "notif_morning_brief_active";
+export const CLE_BRIEF_HEURE = "notif_morning_heure"; // minutes depuis minuit
+
+export async function lireBriefReglages(): Promise<{ actif: boolean; heure: number; minute: number }> {
+  const actif = await estActive(CLE_BRIEF_ACTIF);
+  let minutes = 7 * 60 + 30;
+  try {
+    const brut = await AsyncStorage.getItem(CLE_BRIEF_HEURE);
+    if (brut !== null) {
+      const v = parseInt(brut, 10);
+      if (Number.isInteger(v) && v >= 0 && v < 24 * 60) minutes = v;
+    }
+  } catch {}
+  return { actif, heure: Math.floor(minutes / 60), minute: minutes % 60 };
+}
+
+// Planifie la notification quotidienne du Morning Brief : produits à risque,
+// créances à échéance, ventes d'hier vs moyenne, et la priorité du jour.
+// Le contenu est recalculé à chaque replanification (appelée à l'ouverture
+// de l'app et après chaque changement de réglages).
+export async function planifierMorningBrief() {
+  const { actif, heure, minute } = await lireBriefReglages();
+  if (!actif) return;
+
+  const userId = await obtenirUserId();
+  if (!userId) return;
+
+  const [ventes, produits, creances] = await Promise.all([
+    database.get("ventes").query(Q.where("user_id", userId)).fetch(),
+    database.get("produits").query(Q.where("user_id", userId)).fetch(),
+    database.get("creances_dettes").query(Q.where("user_id", userId)).fetch(),
+  ]);
+  const brief = construireMorningBrief(ventes as any[], produits as any[], creances as any[]);
+
+  const langue = await langueUtilisateur();
+  const lignes: string[] = [];
+  if (brief.nbRisquesRupture > 0) lignes.push(t("brief_risques", langue)(brief.nbRisquesRupture, brief.nomsRisques.join(", ")));
+  if (brief.creancesEcheance.length > 0) lignes.push(t("brief_creances", langue)(brief.creancesEcheance.length));
+  lignes.push(
+    t("brief_ca_hier", langue)(brief.variationHierPct !== null ? `${brief.variationHierPct > 0 ? "+" : ""}${brief.variationHierPct} %` : null)
+  );
+  lignes.push(
+    brief.priorite.type === "stock"
+      ? t("brief_priorite_stock", langue)(brief.priorite.libelle)
+      : brief.priorite.type === "creance"
+        ? t("brief_priorite_creance", langue)(brief.priorite.libelle)
+        : brief.priorite.type === "ventes"
+          ? t("brief_priorite_ventes", langue)
+          : t("brief_priorite_calme", langue)
+  );
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: t("notif_brief_titre", langue),
+      body: lignes.join("\n"),
+      sound: true,
+      data: { ecran: "/(tabs)/dashboard" },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: heure,
+      minute,
+    },
+  });
+}
 
 export async function lireHeuresRappel(): Promise<number[]> {
   try {
@@ -277,6 +345,66 @@ export async function nombreNotificationsNonLues(): Promise<number> {
   return liste.filter((n) => !n.lu).length;
 }
 
+// ---------------------------------------------------------------------------
+// Notification IMMÉDIATE au franchissement du seuil d'alerte (ou de la
+// rupture) après un mouvement de stock — l'utilisateur ne doit pas attendre
+// le prochain rappel planifié pour apprendre qu'un produit est en alerte.
+// ---------------------------------------------------------------------------
+
+// Ids des produits déjà notifiés pour leur franchissement actuel : un produit
+// n'est notifié qu'AU passage sous le seuil, puis réarmé dès qu'il est
+// réapprovisionné au-dessus.
+const CLE_SEUILS_NOTIFIES = "notif_seuil_envoyes";
+
+async function lireSeuilsNotifies(): Promise<Set<string>> {
+  try {
+    const brut = await AsyncStorage.getItem(CLE_SEUILS_NOTIFIES);
+    return new Set(brut ? (JSON.parse(brut) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export async function notifierFranchissementSeuil(params: {
+  produitId: string;
+  nom: string;
+  seuil: number;
+  stockAvant: number;
+  stockApres: number;
+}) {
+  const { produitId, nom, seuil, stockAvant, stockApres } = params;
+  const notifies = await lireSeuilsNotifies();
+
+  // Réapprovisionnement au-dessus du seuil → on réarme l'alerte du produit.
+  if (stockApres > seuil) {
+    if (notifies.delete(produitId)) {
+      await AsyncStorage.setItem(CLE_SEUILS_NOTIFIES, JSON.stringify([...notifies]));
+    }
+    return;
+  }
+
+  // On ne notifie qu'au FRANCHISSEMENT vers le bas, une seule fois.
+  if (!(stockAvant > seuil && stockApres <= seuil)) return;
+  if (notifies.has(produitId)) return;
+  if (!(await estActive(CLE_STOCK_FAIBLE))) return;
+
+  await configurerNotifications();
+  const langue = await langueUtilisateur();
+  const rupture = stockApres === 0;
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: t(rupture ? "notif_rupture_titre" : "notif_seuil_titre", langue),
+      body: rupture ? t("notif_msg_rupture", langue)(nom) : t("notif_msg_seuil", langue)(nom, stockApres, seuil),
+      sound: true,
+      data: { ecran: `/produit/${produitId}` },
+    },
+    trigger: null, // notification immédiate
+  });
+
+  notifies.add(produitId);
+  await AsyncStorage.setItem(CLE_SEUILS_NOTIFIES, JSON.stringify([...notifies]));
+}
+
 // Vérifie les alertes et planifie jusqu'à 3 notifications locales par jour
 // (9h, 13h, 18h). Une notification PLANIFIÉE est délivrée par le système même
 // si l'app est fermée — c'est ce qui permet l'alerte hors ligne.
@@ -295,6 +423,10 @@ export async function verifierAlertesEtNotifier() {
 
   // On repart de zéro pour que le contenu reste à jour.
   await Notifications.cancelAllScheduledNotificationsAsync();
+
+  // Le Morning Brief est replanifié ici (même sans alerte de stock/créance) :
+  // le cancelAll ci-dessus efface aussi sa notification quotidienne.
+  await planifierMorningBrief().catch(() => {});
 
   // Textes dans la langue choisie par l'utilisateur dans l'app.
   const langue = await langueUtilisateur();
