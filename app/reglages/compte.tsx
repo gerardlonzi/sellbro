@@ -10,6 +10,11 @@ import { supabase } from "@/lib/supabase/client";
 import { database } from "@/lib/database";
 import { avecTimeout } from "@/lib/timeout";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useConnexion } from "@/lib/useConnexion";
+
+// L'email vient de getUser() (réseau) : on le met en cache pour l'afficher
+// aussi hors ligne.
+const CLE_EMAIL = "boutika_user_email";
 
 // Suppression de compte : l'utilisateur efface TOUTES ses données.
 // La séquence tente d'abord l'Edge Function `supprimer-compte` (qui efface
@@ -24,17 +29,30 @@ export default function Compte() {
   const [email, setEmail] = useState<string>("");
   const [motSaisi, setMotSaisi] = useState("");
   const [enCours, setEnCours] = useState(false);
+  const enLigne = useConnexion();
 
   const motRequis = t("compte_supprimer_mot", langue);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email) setEmail(data.user.email);
+    // Cache local d'abord : l'email s'affiche immédiatement, même hors ligne.
+    AsyncStorage.getItem(CLE_EMAIL).then((cache) => {
+      if (cache) setEmail(cache);
     });
+    // getUser() est un appel RÉSEAU : timeout court, sinon l'écran reste vide
+    // hors ligne. En cas de succès, on rafraîchit le cache.
+    avecTimeout(supabase.auth.getUser(), 4000)
+      .then(({ data }) => {
+        if (data.user?.email) {
+          setEmail(data.user.email);
+          AsyncStorage.setItem(CLE_EMAIL, data.user.email).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  // Le bouton n'est actif qu'une fois le mot-clé recopié exactement.
-  const pret = motSaisi.trim().toUpperCase() === motRequis.toUpperCase() && !enCours;
+  // Le bouton n'est actif qu'une fois le mot-clé recopié exactement, et
+  // uniquement EN LIGNE : impossible de supprimer un compte sans connexion.
+  const pret = motSaisi.trim().toUpperCase() === motRequis.toUpperCase() && !enCours && enLigne;
 
   function confirmer() {
     if (!pret) return;
@@ -49,7 +67,9 @@ export default function Compte() {
   }
 
   async function executer() {
-    if (enCours) return;
+    // Double protection : même si l'état du bouton est contourné, jamais de
+    // suppression sans connexion.
+    if (enCours || !enLigne) return;
     setEnCours(true);
     try {
       // 1) Edge Function : efface aussi l'identité de connexion (auth.users).
@@ -122,15 +142,21 @@ export default function Compte() {
           <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 16, marginBottom: 6 }}>
             {t("compte_supprimer_saisie", langue)(motRequis)}
           </Text>
+          {!enLigne && (
+            <Text style={{ color: colors.danger, fontSize: 12, lineHeight: 17, marginTop: 12 }}>
+              {t("compte_supprimer_hors_ligne", langue)}
+            </Text>
+          )}
+
           <TextInput
             value={motSaisi}
             onChangeText={setMotSaisi}
             autoCapitalize="characters"
             autoCorrect={false}
-            editable={!enCours}
+            editable={!enCours && enLigne}
             placeholder={motRequis}
             placeholderTextColor={colors.textMuted}
-            style={[styles.saisie, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.surface }]}
+            style={[styles.saisie, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.surface, opacity: enLigne ? 1 : 0.5 }]}
           />
 
           <Pressable

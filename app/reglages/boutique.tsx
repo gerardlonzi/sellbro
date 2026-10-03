@@ -13,6 +13,21 @@ import { televerserImage } from "@/lib/storage/images";
 import { ImageCachee } from "@/components/ImageCachee";
 import { usePays } from "@/lib/pays/PaysProvider";
 
+// Cache local du profil complet : hors ligne, la page doit afficher les
+// mêmes infos (nom, email, téléphone, secteur) qu'en ligne.
+const CLE_PROFIL = "boutika_profil_cache";
+
+type ProfilCache = { nom: string; telephone: string; email: string; secteur: string };
+
+async function lireProfilCache(): Promise<ProfilCache | null> {
+  try {
+    const brut = await AsyncStorage.getItem(CLE_PROFIL);
+    return brut ? (JSON.parse(brut) as ProfilCache) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function InfosBoutique() {
   const { colors } = useTheme();
   const { langue } = useLangue();
@@ -30,6 +45,7 @@ export default function InfosBoutique() {
 
   async function charger() {
     let logoDistant: string | null = null;
+    let profilDistant = false;
     try {
       // Timeout : hors ligne, getUser peut rester pendu et figer l'écran.
       const {
@@ -38,10 +54,20 @@ export default function InfosBoutique() {
       if (user) {
         const { data } = await avecTimeout(supabase.from("profiles").select("*").eq("id", user.id).single(), 5000);
         if (data) {
-          setNom(data.nom_boutique ?? "");
-          setTelephone(data.telephone ?? "");
-          setEmail(data.email ?? user.email ?? "");
-          setSecteur(data.secteur ?? "");
+          profilDistant = true;
+          const profil: ProfilCache = {
+            nom: data.nom_boutique ?? "",
+            telephone: data.telephone ?? "",
+            email: data.email ?? user.email ?? "",
+            secteur: data.secteur ?? "",
+          };
+          setNom(profil.nom);
+          setTelephone(profil.telephone);
+          setEmail(profil.email);
+          setSecteur(profil.secteur);
+          // On met en cache le profil complet pour l'affichage hors ligne.
+          await AsyncStorage.setItem(CLE_PROFIL, JSON.stringify(profil));
+          if (profil.email) await AsyncStorage.setItem("boutika_user_email", profil.email);
           // Le logo distant (URL Storage) prime : il suit l'utilisateur sur tous
           // ses appareils. Le cache local ne sert que de secours hors ligne.
           logoDistant = data.logo_url ?? null;
@@ -49,6 +75,19 @@ export default function InfosBoutique() {
       }
     } catch {
       // Hors ligne : valeurs locales ci-dessous.
+    }
+    if (!profilDistant) {
+      // Hors ligne (ou profil indisponible) : on restaure le cache complet,
+      // pour afficher les mêmes infos qu'en ligne.
+      const cache = await lireProfilCache();
+      if (cache) {
+        setNom(cache.nom);
+        setTelephone(cache.telephone);
+        setEmail(cache.email);
+        setSecteur(cache.secteur);
+      }
+      const emailLocal = await AsyncStorage.getItem("boutika_user_email");
+      if (!cache?.email && emailLocal) setEmail(emailLocal);
     }
     const nomLocal = await AsyncStorage.getItem("boutika_nom_boutique");
     if (nomLocal && !nom) setNom(nomLocal);
@@ -82,6 +121,8 @@ export default function InfosBoutique() {
     setChargement(true);
     try {
       await AsyncStorage.setItem("boutika_nom_boutique", nom);
+      // Le cache profil suit la saisie : l'affichage hors ligne reste à jour.
+      await AsyncStorage.setItem(CLE_PROFIL, JSON.stringify({ nom, telephone, email, secteur } satisfies ProfilCache));
       const {
         data: { user },
       } = await avecTimeout(supabase.auth.getUser(), 5000).catch(() => ({ data: { user: null } }));

@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { EnteteEcran, Carte } from "@/components/UI";
-import { verifierAlertesEtNotifier, lireHeuresRappel, CLE_HEURES_NOTIF } from "@/lib/notifications/notifications";
+import { verifierAlertesEtNotifier, lireHeuresRappel, lireBriefReglages, CLE_HEURES_NOTIF, CLE_BRIEF_ACTIF, CLE_BRIEF_HEURE } from "@/lib/notifications/notifications";
 
 const LIGNES = [
   { cle: "notif_creance_retard_active", labelCle: "notif_creance_retard" },
@@ -16,11 +16,16 @@ const LIGNES = [
 // Heures de rappel proposées (7h → 21h).
 const HEURES_PROPOSEES = [7, 9, 12, 13, 15, 18, 20, 21];
 
+// Horaires proposés pour le Morning Brief (en minutes depuis minuit).
+const HEURES_BRIEF = [360, 390, 420, 450, 480, 510, 540]; // 6h → 9h par 30 min
+
 export default function ReglagesNotifications() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const [etats, setEtats] = useState<Record<string, boolean>>({});
   const [heures, setHeures] = useState<number[]>([9, 13, 18]);
+  const [briefActif, setBriefActif] = useState(true);
+  const [briefHeure, setBriefHeure] = useState(450); // 7h30 par défaut
 
   useEffect(() => {
     (async () => {
@@ -31,8 +36,24 @@ export default function ReglagesNotifications() {
       }
       setEtats(valeurs);
       setHeures(await lireHeuresRappel());
+      const brief = await lireBriefReglages();
+      setBriefActif(brief.actif);
+      setBriefHeure(brief.heure * 60 + brief.minute);
     })();
   }, []);
+
+  async function basculerBrief() {
+    const nouvelleValeur = !briefActif;
+    setBriefActif(nouvelleValeur);
+    await AsyncStorage.setItem(CLE_BRIEF_ACTIF, String(nouvelleValeur));
+    replanifier();
+  }
+
+  async function choisirHeureBrief(minutes: number) {
+    setBriefHeure(minutes);
+    await AsyncStorage.setItem(CLE_BRIEF_HEURE, String(minutes));
+    replanifier();
+  }
 
   function replanifier() {
     // Re-planifie immédiatement les notifications selon les nouveaux réglages.
@@ -95,6 +116,42 @@ export default function ReglagesNotifications() {
       <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 8 }}>
         {t("notif_heures_aide", langue)(heures.length)}
       </Text>
+
+      {/* Morning Brief : résumé automatique chaque matin. */}
+      <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500", marginTop: 18, marginBottom: 8 }}>
+        {t("brief_titre", langue)}
+      </Text>
+      <Carte>
+        <View style={styles.ligne}>
+          <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{t("notif_brief_active", langue)}</Text>
+          <Switch value={briefActif} onValueChange={basculerBrief} trackColor={{ false: colors.border, true: colors.accent }} />
+        </View>
+      </Carte>
+      {briefActif && (
+        <>
+          <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: "500", marginTop: 14, marginBottom: 8 }}>
+            {t("notif_brief_heure", langue)}
+          </Text>
+          <View style={styles.grilleHeures}>
+            {HEURES_BRIEF.map((minutes) => {
+              const active = briefHeure === minutes;
+              const h = Math.floor(minutes / 60);
+              const m = minutes % 60;
+              return (
+                <Pressable
+                  key={minutes}
+                  onPress={() => choisirHeureBrief(minutes)}
+                  style={[styles.puceHeure, { borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.accent : "transparent" }]}
+                >
+                  <Text style={{ color: active ? "#fff" : colors.textPrimary, fontSize: 13, fontWeight: active ? "600" : "400" }}>
+                    {h}h{m === 0 ? "" : m}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
     </View>
   );
 }
