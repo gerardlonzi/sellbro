@@ -1,0 +1,4 @@
+<resources>
+  <string name="NSPhotoLibraryUsageDescription">"Allow access to your photos to add product images."</string>
+  <string name="NSCameraUsageDescription">"Allow camera access to photograph your products."</string>
+</resources>

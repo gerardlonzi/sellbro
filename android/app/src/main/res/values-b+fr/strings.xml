@@ -1,0 +1,4 @@
+<resources>
+  <string name="NSPhotoLibraryUsageDescription">"Autoriser l'accès à vos photos pour ajouter des images de produits."</string>
+  <string name="NSCameraUsageDescription">"Autoriser l'accès à la caméra pour photographier vos produits."</string>
+</resources>
