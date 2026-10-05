@@ -1,5 +1,6 @@
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
+import { notifierFranchissementSeuil } from "@/lib/notifications/notifications";
 
 type TypeMouvement = "achat" | "vente" | "retour" | "casse" | "ajustement" | "peremption";
 
@@ -36,6 +37,17 @@ export async function enregistrerMouvementStock(params: {
       m.synchronise = false;
     });
   });
+
+  // Notification immédiate si le mouvement fait franchir le seuil d'alerte
+  // (ou réarme l'alerte en cas de réapprovisionnement). Couvre toutes les
+  // sources de mouvement (vente, achat, ajustement…).
+  notifierFranchissementSeuil({
+    produitId: params.produitId,
+    nom: (produit as any).nom,
+    seuil: (produit as any).seuilAlerte ?? 0,
+    stockAvant,
+    stockApres,
+  }).catch(() => {});
 
   return { stockAvant, stockApres };
 }

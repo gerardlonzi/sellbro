@@ -1,4 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
+import * as ImageManipulator from "expo-image-manipulator";
+import { Image } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 
 // Bucket Supabase Storage (créé par schema.sql) : un seul bucket, un dossier
@@ -32,6 +34,52 @@ function base64VersOctets(base64: string): Uint8Array {
   return octets;
 }
 
+// Compression avant upload : les photos des téléphones font souvent 2-5 Mo.
+// On redimensionne à 1600 px de large max (largement suffisant pour produits,
+// logos et lecture de documents) et on recompresse. Le PNG est conservé pour
+// garder la transparence des logos ; sinon JPEG.
+const LARGEUR_MAX = 1600;
+
+function tailleImage(uri: string): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    Image.getSize(
+      uri,
+      (width, height) => resolve({ width, height }),
+      () => resolve(null)
+    );
+  });
+}
+
+// Renvoie l'URI d'une version compressée (fichier temporaire en cache).
+// En cas d'échec, on retourne l'original : mieux vaut une image lourde
+// qu'une image perdue.
+async function compresserImage(uri: string): Promise<string> {
+  try {
+    let source = uri;
+    // Les data: URI (ex. logo choisi avec base64) passent par un fichier
+    // temporaire : ImageManipulator ne travaille que sur des fichiers.
+    if (uri.startsWith("data:")) {
+      const [entete, donnees] = uri.split(",", 2);
+      const ext = entete.includes("png") ? "png" : "jpg";
+      const chemin = `${FileSystem.cacheDirectory}cikap_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+      await FileSystem.writeAsStringAsync(chemin, donnees, { encoding: FileSystem.EncodingType.Base64 });
+      source = chemin;
+    }
+    // Pas de redimensionnement inutile (ni d'agrandissement) si l'image est
+    // déjà assez petite : on ne fait que recompresser.
+    const taille = await tailleImage(source);
+    const actions = taille && taille.width > LARGEUR_MAX ? [{ resize: { width: LARGEUR_MAX } }] : [];
+    const estPng = source.split("?")[0].toLowerCase().endsWith(".png") || uri.startsWith("data:image/png");
+    const resultat = await ImageManipulator.manipulateAsync(source, actions, {
+      compress: 0.7,
+      format: estPng ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
+    });
+    return resultat.uri;
+  } catch {
+    return uri;
+  }
+}
+
 // Lit une image (fichier local ou data: URI) et renvoie octets + type MIME.
 async function lireImage(uri: string): Promise<{ octets: Uint8Array; typeMime: string; extension: string } | null> {
   try {
@@ -53,7 +101,10 @@ async function lireImage(uri: string): Promise<{ octets: Uint8Array; typeMime: s
 // Renvoie null hors ligne / en cas d'échec (l'appelant garde alors l'URI locale).
 export async function televerserImage(uri: string, dossier: "produits" | "logos", userId: string): Promise<string | null> {
   if (!estImageLocale(uri)) return uri; // déjà distante
-  const image = await lireImage(uri);
+  // Compression systématique AVANT la lecture : aucune image ne part vers la
+  // base sans être redimensionnée/recompressée.
+  const compressee = await compresserImage(uri);
+  const image = await lireImage(compressee);
   if (!image) return null;
 
   const chemin = `${dossier}/${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${image.extension}`;

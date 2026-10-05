@@ -289,6 +289,16 @@ export async function pousserDonneesLocales() {
     action: e.action,
     description: e.description,
   }), cartes);
+
+  // 8) Alias produits appris par le scanner (produit_id → id distant).
+  await pousserTable("product_aliases", (e, c) => ({
+    user_id: e.userId,
+    product_id: c.produit.get(e.produitId) ?? null,
+    alias: e.alias,
+    normalized_alias: e.aliasNormalise,
+    source: e.source,
+    confidence: e.confiance,
+  }), cartes);
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +308,7 @@ export async function pousserDonneesLocales() {
 // Récupère les dernières données Supabase et rafraîchit le cache local
 // (remplacement simple du cache : suffisant pour un utilisateur mono-appareil).
 export async function tirerDonneesDistantes(userId: string) {
-  const [produits, ventes, achats, creances, depenses, fournisseurs, mouvements, factures, factureLignes, journal] =
+  const [produits, ventes, achats, creances, depenses, fournisseurs, mouvements, factures, factureLignes, journal, aliases] =
     await Promise.all([
       supabase.from("produits").select("*").eq("user_id", userId),
       supabase.from("ventes").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
@@ -310,6 +320,7 @@ export async function tirerDonneesDistantes(userId: string) {
       supabase.from("factures").select("*").eq("user_id", userId),
       supabase.from("facture_lignes").select("*"),
       supabase.from("journal_activite").select("*").eq("user_id", userId),
+      supabase.from("product_aliases").select("*").eq("user_id", userId),
     ]);
 
   // Cartes remote id → id local, construites au fur et à mesure.
@@ -335,6 +346,7 @@ export async function tirerDonneesDistantes(userId: string) {
   await tirerFactures(factures.data ?? [], factureLocal);
   await tirerFactureLignes(factureLignes.data ?? [], factureLocal, venteLocal);
   await tirerJournal(journal.data ?? []);
+  await tirerAliases(aliases.data ?? [], produitLocal);
 }
 
 // Upsert par `remote_id` : met à jour les enregistrements existants (en
@@ -579,6 +591,28 @@ async function tirerFactureLignes(
     });
   } catch (err) {
     console.warn("Sync : échec de restauration des lignes de facture (ignoré)", err);
+  }
+}
+
+// Alias produits : product_id distant → id local (le matching doit rester
+// valide après une restauration sur un nouvel appareil).
+async function tirerAliases(lignes: any[], produitLocal: Map<string, string>) {
+  try {
+    await database.write(async () => {
+      await upsertParRemoteId("product_aliases", lignes, (r) => ({
+        remoteId: r.id,
+        userId: r.user_id,
+        produitId: r.product_id ? produitLocal.get(r.product_id) ?? "" : "",
+        alias: r.alias,
+        aliasNormalise: r.normalized_alias,
+        source: r.source,
+        confiance: r.confidence,
+        creeLe: new Date(r.created_at),
+        synchronise: true,
+      }));
+    });
+  } catch (err) {
+    console.warn("Sync : échec de restauration des alias produits (ignoré)", err);
   }
 }
 
