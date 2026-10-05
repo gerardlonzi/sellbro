@@ -3,7 +3,9 @@ import { appSchema, tableSchema } from "@nozbe/watermelondb";
 export const schema = appSchema({
   // v5 : + donnees_supplementaires (JSON) sur depenses et fournisseurs —
   // lien produit/fournisseur et champs personnalisés, synchronisés en jsonb.
-  version: 5,
+  // v6 : + product_aliases (alias appris par le scanner de factures,
+  // isolés par user_id — jamais partagés entre commerçants).
+  version: 6,
   tables: [
     tableSchema({
       name: "produits",
@@ -143,6 +145,20 @@ export const schema = appSchema({
         { name: "produit_nom", type: "string" },
         { name: "quantite", type: "number" },
         { name: "prix_unitaire", type: "number" },
+      ],
+    }),
+    tableSchema({
+      name: "product_aliases",
+      columns: [
+        { name: "remote_id", type: "string", isOptional: true },
+        { name: "user_id", type: "string" },
+        { name: "produit_id", type: "string" }, // id LOCAL du produit
+        { name: "alias", type: "string" }, // tel que lu sur la facture (« RUI »)
+        { name: "alias_normalise", type: "string" }, // forme normalisée (matching)
+        { name: "source", type: "string" }, // user_confirmed | ai_suggested | imported | manual
+        { name: "confiance", type: "number", isOptional: true },
+        { name: "cree_le", type: "number" },
+        { name: "synchronise", type: "boolean" },
       ],
     }),
     tableSchema({

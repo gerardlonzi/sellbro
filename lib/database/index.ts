@@ -13,10 +13,11 @@ import MouvementStock from "./models/MouvementStock";
 import Facture from "./models/Facture";
 import FactureLigne from "./models/FactureLigne";
 import JournalActivite from "./models/JournalActivite";
+import ProductAlias from "./models/ProductAlias";
 
 const adapter = new SQLiteAdapter({ schema, migrations, jsi: false });
 
 export const database = new Database({
   adapter,
-  modelClasses: [Produit, Vente, Achat, CreanceDette, Fournisseur, Depense, MouvementStock, Facture, FactureLigne, JournalActivite],
+  modelClasses: [Produit, Vente, Achat, CreanceDette, Fournisseur, Depense, MouvementStock, Facture, FactureLigne, JournalActivite, ProductAlias],
 });
