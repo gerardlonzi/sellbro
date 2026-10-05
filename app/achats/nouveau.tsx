@@ -9,7 +9,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { formaterDateSeule } from "@/lib/formatDate";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
-import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
+import { creerAchat } from "@/lib/achats/creerAchat";
 import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
@@ -140,54 +140,21 @@ export default function NouvelAchat() {
     // Le fournisseur choisi dans la liste fournit son téléphone pour la dette.
     const fournisseurChoisi = fournisseurs.find((f) => f.nom === fournisseur.trim()) ?? null;
 
-    await database.write(async () => {
-      await database.get("achats").create((a: any) => {
-        a.userId = userId;
-        a.fournisseurNom = fournisseur.trim() || null;
-        a.description = description.trim() || null;
-        a.montant = Number(montant);
-        a.source = "manuel";
-        a.donneesSupplementairesJson = "{}";
-        a.creeLe = new Date();
-        a.synchronise = false;
-      });
-
-      // Achat à crédit → on crée la DETTE correspondante (visible dans
-      // Créances & dettes, côté « Tu dois »).
-      if (aCredit) {
-        await database.get("creances_dettes").create((c: any) => {
-          c.userId = userId;
-          c.type = "dette";
-          c.personneNom = fournisseur.trim();
-          c.telephone = fournisseurChoisi?.telephone ?? null;
-          c.montantInitial = Number(montant);
-          c.montantRestant = Number(montant);
-          c.dateEcheance = echeance || null;
-          c.statut = "en_cours";
-          c.note = description.trim() || null;
-          c.produitConcerne = nomProduitLie || null;
-          c.creeLe = new Date();
-          c.synchronise = false;
-        });
-      }
+    // Toute la logique de création (achat + dette + stock + audit) est dans
+    // le service partagé — aussi utilisé par le scanner de factures.
+    await creerAchat({
+      userId,
+      fournisseurNom: fournisseur,
+      fournisseurTelephone: fournisseurChoisi?.telephone ?? null,
+      description,
+      montant: Number(montant),
+      aCredit,
+      dateEcheance: echeance || null,
+      produitId: produitId || null,
+      produitNom: nomProduitLie || null,
+      quantiteRecue: quantiteRecue ? Number(quantiteRecue) : null,
+      source: "manuel",
     });
-
-    // Si l'achat est lié à un produit du stock, on augmente le stock automatiquement.
-    if (produitId && quantiteRecue) {
-      await enregistrerMouvementStock({
-        userId: userId,
-        produitId,
-        type: "achat",
-        quantite: Number(quantiteRecue),
-        raison: fournisseur.trim() ? `Réassort — ${fournisseur.trim()}` : "Réassort",
-      });
-    }
-
-    synchroniserPourUtilisateurCourant().catch(() => {});
-    const libelleAchat = quantiteRecue && nomProduitLie
-      ? `Achat enregistré : ${quantiteRecue} × ${nomProduitLie}`
-      : `Achat enregistré : ${description.trim() || fournisseur.trim() || "—"}`;
-    await enregistrerActivite("achat", "ajout", libelleAchat);
     setChargement(false);
     showToast(t("toast_enregistre", langue), "success");
     router.back();

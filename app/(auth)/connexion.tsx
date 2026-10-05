@@ -51,6 +51,9 @@ export default function Connexion() {
       return;
     }
 
+    // L'email sert d'affichage hors ligne (Paramètres → Compte) : on le cache
+    // dès la connexion, sans attendre la première visite des réglages.
+    await AsyncStorage.setItem("boutika_user_email", email.trim());
     await AsyncStorage.setItem("onboarding_termine", "true");
     // Connexion (compte existant) ≠ inscription : le popup d'essai affichera
     // « Bon retour » au lieu de « Bienvenue ».

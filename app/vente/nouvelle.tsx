@@ -11,10 +11,8 @@ import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
 import { AvatarNom } from "@/components/AvatarNom";
-import { enregistrerMouvementStock } from "@/lib/stock/mouvements";
+import { creerVente } from "@/lib/ventes/creerVente";
 import { obtenirUserId } from "@/lib/auth/userCache";
-import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
-import { enregistrerActivite } from "@/lib/audit/journal";
 import { creerFactureDepuisVentes } from "@/lib/factures/creerFacture";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { peutEcrire } from "@/lib/trial/gate";
@@ -292,65 +290,17 @@ export default function NouvelleVente() {
     const userId = await obtenirUserId();
     if (!userId) { setChargement(false); return; }
 
-    const venteIds: string[] = [];
-    // Identifiant de « transaction » commun à toutes les lignes du panier :
-    // permet de compter les VENTES (transactions) séparément des UNITÉS vendues.
-    const transactionId = `tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    await database.write(async () => {
-      for (const ligne of panier) {
-        const vente = await database.get("ventes").create((v: any) => {
-          v.userId = userId;
-          v.produitId = ligne.produitId;
-          v.produitNom = ligne.nom;
-          v.quantite = ligne.quantite;
-          v.prixUnitaire = ligne.prixUnitaire;
-          v.clientNom = client.trim() || null;
-          v.clientTelephone = clientTelephone.trim() ? `${pays.indicatif}${clientTelephone.replace(/\s/g, "")}` : null;
-          v.modePaiement = modePaiement;
-          v.source = "manuel";
-          v.donneesSupplementairesJson = JSON.stringify({ transactionId });
-          v.creeLe = new Date();
-          v.synchronise = false;
-        });
-        venteIds.push(vente.id);
-      }
-
-      // Paiement à crédit → on crée la créance correspondante.
-      if (modePaiement === "credit") {
-        const totalVente = panier.reduce((s, l) => s + l.quantite * l.prixUnitaire, 0);
-        await database.get("creances_dettes").create((c: any) => {
-          c.userId = userId;
-          c.type = "creance";
-          c.personneNom = client.trim();
-          c.telephone = clientTelephone.trim() ? `${pays.indicatif}${clientTelephone.replace(/\s/g, "")}` : null;
-          c.montantInitial = totalVente;
-          c.montantRestant = totalVente;
-          c.dateEcheance = dateEcheance || null;
-          c.statut = "en_cours";
-          c.note = null;
-          c.produitConcerne = null;
-          c.creeLe = new Date();
-          c.synchronise = false;
-        });
-      }
+    // Toute la logique de création (ventes + créance + stock + audit) est
+    // dans le service partagé — aussi utilisé par le scanner de factures.
+    const { venteIds } = await creerVente({
+      userId,
+      lignes: panier,
+      clientNom: client,
+      clientTelephone: clientTelephone.trim() ? `${pays.indicatif}${clientTelephone.replace(/\s/g, "")}` : null,
+      modePaiement,
+      dateEcheance: dateEcheance || null,
+      source: "manuel",
     });
-
-    // Déduit le stock APRÈS l'écriture des ventes (transaction séparée,
-    // car enregistrerMouvementStock a sa propre database.write).
-    for (const ligne of panier) {
-      if (ligne.produitId) {
-        await enregistrerMouvementStock({
-          userId: userId,
-          produitId: ligne.produitId,
-          type: "vente",
-          quantite: -ligne.quantite,
-          raison: "Vente",
-        });
-      }
-    }
-
-    synchroniserPourUtilisateurCourant().catch(() => {});
-    await enregistrerActivite("vente", "ajout", `Vente enregistrée : ${panier.map((l) => `${l.quantite} × ${l.nom}`).join(", ")}`);
 
     // Génération de facture : on regroupe les ventes en une facture puis on
     // ouvre son écran (où se trouve le bouton Imprimer direct).

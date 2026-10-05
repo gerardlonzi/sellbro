@@ -24,6 +24,7 @@ import { versionDonnees, sAbonnerModifications } from "@/lib/dataVersion";
 import { useEssai } from "@/lib/trial/useEssai";
 import { nombreNotificationsNonLues } from "@/lib/notifications/notifications";
 import { calculerBenefice } from "@/lib/ventes/benefice";
+import { avecTimeout } from "@/lib/timeout";
 
 
 
@@ -93,7 +94,9 @@ export default function Accueil() {
     // Supabase (ex: renseigné à l'inscription via config-boutique).
     if (!nom && userId) {
       try {
-        const { data } = await supabase.from("profiles").select("nom_boutique").eq("id", userId).single();
+        // Timeout indispensable : hors ligne, la requête Supabase reste pendue
+        // et bloquait TOUT le chargement de l'accueil (données locales incluses).
+        const { data } = await avecTimeout(supabase.from("profiles").select("nom_boutique").eq("id", userId).single(), 3000);
         if (data?.nom_boutique) {
           nom = data.nom_boutique;
           await AsyncStorage.setItem("boutika_nom_boutique", data.nom_boutique);

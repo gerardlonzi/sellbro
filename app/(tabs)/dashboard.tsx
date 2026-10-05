@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -14,6 +14,9 @@ import { afficherPaywall } from "@/lib/trial/paywall";
 import { PeriodeId, plageDates, plagePrecedente } from "@/lib/periode/periodes";
 import { PLANS_PAR_DEFAUT } from "@/lib/plan/quotas";
 import { calculerBenefice } from "@/lib/ventes/benefice";
+import { versionDonnees, sAbonnerModifications } from "@/lib/dataVersion";
+import { analyserBaissesVentes, analyserRelancesClients, analyserPrevisionsStock, construireMorningBrief, BaisseVente, RelanceClient, PrevisionStock, MorningBrief } from "@/lib/previsions/analyses";
+import { Linking } from "react-native";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
 import { Carte, Skeleton, Badge } from "@/components/UI";
 import { BoutonRapport } from "@/components/BoutonRapport";
@@ -87,6 +90,12 @@ export default function Dashboard() {
   const [afficherDatePicker, setAfficherDatePicker] = useState<"debut" | "fin" | null>(null);
   const [chargement, setChargement] = useState(true);
   const [generationRapport, setGenerationRapport] = useState(false);
+  // Onglet actif : l'aperçu classique ou les analyses « Prévisions ».
+  const [onglet, setOnglet] = useState<"apercu" | "previsions">("apercu");
+  const [baisses, setBaisses] = useState<BaisseVente[]>([]);
+  const [relances, setRelances] = useState<RelanceClient[]>([]);
+  const [previsionsStock, setPrevisionsStock] = useState<PrevisionStock[]>([]);
+  const [brief, setBrief] = useState<MorningBrief | null>(null);
   const { showToast } = useToast();
   const {pret: planPret } = usePlanActuel();
   const estPremium = planId === "premium";
@@ -104,11 +113,35 @@ export default function Dashboard() {
     }
   }, [essai.verifie, essai.estPremium, essai.actif]);
 
+  // Ne recalcule au focus que si les données ont VRAIMENT changé
+  // (versionDonnees) ou si les filtres ont changé — avant, chaque passage sur
+  // l'onglet relançait tout le calcul, même sans modification.
+  const derniereVersion = useRef<number | null>(null);
+  const derniersFiltres = useRef<string>("");
+
   useFocusEffect(
     useCallback(() => {
-      calculerStats();
+      const filtres = `${periode}|${personnalise}|${debutPerso.getTime()}|${finPerso.getTime()}`;
+      if (
+        derniereVersion.current === null ||
+        versionDonnees() !== derniereVersion.current ||
+        filtres !== derniersFiltres.current
+      ) {
+        derniereVersion.current = versionDonnees();
+        derniersFiltres.current = filtres;
+        calculerStats();
+      }
     }, [periode, personnalise, debutPerso, finPerso])
   );
+
+  // Recharge aussi dès qu'une sync/écriture modifie les données pendant que
+  // l'écran est ouvert (même pattern que l'accueil).
+  useEffect(() => {
+    return sAbonnerModifications(() => {
+      derniereVersion.current = versionDonnees();
+      calculerStats();
+    });
+  }, [periode, personnalise, debutPerso, finPerso]);
 
   async function calculerStats() {
     setChargement(true);
@@ -144,6 +177,16 @@ export default function Dashboard() {
 
     setRuptures((tousLesProduits as any[]).filter((p) => p.quantiteStock === 0).length);
     setAlertes((tousLesProduits as any[]).filter((p) => p.quantiteStock > 0 && p.quantiteStock <= p.seuilAlerte).length);
+
+    // Analyses « Prévisions » : calculées sur TOUT l'historique (pas seulement
+    // la période affichée), donc avant le filtre de dates ci-dessous.
+    const toutesLesCreances = await database.get("creances_dettes").query(Q.where("user_id", userId)).fetch();
+    const ventesBrutes = tousLesVentes as any[];
+    const produitsBruts = tousLesProduits as any[];
+    setBaisses(analyserBaissesVentes(ventesBrutes, produitsBruts));
+    setRelances(analyserRelancesClients(ventesBrutes));
+    setPrevisionsStock(analyserPrevisionsStock(ventesBrutes, produitsBruts));
+    setBrief(construireMorningBrief(ventesBrutes, produitsBruts, toutesLesCreances as any[]));
 
     // Mouvements de stock : toujours chargés, indépendamment des ventes.
     const tousLesMouvements = await database
@@ -339,10 +382,24 @@ export default function Dashboard() {
           )}
         </View>
       </View>
-      
 
+      {/* Onglets Aperçu / Prévisions */}
+      <View style={[styles.onglets, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {(["apercu", "previsions"] as const).map((o) => (
+          <Pressable
+            key={o}
+            onPress={() => setOnglet(o)}
+            style={[styles.onglet, onglet === o && { backgroundColor: colors.accent }]}
+          >
+            <Text style={{ color: onglet === o ? "#fff" : colors.textSecondary, fontSize: 12, fontWeight: onglet === o ? "600" : "400" }}>
+              {t(o === "apercu" ? "dashboard_onglet_apercu" : "dashboard_onglet_previsions", langue)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
       <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
+      {onglet === "apercu" && (
       <View>
         <SelecteurPeriode
         
@@ -388,9 +445,114 @@ export default function Dashboard() {
           />
         )}
       </View>
+      )}
 
+        {onglet === "previsions" ? (
+          chargement ? (
+            <View style={{ marginTop: 12, gap: 12 }}>
+              <Carte style={{ gap: 8 }}>
+                <Skeleton width="45%" height={12} />
+                <Skeleton width="90%" height={12} />
+                <Skeleton width="80%" height={12} />
+              </Carte>
+            </View>
+          ) : (
+            <View style={{ marginTop: 4 }}>
+              {/* Brief du matin : le résumé automatique en tête d'onglet. */}
+              {brief && (
+                <Carte style={{ marginTop: 8 }}>
+                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "600" }}>{t("brief_titre", langue)}</Text>
+                  {brief.nbRisquesRupture > 0 && (
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8 }}>
+                      {t("brief_risques", langue)(brief.nbRisquesRupture, brief.nomsRisques.join(", "))}
+                    </Text>
+                  )}
+                  {brief.creancesEcheance.length > 0 && (
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                      {t("brief_creances", langue)(brief.creancesEcheance.length)}
+                    </Text>
+                  )}
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                    {t("brief_ca_hier", langue)(brief.variationHierPct !== null ? `${brief.variationHierPct > 0 ? "+" : ""}${brief.variationHierPct} %` : null)}
+                  </Text>
+                  <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600", marginTop: 10 }}>
+                    {brief.priorite.type === "stock"
+                      ? t("brief_priorite_stock", langue)(brief.priorite.libelle)
+                      : brief.priorite.type === "creance"
+                        ? t("brief_priorite_creance", langue)(brief.priorite.libelle)
+                        : brief.priorite.type === "ventes"
+                          ? t("brief_priorite_ventes", langue)
+                          : t("brief_priorite_calme", langue)}
+                  </Text>
+                </Carte>
+              )}
 
-        {chargement ? (
+              {/* Analyse des baisses de ventes */}
+              <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("prev_baisses_titre", langue)}</Text>
+              <Carte>
+                {baisses.length === 0 ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("prev_vide_baisses", langue)}</Text>
+                ) : (
+                  baisses.map((b, i) => (
+                    <View key={b.produitId ?? b.nom} style={[i > 0 && { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 }]}>
+                      <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>
+                        {t("prev_baisse_ligne", langue)(b.nom, b.variationPct, b.quantitePrecedente, b.quantiteSemaine)}
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 3 }}>
+                        {b.cause === "rupture"
+                          ? t("prev_cause_rupture", langue)
+                          : b.cause === "stock_faible"
+                            ? t("prev_cause_stock_faible", langue)
+                            : b.cause === "clients_absents"
+                              ? t("prev_cause_clients", langue)(b.clientsAbsents.join(", "))
+                              : t("prev_cause_inconnue", langue)}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </Carte>
+
+              {/* Smart Follow-up : relance des clients en retard de cycle */}
+              <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("prev_relances_titre", langue)}</Text>
+              <Carte>
+                {relances.length === 0 ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("prev_vide_relances", langue)}</Text>
+                ) : (
+                  relances.map((r, i) => (
+                    <View key={r.nom} style={[{ flexDirection: "row", alignItems: "center", gap: 10 }, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("prev_relance_ligne", langue)(r.nom, r.cycleJours, r.joursDepuisDernier)}</Text>
+                      </View>
+                      {r.telephone && (
+                        <Pressable
+                          onPress={() => Linking.openURL(`https://wa.me/${r.telephone!.replace("+", "")}?text=${encodeURIComponent(t("prev_relance_message", langue)(r.nom))}`).catch(() => {})}
+                          style={{ backgroundColor: colors.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+                        >
+                          <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{t("prev_relance_bouton", langue)}</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  ))
+                )}
+              </Carte>
+
+              {/* Prévision de stock : demande en hausse + stock en baisse */}
+              <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("prev_stock_titre", langue)}</Text>
+              <Carte>
+                {previsionsStock.length === 0 ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("prev_vide_stock", langue)}</Text>
+                ) : (
+                  previsionsStock.map((p, i) => (
+                    <View key={p.produitId} style={[i > 0 && { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 }]}>
+                      <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{t("prev_stock_ligne", langue)(p.nom, p.joursRestants)}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 3 }}>{t("prev_stock_recommande", langue)(p.quantiteRecommandee)}</Text>
+                    </View>
+                  ))
+                )}
+              </Carte>
+            </View>
+          )
+        ) : chargement ? (
           <View style={{ marginTop: 12, gap: 12 }}>
             <View style={styles.ligneDeuxCartes}>
               <Carte style={{ flex: 1, gap: 8 }}>
@@ -610,6 +772,8 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: { paddingTop: 15 },
   titreSection: { fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 18, marginBottom: 8, marginLeft: 2 },
+  onglets: { flexDirection: "row", borderWidth: 1, borderRadius: 10, padding: 3, marginBottom: 4 },
+  onglet: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: "center" },
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 },
   boutonPersonnalise: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-end", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 5 },
   blocPersonnalise: { flexDirection: "row", gap: 10, marginTop: 2, marginBottom: 8 },

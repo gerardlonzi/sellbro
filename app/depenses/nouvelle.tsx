@@ -9,8 +9,7 @@ import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
-import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
-import { enregistrerActivite } from "@/lib/audit/journal";
+import { creerDepense } from "@/lib/depenses/creerDepense";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 import { CATEGORIES_DEPENSES, libelleCategorieDepense } from "@/lib/depenses/categories";
@@ -99,20 +98,8 @@ export default function NouvelleDepense() {
       donnees.champs = Object.fromEntries(champsValides.map((c) => [c.nom.trim(), c.valeur.trim()]));
     }
 
-    await database.write(async () => {
-      await database.get("depenses").create((d: any) => {
-        d.userId = userId;
-        d.categorie = categorie;
-        d.description = description.trim() || null;
-        d.montant = Number(montant);
-        d.donneesSupplementairesJson = JSON.stringify(donnees);
-        d.creeLe = new Date();
-        d.synchronise = false;
-      });
-    });
-
-    synchroniserPourUtilisateurCourant().catch(() => {});
-    await enregistrerActivite("depense", "ajout", "Nouvelle dépense");
+    // Logique de création partagée (aussi utilisée par le scanner de factures).
+    await creerDepense({ userId, categorie, description, montant: Number(montant), donnees });
     setChargement(false);
     showToast(t("toast_enregistre", langue), "success");
     router.back();
