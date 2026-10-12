@@ -11,6 +11,11 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { CONFIG_SCANNER } from "@/lib/scanner/config";
 import { OpenAIEdgeProvider } from "@/lib/scanner/providers/OpenAIEdgeProvider";
 import { definirScanEnCours } from "@/lib/scanner/scanEnCours";
+import { chargerCandidatsProduits } from "@/lib/scanner/candidats";
+import { obtenirUserId } from "@/lib/auth/userCache";
+import { usePlanActuel } from "@/lib/plan/usePlanActuel";
+import { useEssai } from "@/lib/trial/useEssai";
+import { afficherPaywall } from "@/lib/trial/paywall";
 
 // Écran « Scanner une facture » : photo → prétraitement → analyse IA →
 // l'écran de validation prend le relais. L'IA n'écrit JAMAIS dans la base :
@@ -26,6 +31,11 @@ export default function ScannerDocument() {
   const { colors } = useTheme();
   const { showToast } = useToast();
   const cameraRef = useRef<CameraView>(null);
+  const { plan } = usePlanActuel();
+  const essai = useEssai();
+  // L'IA est réservée au Premium (quota_scan du plan, lu depuis la DB) ET à
+  // l'essai actif — même règle que le garde-fou serveur (_shared/accesIA.ts).
+  const accesIA = (plan?.quotaScan ?? 0) > 0 || essai.statut === "TRIAL";
 
   if (!permission) return <View style={{ flex: 1, backgroundColor: "#000" }} />;
 
@@ -72,6 +82,13 @@ export default function ScannerDocument() {
   }
 
   async function traiterImage(uri: string) {
+    // Gating AVANT la photo : un compte sans accès IA voit le paywall plutôt
+    // que de photographier pour rien (le quota est re-vérifié côté serveur).
+    if (!accesIA) {
+      afficherPaywall(langue, () => router.push("/premium"));
+      return;
+    }
+
     setTraitement(true);
     setIllisible(false);
 
@@ -82,7 +99,15 @@ export default function ScannerDocument() {
       return;
     }
 
-    const document = await provider.analyzeDocument({ imageBase64: image.base64, typeMime: image.typeMime });
+    // Contexte produits (§20) : on envoie seulement les meilleurs candidats
+    // locaux pour aider l'IA à lire les libellés — jamais toute la base.
+    const userId = await obtenirUserId();
+    const candidats = userId ? await chargerCandidatsProduits(userId).catch(() => []) : [];
+    const document = await provider.analyzeDocument({
+      imageBase64: image.base64,
+      typeMime: image.typeMime,
+      contexte: { candidatsProduits: candidats },
+    });
     setTraitement(false);
 
     if (!document) {
