@@ -8,6 +8,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
+import { useEssai } from "@/lib/trial/useEssai";
 import { ecouterSelectionCategorie } from "@/lib/categories/relaisSelection"
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
@@ -99,7 +100,10 @@ export default function NouveauProduit() {
   const [permissionCamera, demanderPermissionCamera] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const {plan} = usePlanActuel();
-  const { reference } = useLocalSearchParams<{ reference?: string }>();
+  const essai = useEssai();
+  // `nom` : pré-remplissage depuis le scanner de factures (« créer un
+  // produit » pour un libellé non reconnu).
+  const { reference, nom: nomParam } = useLocalSearchParams<{ reference?: string; nom?: string }>();
 
   useEffect(() => {
     ecouterSelectionCategorie(setCategorie);
@@ -111,6 +115,13 @@ export default function NouveauProduit() {
       setValeursTexte((v) => ({ ...v, reference }));
     }
   }, [reference]);
+
+  // Si on arrive du scanner de factures avec un libellé non reconnu, on
+  // pré-remplit le nom (une seule fois, au montage).
+  useEffect(() => {
+    if (nomParam) setNom((actuel) => (actuel.trim() ? actuel : nomParam));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   function basculerChamp(cle: string) {
     setChampsActifs((actuels) => (actuels.includes(cle) ? actuels.filter((c) => c !== cle) : [...actuels, cle]));
   }
@@ -191,9 +202,12 @@ async function prendrePhoto() {
     if (!userId) { setChargement(false); return; }
 
     try {
-      if (plan?.quotaProduits) {
+      // Quota produits du plan (20 gratuit / 200 starter / illimité premium,
+      // lu depuis la table plans). Pendant l'ESSAI, pas de quota : l'essai
+      // donne l'expérience Premium complète, limitée seulement dans le temps.
+      if (essai.statut !== "TRIAL" && plan?.quotaProduits) {
         const nb = await database.get("produits").query(Q.where("user_id", userId)).fetchCount();
-        if (nb >= plan.quotaProduits) { router.push("/premium"); return; }
+        if (nb >= plan.quotaProduits) { setChargement(false); router.push("/premium"); return; }
       }
 
       // Doublon : un produit avec le même nom existe déjà → proposer de le

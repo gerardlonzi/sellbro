@@ -29,6 +29,11 @@ export function PaywallPopup() {
     cb();
   }
 
+  // La paywall ne doit jamais s'afficher pour un abonné payant (starter/premium).
+  // Sans cette garde, l'app affichait « essai gratuit terminé » aux abonnés payant.
+  const estPayant = essai.estPremium;
+  if (estPayant) return null;
+
   const titre = abonnementExpire ? t("abonnement_termine_statut", etat.langue) : t("essai_termine_titre", etat.langue);
   const message = abonnementExpire ? t("paywall_message_abonnement", etat.langue) : t("paywall_message", etat.langue);
   const boutonPro = abonnementExpire ? t("abonnement_termine_renew", etat.langue) : t("essai_termine_pro", etat.langue);

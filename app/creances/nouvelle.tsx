@@ -6,6 +6,7 @@ import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePlanActuel } from "@/lib/plan/usePlanActuel";
+import { useEssai } from "@/lib/trial/useEssai";
 import { EnteteEcran } from "@/components/UI";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { database } from "@/lib/database";
@@ -29,6 +30,7 @@ export default function NouvelleCreance() {
   const { langue } = useLangue();
   const { showToast } = useToast();
   const { plan } = usePlanActuel();
+  const essai = useEssai();
   const { pays } = usePays();
   const { type: typeParam } = useLocalSearchParams<{ type?: string }>();
   const [type, setType] = useState<"creance" | "dette">(typeParam === "dette" ? "dette" : "creance");
@@ -89,7 +91,8 @@ export default function NouvelleCreance() {
 
     // Limite du plan Gratuit : nombre de créances/dettes actives.
     // plan.quotaCreances === null signifie illimité (Starter/Premium).
-    if (plan?.quotaCreances) {
+    // Pendant l'essai, pas de quota (expérience Premium complète).
+    if (essai.statut !== "TRIAL" && plan?.quotaCreances) {
       const actives = await database
         .get("creances_dettes")
         .query(Q.where("user_id", userId), Q.where("statut", Q.notEq("payee")))

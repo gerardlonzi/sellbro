@@ -119,10 +119,9 @@ async function executerRafraichissement(): Promise<void> {
     // et serait traité comme une erreur réseau → jamais vérifié, le pop-up de
     // bienvenue ne s'affichait plus.
     const { data, error } = await avecTimeout(supabase.from("plan_utilisateur").select("plan_id").eq("user_id", user.id).maybeSingle(), 6000);
-    // Normalise « starter » → « premium » : l'app a 2 formules (essai gratuit /
-    // payant), donc tout plan payant doit être reconnu comme Premium (sinon un
-    // abonné Starter recevrait à tort le popup « essai terminé »).
-    const planIdNormalise = data?.plan_id === "starter" ? "premium" : data?.plan_id;
+    // « starter » est un vrai plan à part entière (200 produits, sans IA) :
+    // plus de normalisation vers « premium ».
+    const planIdNormalise = data?.plan_id;
 
     if (error) {
       // Requête en échec : on ne conclut RIEN. Sans cette garde, une erreur

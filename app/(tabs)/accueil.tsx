@@ -171,7 +171,7 @@ export default function Accueil() {
     await Share.share({ message: lignes.join("\n") }).catch(() => {});
   }
 
-  const estPremium = planId === "premium";
+  const estPremium = planId !== "gratuit"; // tout plan payant (starter/premium) = accès « PRO »
   const essai = useEssai();
 
   return (

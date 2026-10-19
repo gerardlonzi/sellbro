@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { useEssai } from "@/lib/trial/useEssai";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { useConnexion } from "@/lib/useConnexion";
 import { useToast } from "@/lib/toast/ToastProvider";
+import { chargerPlans, PlanId as PlanIdQuotas } from "@/lib/plan/quotas";
 
-type PlanId = "premium";
+type PlanId = "starter" | "premium";
 
 export default function OnboardingPlan() {
   const { colors } = useTheme();
@@ -20,18 +22,31 @@ export default function OnboardingPlan() {
   const enLigne = useConnexion();
   const { showToast } = useToast();
   const [planChoisi, setPlanChoisi] = useState<PlanId>("premium");
+  // Prix lus depuis la table `plans` (source de vérité) — jamais en dur.
+  const [prixParPlan, setPrixParPlan] = useState<Partial<Record<PlanIdQuotas, number | null>>>({});
+
+  useEffect(() => {
+    chargerPlans()
+      .then((plans) => {
+        setPrixParPlan({ starter: plans.starter?.prix ?? null, premium: plans.premium?.prix ?? null });
+      })
+      .catch(() => {});
+  }, []);
 
   const PLANS: { id: PlanId; nomCle: string; prixCle: string; prixJourCle?: string; descCle: string; fonctionnalitesCle: string; populaire?: boolean }[] = [
+    { id: "starter", nomCle: "plan_starter_nom", prixCle: "plan_starter_prix", prixJourCle: "plan_starter_prix_jour", descCle: "plan_starter_description", fonctionnalitesCle: "plan_starter_fonctionnalites" },
     { id: "premium", nomCle: "plan_premium_nom", prixCle: "plan_premium_prix", prixJourCle: "plan_premium_prix_jour", descCle: "plan_premium_description", fonctionnalitesCle: "plan_premium_fonctionnalites", populaire: true },
   ];
 
   const TEXTE_BOUTON: Record<PlanId, string> = {
+    starter: t("bouton_plan_starter", langue),
     premium: t("bouton_plan_premium", langue),
   };
 
   // Même logique de teinte que sur l'écran des slides : chaque plan a sa
   // couleur, et le dégradé de fond suit le plan sélectionné.
   const teinteParPlan: Record<PlanId, string> = {
+    starter: colors.accent,
     premium: colors.proFill,
   };
   const couleurDegrade = teinteParPlan[planChoisi];
@@ -42,6 +57,9 @@ export default function OnboardingPlan() {
       showToast(t("erreur_connexion_requise", langue), "error");
       return;
     }
+    // Mémorise le plan choisi : l'écran de paiement le passe au checkout pour
+    // facturer le BON montant (starter ≠ premium) et activer le BON plan.
+    await AsyncStorage.setItem("plan_choisi_en_attente", planChoisi);
     // Paiement Mobile Money in-app (SasPay) — plus de redirection externe.
     router.push("/premium/paiement");
   }
@@ -83,11 +101,22 @@ export default function OnboardingPlan() {
                 {selectionne && <Feather name="check-circle" size={18} color={couleurAccentCarte} />}
               </View>
               <View style={styles.ligneBase}>
-                <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>
-                  {essai.prix != null ? `${formater(essai.prix)} / ${t("mois_title",langue)}` : "…"}
-                </Text>
-                {essai.prix != null && (
-                  <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>(≈ {formater(Math.round(essai.prix / 30))} / {t("jour_title",langue)})</Text>
+                {/* Prix depuis la table plans ; repli sur le texte traduit tant
+                    que la base n'a pas répondu (hors ligne sans cache). */}
+                {prixParPlan[plan.id] != null ? (
+                  <>
+                    <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>
+                      {formater(prixParPlan[plan.id] as number)} / {t("mois_title", langue)}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>
+                      (≈ {formater(Math.round((prixParPlan[plan.id] as number) / 30))} / {t("jour_title", langue)})
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>{t(plan.prixCle as any, langue)}</Text>
+                    {plan.prixJourCle && <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>({t(plan.prixJourCle as any, langue)})</Text>}
+                  </>
                 )}
               </View>
               <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 6, marginBottom: 10, lineHeight: 18 }}>{t(plan.descCle as any, langue)}</Text>

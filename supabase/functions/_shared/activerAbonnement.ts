@@ -25,7 +25,8 @@ export async function activerAbonnement(
   const { transactionId, userId, phone, network, payload } = params;
 
   // 1) Transaction → success (avec payload brut pour traçabilité). On lit le
-  //    montant au passage pour le snapshot dans l'abonnement.
+  //    montant ET le plan au passage : la transaction porte le plan choisi au
+  //    checkout (starter | premium) — c'est lui qu'on active, pas un plan fixe.
   const { data: tx, error: errTx } = await supabaseAdmin
     .from("payment_transactions")
     .update({
@@ -34,9 +35,12 @@ export async function activerAbonnement(
       updated_at: new Date().toISOString(),
     })
     .eq("id", transactionId)
-    .select("amount")
+    .select("amount, plan_id")
     .single();
   if (errTx) throw new Error(`transaction non mise à jour: ${errTx.message}`);
+
+  // Transactions créées avant l'ajout de plan_id : repli sur premium.
+  const planId = tx?.plan_id === "starter" ? "starter" : "premium";
 
   // 2) Abonnement : prolonge la date d'expiration si elle est encore future.
   const { data: abo, error: errLecture } = await supabaseAdmin
@@ -64,6 +68,9 @@ export async function activerAbonnement(
     moyen_paiement: network ?? null,
     montant_paye: tx?.amount != null ? Number(tx.amount) : null,
     reference_transaction: transactionId,
+    // Le plan suit celui payé : un passage starter → premium (ou l'inverse)
+    // au renouvellement met bien à jour le plan actif.
+    plan_id: planId,
   };
 
   if (abo) {
@@ -72,12 +79,12 @@ export async function activerAbonnement(
   } else {
     const { error } = await supabaseAdmin.from("abonnements").insert({
       user_id: userId,
-      plan_id: "premium",
+      plan_id: planId,
       date_debut: maintenant.toISOString(),
       ...champs,
     });
     if (error) throw new Error(`abonnement non créé: ${error.message}`);
   }
 
-  console.log(`abonnement activé: user=${userId} transaction=${transactionId} expiration=${expiration.toISOString()}`);
+  console.log(`abonnement activé: user=${userId} plan=${planId} transaction=${transactionId} expiration=${expiration.toISOString()}`);
 }

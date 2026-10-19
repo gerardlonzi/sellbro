@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
 import { estEssaiActifLocal } from "./deviceTrial";
-import { etatPlanActuel } from "@/lib/plan/planStore";
+import { etatPlanActuel, rafraichirPlan } from "@/lib/plan/planStore";
 
 // Décide si l'utilisateur peut écrire (ajouter/modifier/supprimer).
-// - Premium → toujours autorisé.
+// - Plan payant (premium/starter) → toujours autorisé.
 // - Sinon → autorisé uniquement pendant l'essai gratuit.
 // Fonctionne HORS LIGNE grâce au cache local de l'essai.
 export async function peutEcrire(): Promise<boolean> {
-  const plan = etatPlanActuel();
-  if (plan.planId === "premium") return true;
+  let plan = etatPlanActuel();
+  // Jamais de paywall sur une supposition : au démarrage le plan vaut
+  // « gratuit » par défaut tant que le serveur n'a pas répondu, et un abonné
+  // payant voyait alors le popup « essai terminé ». On vérifie d'abord.
+  if (!plan.verifie) {
+    await rafraichirPlan().catch(() => {});
+    plan = etatPlanActuel();
+  }
+  if (plan.planId !== "gratuit") return true;
 
   return await estEssaiActifLocal();
 }

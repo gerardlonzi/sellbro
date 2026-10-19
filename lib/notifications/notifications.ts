@@ -11,6 +11,7 @@ import { t, Langue, detecterLangueSysteme } from "@/lib/i18n";
 import { DEVISES } from "@/lib/currency/CurrencyProvider";
 import { convertirDepuisFcfa } from "@/lib/currency/taux";
 import { construireMorningBrief } from "@/lib/previsions/analyses";
+import { enregistrerTokenPush } from "@/lib/notifications/push";
 
 // Langue choisie dans l'app (pas celle du téléphone) : les notifications
 // planifiées sont générées en dehors de React, on lit donc le stockage local.
@@ -151,9 +152,15 @@ export async function configurerNotifications() {
     });
   }
 
-  const { status } = await Notifications.getPermissionsAsync();
+  let { status } = await Notifications.getPermissionsAsync();
   if (status !== "granted") {
-    await Notifications.requestPermissionsAsync();
+    ({ status } = await Notifications.requestPermissionsAsync());
+  }
+  // Le token push n'était enregistré qu'au changement d'état d'authentification :
+  // si la permission n'était accordée qu'ici (plus tard), il ne l'était jamais.
+  // On relance l'enregistrement dès que la permission est là.
+  if (status === "granted") {
+    enregistrerTokenPush().catch(() => {});
   }
 }
 
@@ -312,10 +319,14 @@ function alertesLocales(
 export async function chargerNotifications(): Promise<NotificationItem[]> {
   const lues = await lireLuesLocales();
 
-  // En ligne : Supabase, puis mise en cache.
+  // En ligne : Supabase, puis mise en cache. Le filtre user_id est EXPLICITE :
+  // sans lui, la lecture dépendait entièrement de RLS — une policy absente ou
+  // mal écrite rendait les notifications vides (ou pire, celles d'un autre).
   try {
+    const userId = await obtenirUserId();
+    if (!userId) throw new Error("pas de session");
     const { data, error } = await avecTimeout(
-      supabase.from("notifications").select("*").order("created_at", { ascending: false }),
+      supabase.from("notifications").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       6000
     );
     if (!error && data) {

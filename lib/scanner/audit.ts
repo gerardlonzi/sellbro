@@ -25,6 +25,7 @@ export async function enregistrerAuditScan(params: {
   document: ExtractedDocument;
   lignes: LigneScannee[];
   statut: "validee" | "rejetee";
+  scanId?: string;
   // Résolution id local (WatermelonDB) → id distant (Supabase produits.id).
   remoteIdsParProduitId: Map<string, string>;
 }): Promise<ResultatAudit> {
@@ -34,25 +35,57 @@ export async function enregistrerAuditScan(params: {
       ? lignes.reduce((s, l) => s + l.match.score, 0) / lignes.length
       : null;
 
-    const { data: scan, error } = await avecTimeout(
-      supabase
-        .from("document_scans")
-        .insert({
-          user_id: userId,
-          document_type: document.documentType,
-          raw_extraction: document,
-          status: statut,
-          confidence: confianceMoyenne,
-          idempotence_key: cleIdempotence(userId, document),
-        })
-        .select("id")
-        .single(),
-      8000
-    );
+    let scan: { id: string } | null = null;
+    let error: any = null;
+
+    if (params.scanId) {
+      const maj = await avecTimeout(
+        supabase
+          .from("document_scans")
+          .update({
+            document_type: document.documentType,
+            raw_extraction: document,
+            status: statut,
+            confidence: confianceMoyenne,
+            idempotence_key: cleIdempotence(userId, document),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", params.scanId)
+          .eq("user_id", userId)
+          .select("id")
+          .single(),
+        8000
+      );
+      scan = maj.data;
+      error = maj.error;
+    } else {
+      const insertion = await avecTimeout(
+        supabase
+          .from("document_scans")
+          .insert({
+            user_id: userId,
+            document_type: document.documentType,
+            raw_extraction: document,
+            status: statut,
+            confidence: confianceMoyenne,
+            idempotence_key: cleIdempotence(userId, document),
+          })
+          .select("id")
+          .single(),
+        8000
+      );
+      scan = insertion.data;
+      error = insertion.error;
+    }
     if (error) {
       // Violation d'unicité sur idempotence_key → même facture déjà enregistrée.
       if ((error as any).code === "23505") return "doublon";
       return "echec";
+    }
+    if (!scan?.id) return "echec";
+
+    if (params.scanId) {
+      await avecTimeout(supabase.from("document_scan_items").delete().eq("document_scan_id", scan.id), 8000);
     }
 
     const items = lignes

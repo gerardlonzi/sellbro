@@ -3,3 +3,4 @@
 .env
 .expo/
 supabase/.temp/
+.aider*

@@ -64,12 +64,16 @@ Deno.serve(async (req) => {
     const devise = DEVISE_PAR_PAYS[country];
     if (!devise) return json({ error: "pays non supporté" }, 400);
 
+    // Plan demandé (starter | premium) — validé contre la liste blanche :
+    // c'est la table `plans` qui fixe le prix, JAMAIS le client.
+    const planId = body?.plan_id === "starter" ? "starter" : "premium";
+
     const supabaseAdmin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // 3) Prix (table plans, source de vérité) ET profil client : requêtes
     //    indépendantes lancées EN PARALLÈLE (un round-trip de moins).
     const [{ data: plan }, { data: profil }] = await Promise.all([
-      supabaseAdmin.from("plans").select("prix, prix_par_devise").eq("id", "premium").single(),
+      supabaseAdmin.from("plans").select("prix, prix_par_devise").eq("id", planId).single(),
       supabaseAdmin.from("profiles").select("nom_boutique, telephone").eq("id", user.id).maybeSingle(),
     ]);
     if (!plan) return json({ error: "plan introuvable" }, 500);
@@ -92,6 +96,7 @@ Deno.serve(async (req) => {
         currency: devise,
         network: "checkout", // réseau choisi par le client sur la page SasPay
         status: "pending",
+        plan_id: planId, // le webhook activera CE plan (starter ou premium)
       })
       .select("id")
       .single();
@@ -110,7 +115,7 @@ Deno.serve(async (req) => {
         amount: Number(montant).toFixed(2),
         currency: devise,
         country,
-        description: "Abonnement Cikap Pro",
+        description: planId === "starter" ? "Abonnement Cikap Starter" : "Abonnement Cikap Premium",
         // Les frais sont AJOUTÉS au montant affiché : c'est le payeur qui les
         // prend en charge (2000 F + frais débités), tu reçois le prix exact.
         customer_email: user.email,

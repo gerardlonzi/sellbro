@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { planEffectifIA } from "../_shared/accesIA.ts"
 
 Deno.serve(async (req) => {
   const authHeader = req.headers.get("Authorization");
@@ -7,8 +8,9 @@ Deno.serve(async (req) => {
   const { data: { user } } = await supabaseAdmin.auth.getUser(authHeader?.replace("Bearer ", ""));
   if (!user) return new Response(JSON.stringify({ erreur: "Non authentifié" }), { status: 401 });
 
-  const { data: planData } = await supabaseAdmin.from("plan_utilisateur").select("plan_id").eq("user_id", user.id).single();
-  const { data: plan } = await supabaseAdmin.from("plans").select("*").eq("id", planData?.plan_id ?? "gratuit").single();
+  // Plan effectif : l'essai actif donne les quotas Premium ; sinon les quotas
+  // du plan (gratuit/starter = 0 → refusé). Valeurs lues depuis `plans`.
+  const { quotaScan } = await planEffectifIA(supabaseAdmin, user.id);
 
   const debutMois = new Date();
   debutMois.setDate(1);
@@ -19,7 +21,7 @@ Deno.serve(async (req) => {
     .eq("source", "scan")
     .gte("created_at", debutMois.toISOString());
 
-  if ((scansUtilises ?? 0) >= plan.quota_scan) {
+  if ((scansUtilises ?? 0) >= quotaScan) {
     return new Response(JSON.stringify({ erreur: "quota_epuise" }), { status: 403 });
   }
 

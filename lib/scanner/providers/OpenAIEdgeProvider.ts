@@ -1,24 +1,21 @@
 import { supabase } from "@/lib/supabase/client";
 import { avecTimeout } from "@/lib/timeout";
-import { ExtractedDocument } from "../types";
+import { ExtractedDocument, ResultatAnalyse } from "../types";
 import { DocumentAIProvider, SpeechToTextProvider } from "./DocumentAIProvider";
 
 // Fournisseur MVP : l'app appelle l'Edge Function Supabase, qui seule
 // connaît la clé OpenAI (§14 — JAMAIS de clé API dans l'app mobile).
 //
 //   React Native → Edge Function « analyser-document » → OpenAI
-//
-// Renvoie null hors ligne / en cas d'échec : l'écran affiche alors le
-// message « document illisible / réessayez », sans créer quoi que ce soit.
 export class OpenAIEdgeProvider implements DocumentAIProvider {
   async analyzeDocument(input: {
     imageBase64: string;
     typeMime: string;
     contexte?: { candidatsProduits?: { id: string; nom: string }[] };
-  }): Promise<ExtractedDocument | null> {
+  }): Promise<ResultatAnalyse> {
     try {
       const { data: { session } } = await avecTimeout(supabase.auth.getSession(), 5000);
-      if (!session) return null;
+      if (!session) return { ok: false, erreur: "reseau" };
 
       const { data, error } = await avecTimeout(
         supabase.functions.invoke("analyser-document", {
@@ -29,20 +26,25 @@ export class OpenAIEdgeProvider implements DocumentAIProvider {
           },
           headers: { Authorization: `Bearer ${session.access_token}` },
         }),
-        60000 // l'analyse vision peut prendre plusieurs dizaines de secondes
+        60000
       );
 
-      if (error || !data?.document) return null;
-      return normaliserDocument(data.document);
+      const code = (data as any)?.error ?? (error as any)?.context?.body?.error;
+      if (code === "quota_epuise" || (error as any)?.status === 403) {
+        return { ok: false, erreur: "quota" };
+      }
+      if (error || !(data as any)?.document) return { ok: false, erreur: "reseau" };
+      return {
+        ok: true,
+        document: normaliserDocument((data as any).document),
+        scanId: typeof (data as any).scanId === "string" ? (data as any).scanId : undefined,
+      };
     } catch {
-      return null;
+      return { ok: false, erreur: "reseau" };
     }
   }
 }
 
-// Sécurise la sortie de l'IA : types stricts, tableaux toujours présents,
-// montants numériques ou null — l'écran de validation ne doit jamais
-// recevoir de valeur exotique.
 function normaliserDocument(brut: any): ExtractedDocument {
   const typesValides = ["sale", "purchase", "expense", "payment", "unknown"];
   const nombreOuNull = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -87,9 +89,6 @@ function normaliserDocument(brut: any): ExtractedDocument {
   };
 }
 
-// Abstraction voix (§16) : encapsule l'existant transcrireAudio. Une future
-// implémentation locale (Whisper on-device…) remplacera cette classe sans
-// toucher aux appelants.
 export class CloudSpeechProvider implements SpeechToTextProvider {
   async transcrire(input: { audioUri: string }): Promise<string | null> {
     const { transcrireAudio } = await import("@/lib/ai/voice");

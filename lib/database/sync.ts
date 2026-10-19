@@ -56,9 +56,13 @@ async function prechargerToutesLesImages(userId: string) {
   await prechargerImages(uris);
 }
 
-// La sync cloud est active dès le PREMIER jour (pendant l'essai gratuit),
-// puis en permanence pour les abonnés Premium. Elle s'arrête si l'essai
-// expire sans abonnement (mode lecture seule).
+// La sync cloud (PUSH, écriture vers Supabase) est active dès le PREMIER jour
+// (pendant l'essai gratuit), puis en permanence pour les abonnés payants.
+// Elle s'arrête si l'essai expire sans abonnement (mode lecture seule).
+// Le PULL (relecture de SES propres données) n'est JAMAIS bloqué par cette
+// porte : sur une réinstallation, exiger le cache d'essai avant de restaurer
+// les données forçait l'utilisateur à ouvrir l'app plusieurs fois avant de
+// voir autre chose que des zéros.
 // (Les données d'identité dans `profiles` sont, elles, toujours côté Supabase
 // pour tous, car l'authentification par email l'exige.)
 async function peutSynchroniser(): Promise<boolean> {
@@ -67,7 +71,9 @@ async function peutSynchroniser(): Promise<boolean> {
     await rafraichirPlan();
     etat = etatPlanActuel();
   }
-  if (etat.planId === "premium") return true;
+  // Tout plan payant (starter/premium) synchronise ; « gratuit » hors essai
+  // reste en lecture seule locale (pas de PUSH vers le cloud).
+  if (etat.planId !== "gratuit") return true;
   return await estEssaiActifLocal();
 }
 
@@ -307,20 +313,30 @@ export async function pousserDonneesLocales() {
 
 // Récupère les dernières données Supabase et rafraîchit le cache local
 // (remplacement simple du cache : suffisant pour un utilisateur mono-appareil).
+// Isole chaque requête du pull : sans ça, une SEULE table en échec (réseau
+// instable, RLS…) faisait rejeter tout le Promise.all et RIEN n'était
+// restauré — l'app restait à zéro jusqu'au prochain démarrage.
+function requeteSecurisee(requete: PromiseLike<any>): Promise<{ data: any[] | null }> {
+  return Promise.resolve(requete).catch((err) => {
+    console.warn("Sync pull : requête échouée (table ignorée)", err);
+    return { data: null };
+  });
+}
+
 export async function tirerDonneesDistantes(userId: string) {
   const [produits, ventes, achats, creances, depenses, fournisseurs, mouvements, factures, factureLignes, journal, aliases] =
     await Promise.all([
-      supabase.from("produits").select("*").eq("user_id", userId),
-      supabase.from("ventes").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
-      supabase.from("achats").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
-      supabase.from("creances_dettes").select("*").eq("user_id", userId),
-      supabase.from("depenses").select("*").eq("user_id", userId),
-      supabase.from("fournisseurs").select("*").eq("user_id", userId),
-      supabase.from("mouvements_stock").select("*").eq("user_id", userId),
-      supabase.from("factures").select("*").eq("user_id", userId),
-      supabase.from("facture_lignes").select("*"),
-      supabase.from("journal_activite").select("*").eq("user_id", userId),
-      supabase.from("product_aliases").select("*").eq("user_id", userId),
+      requeteSecurisee(supabase.from("produits").select("*").eq("user_id", userId)),
+      requeteSecurisee(supabase.from("ventes").select("*").eq("user_id", userId).order("created_at", { ascending: true })),
+      requeteSecurisee(supabase.from("achats").select("*").eq("user_id", userId).order("created_at", { ascending: true })),
+      requeteSecurisee(supabase.from("creances_dettes").select("*").eq("user_id", userId)),
+      requeteSecurisee(supabase.from("depenses").select("*").eq("user_id", userId)),
+      requeteSecurisee(supabase.from("fournisseurs").select("*").eq("user_id", userId)),
+      requeteSecurisee(supabase.from("mouvements_stock").select("*").eq("user_id", userId)),
+      requeteSecurisee(supabase.from("factures").select("*").eq("user_id", userId)),
+      requeteSecurisee(supabase.from("facture_lignes").select("*")),
+      requeteSecurisee(supabase.from("journal_activite").select("*").eq("user_id", userId)),
+      requeteSecurisee(supabase.from("product_aliases").select("*").eq("user_id", userId)),
     ]);
 
   // Cartes remote id → id local, construites au fur et à mesure.
@@ -638,14 +654,19 @@ export async function synchroniserTout(userId: string) {
   syncEnCours = true;
   setEtatSync("syncing");
   try {
-    if (!(await peutSynchroniser())) {
-      setEtatSync("complete");
-      return;
-    }
+    // Le PUSH reste soumis au plan payant / essai actif ; le PULL ne l'est
+    // jamais (voir commentaire de peutSynchroniser). Si la porte échoue
+    // faute de cache d'essai, on restaure quand même les données — fini
+    // les « 4 ouvertures » avant de voir ses chiffres.
+    const pushAutorise = await peutSynchroniser();
     // Timeouts : sur réseau instable, une requête peut rester pendue et laisser
     // la sync « en cours » indéfiniment (icône cloud qui tourne sans fin).
-    await avecTimeout(pousserDonneesLocales(), 30000);
+    // Le PULL passe AVANT le push : le pull ne dépend pas du plan, et si on
+    // l'inversait (push d'abord), une panne réseau ou un timeout sur le push
+    // empêchait le pull de s'exécuter — l'app affichait 0 et il fallait
+    // fermer/rouvrir 4 fois pour que les données apparaissent.
     await avecTimeout(tirerDonneesDistantes(userId), 30000);
+    if (pushAutorise) await avecTimeout(pousserDonneesLocales(), 30000);
     signalerModificationDonnees();
     // Pré-télécharge les images (produits + logo) dans le cache disque : elles
     // restent visibles HORS LIGNE même après fermeture/redémarrage de l'app.

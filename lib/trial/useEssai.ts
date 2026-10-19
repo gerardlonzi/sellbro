@@ -119,7 +119,10 @@ export function useEssai(): EssaiInfo {
     };
   }, []);
 
-  const estPremium = planId === "premium";
+  // Tout plan payant (starter ou premium) donne l'accès complet « PRO » ;
+  // seules les fonctionnalités IA sont réservées au Premium (via les quotas
+  // du plan, pas via ce drapeau).
+  const estPremium = planId !== "gratuit";
   const statut = calculerStatut(estPremium, etat.actif);
   // Un abonné Pro est vérifié dès que son plan l'est : inutile de connaître
   // l'essai, qui ne le concerne pas. Pour les autres, il faut aussi savoir où

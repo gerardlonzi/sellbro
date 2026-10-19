@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { planEffectifIA } from "../_shared/accesIA.ts";
 
 Deno.serve(async (req) => {
   const authHeader = req.headers.get("Authorization");
@@ -8,9 +9,9 @@ Deno.serve(async (req) => {
   const { data: { user } } = await supabaseAdmin.auth.getUser(authHeader?.replace("Bearer ", ""));
   if (!user) return new Response(JSON.stringify({ erreur: "Non authentifié" }), { status: 401 });
 
-  // 2. Vérifier le plan et le quota AVANT de dépenser un appel OpenAI
-  const { data: planData } = await supabaseAdmin.from("plan_utilisateur").select("plan_id").eq("user_id", user.id).single();
-  const { data: plan } = await supabaseAdmin.from("plans").select("*").eq("id", planData?.plan_id ?? "gratuit").single();
+  // 2. Vérifier le plan et le quota AVANT de dépenser un appel OpenAI.
+  //    Essai actif → quotas Premium ; gratuit/starter hors essai → 0 → refusé.
+  const { quotaVocal } = await planEffectifIA(supabaseAdmin, user.id);
 
   const debutMois = new Date();
   debutMois.setDate(1);
@@ -21,7 +22,7 @@ Deno.serve(async (req) => {
     .eq("source", "vocal")
     .gte("created_at", debutMois.toISOString());
 
-  if ((vocauxUtilises ?? 0) >= plan.quota_vocal) {
+  if ((vocauxUtilises ?? 0) >= quotaVocal) {
     return new Response(JSON.stringify({ erreur: "quota_epuise" }), { status: 403 });
   }
 

@@ -5,6 +5,8 @@
 
 export type DocumentType = "sale" | "purchase" | "expense" | "payment" | "unknown";
 
+export type ErreurAnalyse = "quota" | "reseau" | "illisible";
+
 export interface ExtractedItem {
   rawName: string;
   quantity?: number | null;
@@ -38,6 +40,10 @@ export interface ExtractedDocument {
   expenses: ExtractedExpense[];
   notes?: string | null;
 }
+
+export type ResultatAnalyse =
+  | { ok: true; document: ExtractedDocument; scanId?: string }
+  | { ok: false; erreur: ErreurAnalyse };
 
 // ---------------------------------------------------------------------------
 // Matching produit

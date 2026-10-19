@@ -5,6 +5,7 @@ import { creerAchat } from "@/lib/achats/creerAchat";
 import { creerDepense } from "@/lib/depenses/creerDepense";
 import { enregistrerAlias } from "./aliases";
 import { enregistrerAuditScan, scanDejaEnregistre } from "./audit";
+import { enregistrerPaiementCreance } from "@/lib/creances/enregistrerPaiement";
 import { devinerCategorieDepense } from "./categories";
 import { Langue } from "@/lib/i18n";
 import { DocumentType, ExtractedDocument, LigneScannee } from "./types";
@@ -23,6 +24,8 @@ export type ChoixEnregistrement = {
   date: Date;
   clientNom?: string;
   fournisseurNom?: string;
+  creanceId?: string;
+  scanId?: string;
   langue: Langue;
 };
 
@@ -125,8 +128,17 @@ export async function enregistrerScan(choix: ChoixEnregistrement): Promise<Resul
         descriptionAudit: `Dépense scannée : ${dep.rawDescription}`,
       });
     }
+  } else if (typeChoisi === "payment") {
+    const montant = document.paidAmount ?? document.total ?? 0;
+    if (!choix.creanceId || montant <= 0) return "rien_a_enregistrer";
+    const resultat = await enregistrerPaiementCreance({
+      userId,
+      creanceId: choix.creanceId,
+      montant,
+      note: document.invoiceNumber ? `Reçu ${document.invoiceNumber}` : "Paiement scanné",
+    });
+    if (resultat !== "ok") return "rien_a_enregistrer";
   } else {
-    // payment / unknown : rien à créer automatiquement.
     return "rien_a_enregistrer";
   }
 
@@ -137,6 +149,7 @@ export async function enregistrerScan(choix: ChoixEnregistrement): Promise<Resul
     document,
     lignes: choix.lignes,
     statut: "validee",
+    scanId: choix.scanId,
     remoteIdsParProduitId: await remoteIdsParProduitId(userId).catch(() => new Map()),
   }).catch(() => {});
 

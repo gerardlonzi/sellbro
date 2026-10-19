@@ -18,6 +18,7 @@ import {
   StyleSheet,
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { supabase } from "@/lib/supabase/client";
@@ -170,9 +171,12 @@ export default function Paiement() {
     setChargement(true);
     setErreurInit(false);
     try {
+      // Plan choisi sur l'écran précédent (starter | premium) — le serveur
+      // facture le prix de CE plan et active CE plan après paiement.
+      const planChoisi = (await AsyncStorage.getItem("plan_choisi_en_attente")) === "starter" ? "starter" : "premium";
       const { data, error } = await avecTimeout(
         supabase.functions.invoke("create-saspay-checkout", {
-          body: { country: pays.code },
+          body: { country: pays.code, plan_id: planChoisi },
         }),
         20000
       );

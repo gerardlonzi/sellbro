@@ -98,7 +98,7 @@ export default function Dashboard() {
   const [brief, setBrief] = useState<MorningBrief | null>(null);
   const { showToast } = useToast();
   const {pret: planPret } = usePlanActuel();
-  const estPremium = planId === "premium";
+  const estPremium = planId !== "gratuit"; // tout plan payant (starter/premium) = accès « PRO »
 
 
 

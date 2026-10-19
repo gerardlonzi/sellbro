@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -9,8 +9,9 @@ import { useLangue, t } from "@/lib/i18n";
 import { useEssai } from "@/lib/trial/useEssai";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { demarrerOuVerifierEssaiGratuit } from "@/lib/trial/deviceTrial";
+import { chargerPlans } from "@/lib/plan/quotas";
 
-type PlanId = "gratuit" | "premium";
+type PlanId = "gratuit" | "starter" | "premium";
 
 export default function OnboardingPlan() {
   const { colors } = useTheme();
@@ -20,14 +21,23 @@ export default function OnboardingPlan() {
   const [planChoisi, setPlanChoisi] = useState<PlanId>("gratuit");
   const [chargement, setChargement] = useState(false);
 
-  // Le prix vient de la base (table plans via useEssai) — aucune valeur en dur.
+  // Le prix vient de la base (table plans) — aucune valeur en dur.
+  const [prixParPlan, setPrixParPlan] = useState<Partial<Record<PlanId, number | null>>>({});
+  useEffect(() => {
+    chargerPlans()
+      .then((plans) => setPrixParPlan({ starter: plans.starter?.prix ?? null, premium: plans.premium?.prix ?? null }))
+      .catch(() => {});
+  }, []);
+
   const PLANS: { id: PlanId; nomCle: string; prixCle: string; prixJourCle?: string; descCle: string; fonctionnalitesCle: string; populaire?: boolean }[] = [
-    { id: "gratuit", nomCle: "plan_gratuit_nom", prixCle: "plan_gratuit_prix", descCle: "plan_gratuit_description", fonctionnalitesCle: "plan_premium_fonctionnalites" },
+    { id: "gratuit", nomCle: "plan_gratuit_nom", prixCle: "plan_gratuit_prix", descCle: "plan_gratuit_description", fonctionnalitesCle: "plan_gratuit_fonctionnalites" },
+    { id: "starter", nomCle: "plan_starter_nom", prixCle: "plan_starter_prix", prixJourCle: "plan_starter_prix_jour", descCle: "plan_starter_description", fonctionnalitesCle: "plan_starter_fonctionnalites" },
     { id: "premium", nomCle: "plan_premium_nom", prixCle: "plan_premium_prix", prixJourCle: "plan_premium_prix_jour", descCle: "plan_premium_description", fonctionnalitesCle: "plan_premium_fonctionnalites", populaire: true },
   ];
 
   const TEXTE_BOUTON: Record<PlanId, string> = {
     gratuit: t("bouton_plan_gratuit", langue),
+    starter: t("bouton_plan_starter", langue),
     premium: t("bouton_plan_premium", langue),
   };
 
@@ -35,6 +45,7 @@ export default function OnboardingPlan() {
   // couleur, et le dégradé de fond suit le plan sélectionné.
   const teinteParPlan: Record<PlanId, string> = {
     gratuit: colors.accent,
+    starter: colors.accent,
     premium: colors.proFill,
   };
   const couleurDegrade = teinteParPlan[planChoisi];
@@ -92,16 +103,16 @@ export default function OnboardingPlan() {
                 {selectionne && <Feather name="check-circle" size={18} color={couleurAccentCarte} />}
               </View>
               <View style={styles.ligneBase}>
-                {plan.id === "premium" ? (
+                {/* Plans payants : prix depuis la table plans (starter et
+                    premium ont des prix différents). Gratuit : texte traduit. */}
+                {plan.id !== "gratuit" && prixParPlan[plan.id] != null ? (
                   <>
                     <Text style={{ fontSize: 20, fontWeight: "600", color: couleurAccentCarte }}>
-                      {essai.prix != null ? `${formater(essai.prix)} / ${t("mois_title", langue)}` : "…"}
+                      {formater(prixParPlan[plan.id] as number)} / {t("mois_title", langue)}
                     </Text>
-                    {essai.prix != null && (
-                      <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>
-                        (≈ {formater(Math.round(essai.prix / 30))} / {t("jour_title", langue)})
-                      </Text>
-                    )}
+                    <Text style={{ fontSize: 12, color: colors.textMuted, marginLeft: 6 }}>
+                      (≈ {formater(Math.round((prixParPlan[plan.id] as number) / 30))} / {t("jour_title", langue)})
+                    </Text>
                   </>
                 ) : (
                   <>

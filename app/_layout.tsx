@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, InteractionManager } from "react-native";
 import { Stack, router } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
@@ -73,8 +73,14 @@ function AppContent() {
 
   // Vérifie les alertes (stock faible / créances en retard) et planifie
   // une notification locale quotidienne — délivrée même app fermée.
+  // DIFFÉRÉ après le premier rendu : ce travail (requêtes DB + réseau +
+  // re-planification de notifications) tournait au montage et ralentissait
+  // visiblement le démarrage de l'app.
   useEffect(() => {
-    verifierAlertesEtNotifier();
+    const tache = InteractionManager.runAfterInteractions(() => {
+      verifierAlertesEtNotifier();
+    });
+    return () => tache.cancel();
   }, []);
 
   const [appReady, setAppReady] = useState(false);

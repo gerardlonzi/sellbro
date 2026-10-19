@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
 import { avecTimeout } from "@/lib/timeout";
 
-export type PlanId = "gratuit" | "premium";
+export type PlanId = "gratuit" | "starter" | "premium";
 
 export type Plan = {
   id: PlanId;
@@ -26,18 +26,30 @@ fournisseurs: boolean;
 depenses: boolean;
 };
 
-// Modèle 2 formules : « Essai gratuit » (toutes les fonctionnalités Premium,
-// limité dans le temps par le gate) et « Premium » (illimité).
-// Le blocage temporel de l'essai est géré par peutEcrire() / l'expiration,
-// PAS par des quotas — d'où des fonctionnalités identiques au Premium.
+// Modèle 3 formules :
+//  - « Gratuit » : après l'essai, sans abonnement. Quotas LIMITÉS (20 produits
+//    par défaut) — toutes les valeurs sont lues depuis la table `plans`, rien
+//    n'est figé ici : ces défauts ne servent qu'en hors ligne sans cache.
+//  - « Starter » : payant, quotas étendus (200 produits par défaut), SANS IA.
+//  - « Premium » : illimité + IA (scan de documents, vocal).
+// Le blocage temporel de l'essai est géré par peutEcrire() / l'expiration.
+// Pendant l'essai (plan « gratuit » + essai actif), les quotas produits et
+// créances ne s'appliquent pas : l'essai donne l'expérience Premium complète.
 export const PLANS_PAR_DEFAUT: Record<PlanId, Plan> = {
   gratuit: {
-    id: "gratuit", nom: "Essai gratuit", actif: true, prix: null, dureeEssaiJours: null, estEssaiGratuit: true,
-    quotaVocal: 300, quotaScan: 570, quotaProduits: null, quotaCreances: null,
+    id: "gratuit", nom: "Gratuit", actif: true, prix: null, dureeEssaiJours: null, estEssaiGratuit: true,
+    quotaVocal: 0, quotaScan: 0, quotaProduits: 20, quotaCreances: null,
     // Version gratuite : rapports limités à jour/semaine ; mois, semestre et
     // année affichent le paywall dans le dashboard.
     historiqueJours: null, rapportsMax: "semaine",
-    exportComptable: true, sauvegardeCloud: true, multiEmployes: true, supportPrioritaire: true,
+    exportComptable: false, sauvegardeCloud: false, multiEmployes: false, supportPrioritaire: false,
+    factures: true, fournisseurs: true, depenses: true,
+  },
+  starter: {
+    id: "starter", nom: "Starter", actif: true, prix: null, dureeEssaiJours: null, estEssaiGratuit: false,
+    quotaVocal: 0, quotaScan: 0, quotaProduits: 200, quotaCreances: null,
+    historiqueJours: null, rapportsMax: "mois",
+    exportComptable: true, sauvegardeCloud: true, multiEmployes: false, supportPrioritaire: false,
     factures: true, fournisseurs: true, depenses: true,
   },
   premium: {

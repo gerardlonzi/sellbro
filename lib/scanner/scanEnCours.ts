@@ -2,9 +2,9 @@ import { ExtractedDocument } from "./types";
 
 // Passage du document analysé entre l'écran caméra et l'écran de validation
 // (un objet structuré ne passe pas proprement dans les paramètres de route).
-let scanEnCours: { document: ExtractedDocument; imageUri: string } | null = null;
+let scanEnCours: { document: ExtractedDocument; imageUri: string; scanId?: string } | null = null;
 
-export function definirScanEnCours(scan: { document: ExtractedDocument; imageUri: string }) {
+export function definirScanEnCours(scan: { document: ExtractedDocument; imageUri: string; scanId?: string }) {
   scanEnCours = scan;
 }
 
