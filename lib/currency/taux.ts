@@ -12,6 +12,7 @@ import { avecTimeout } from "@/lib/timeout";
 
 // Taux de secours (fallback) si la config distante ET le cache sont absents.
 export const TAUX_DEPUIS_FCFA: Record<string, number> = {
+  // Afrique
   XAF: 1,
   XOF: 1,
   CDF: 5.0,
@@ -24,13 +25,117 @@ export const TAUX_DEPUIS_FCFA: Record<string, number> = {
   TZS: 4.6759,
   UGX: 6.4,
   ZMW: 0.04,
-};
+  ETB: 0.095,
+  SLE: 0.035,
+  SOS: 0.95, // Somalie (SOS)
+  ZAR: 0.032,
+  MAD: 0.017,
+  DZD: 0.22,
+  TND: 0.0052,
+  EGP: 0.082,
+  AOA: 1.45,
+  BIF: 5.8,
+  CVE: 0.17,
+  KMF: 0.75,
+  DJF: 0.29,
+  ERN: 0.024,
+  SZL: 0.032,
+  GMD: 0.11,
+  LSL: 0.032,
+  LRD: 0.28,
+  LYD: 0.0076,
+  MRO: 0.060,
+  MZN: 0.10,
+  NAD: 0.032,
+  STN: 0.0039,
+  SCR: 0.018,
+  SDG: 0.95,
+  ZWD: 3.8,
 
-// Devise par pays (code ISO) — uniquement les pays supportés par SasPay.
+  // International / Global / USD / Crypto / Autres devises de la liste
+  USD: 0.0016,
+  EUR: 0.0015,
+  GBP: 0.0013,
+  CAD: 0.0022,
+  BRL: 0.0092,
+  INR: 0.134,
+  CNY: 0.011,
+  JPY: 0.24,
+  AUD: 0.0024,
+  NZD: 0.0026,
+  CHF: 0.0014,
+  AED: 0.0059,
+  SAR: 0.0060,
+  QAR: 0.0058,
+  XCD: 0.0043,
+  XPF: 0.18,
+};// Devise par pays (code ISO) — uniquement les pays supportés par SasPay.
 export const DEVISES_PAR_PAYS: Record<string, string> = {
-  BF: "XOF", BJ: "XOF", CD: "CDF", CI: "XOF", CM: "XAF", GH: "GHS",
-  GN: "GNF", KE: "KES", ML: "XOF", MW: "MWK", NE: "XOF", NG: "NGN",
-  RW: "RWF", SN: "XOF", TG: "XOF", TZ: "TZS", UG: "UGX", ZM: "ZMW",
+  // Afrique
+  CM: "XAF", CG: "XAF", GA: "XAF", CF: "XAF", TD: "XAF", GQ: "XAF",
+  BF: "XOF", BJ: "XOF", CI: "XOF", ML: "XOF", NE: "XOF", SN: "XOF", TG: "XOF", GW: "XOF",
+  CD: "CDF", 
+  GH: "GHS",
+  GN: "GNF", 
+  KE: "KES", 
+  MW: "MWK", 
+  NG: "NGN",
+  RW: "RWF", 
+  TZ: "TZS", 
+  UG: "UGX", 
+  ZM: "ZMW",
+  SO: "SOS", // Somalie
+  ET: "ETB", 
+  SL: "SLE", 
+  MA: "MAD", 
+  DZ: "DZD", 
+  TN: "TND",
+  EG: "EGP", ZA: "ZAR", AO: "AOA", BI: "BIF", CV: "CVE",
+  KM: "KMF", DJ: "DJF", ER: "ERN", SZ: "SZL", GM: "GMD",
+  LS: "LSL", LR: "LRD", LY: "LYD", MR: "MRO", MU: "MUR",
+  MZ: "MZN", NA: "NAD", SC: "SCR", SDG: "SDG", ST: "STN",
+  ZW: "ZWD",
+
+  // Amériques
+  US: "USD", CA: "CAD", BR: "BRL", MX: "MXN", AR: "ARS",
+  CL: "CLP", CO: "COP", PE: "PEN", VE: "VES", UY: "UYU",
+  PY: "PYG", BO: "BOB", EC: "USD", CR: "CRC", CU: "CUP",
+  DO: "DOP", GT: "GTQ", HT: "HTG", HN: "HNL", NI: "NIO",
+  PA: "PAB", SV: "USD", BS: "BSD", BB: "BBD", BZD: "BZD",
+  DM: "XCD", GD: "XCD", GY: "GYD", JM: "JMD", KN: "XCD",
+  LC: "XCD", VC: "XCD", SR: "SRD", TT: "TTD",
+
+  // Europe
+  FR: "EUR", DE: "EUR", ES: "EUR", IT: "EUR", PT: "EUR",
+  BE: "EUR", NL: "EUR", AT: "EUR", FI: "EUR", IE: "EUR",
+  GR: "EUR", CY: "EUR", EE: "EUR", LV: "EUR", LT: "EUR",
+  LU: "EUR", MT: "EUR", SK: "EUR", SI: "EUR", HR: "EUR",
+  GB: "GBP", CH: "CHF", NO: "NOK", DK: "DKK", SE: "SEK",
+  PL: "PLN", RO: "RON", CZ: "CZK", HU: "HUF", UA: "UAH",
+  RU: "RUB", BY: "BYN", MD: "MDL", BA: "BAM", RS: "RSD",
+  ME: "EUR", AL: "ALL", MK: "MKD", BG: "BGN", IS: "ISK",
+  MC: "EUR", SM: "EUR", VA: "EUR", AD: "EUR", LI: "CHF",
+
+  // Asie & Moyen-Orient
+  CN: "CNY", IN: "INR", JP: "JPY", KR: "KRW", ID: "IDR",
+  PK: "PKR", BD: "BDT", PH: "PHP", VN: "VND", IR: "IRR",
+  TR: "TRY", TH: "THB", MM: "MMK", IQ: "IQD", SA: "SAR",
+  UZ: "UZS", MY: "MYR", YE: "YER", NPR: "NPR", KP: "KPW",
+  LK: "LKR", KZ: "KZT", SY: "SYP", KH: "KHR", JO: "JOD",
+  AZ: "AZN", AE: "AED", TJ: "TJS", IL: "ILS", LA: "LAK",
+  LB: "LBP", KG: "KGS", TMT: "TMT", SG: "SGD", PS: "ILS",
+  KW: "KWD", OM: "OMR", QA: "QAR", BH: "BHD", TL: "USD",
+  MN: "MNT", AM: "AMD", GE: "GEL", BND: "BND", BTN: "BTN",
+  MVR: "MVR",
+
+  // Océanie
+  AU: "AUD", NZ: "NZD", PG: "PGK", FJ: "FJD", SB: "SBD",
+  VU: "VUV", WS: "WST", KI: "AUD", FM: "USD", MH: "USD",
+  NR: "AUD", PW: "USD", TO: "TOP", TV: "AUD",
+  
+  // Cas spéciaux UI (Somalie/Crypto)
+  XC: "USD",
+  XY: "USD"
 };
 
 const CLE_CACHE = "taux_conversion_cache";
