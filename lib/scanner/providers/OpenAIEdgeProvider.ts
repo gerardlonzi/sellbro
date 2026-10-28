@@ -15,7 +15,7 @@ export class OpenAIEdgeProvider implements DocumentAIProvider {
   }): Promise<ResultatAnalyse> {
     try {
       const { data: { session } } = await avecTimeout(supabase.auth.getSession(), 5000);
-      if (!session) return { ok: false, erreur: "reseau" };
+      if (!session) return { ok: false, erreur: "hors_ligne" };
 
       const { data, error } = await avecTimeout(
         supabase.functions.invoke("analyser-document", {
@@ -29,20 +29,35 @@ export class OpenAIEdgeProvider implements DocumentAIProvider {
         60000
       );
 
-      const code = (data as any)?.error ?? (error as any)?.context?.body?.error;
-      if (code === "quota_epuise" || (error as any)?.status === 403) {
-        return { ok: false, erreur: "quota" };
-      }
-      if (error || !(data as any)?.document) return { ok: false, erreur: "reseau" };
+      if (error) return { ok: false, erreur: await classerErreur(error) };
+      if (!(data as any)?.document) return { ok: false, erreur: "serveur" };
       return {
         ok: true,
         document: normaliserDocument((data as any).document),
         scanId: typeof (data as any).scanId === "string" ? (data as any).scanId : undefined,
       };
-    } catch {
-      return { ok: false, erreur: "reseau" };
+    } catch (e: any) {
+      // Délai dépassé ou coupure : c'est un problème de connexion, pas de photo.
+      console.warn("analyser-document :", e?.message ?? e);
+      return { ok: false, erreur: "hors_ligne" };
     }
   }
+}
+
+// Transforme l'erreur de supabase.functions.invoke en cause RÉELLE.
+// FunctionsHttpError : le corps JSON de la fonction est dans error.context (Response).
+export async function classerErreur(error: any): Promise<"quota" | "reserve" | "hors_ligne" | "serveur" | "session"> {
+  if (error?.name === "FunctionsFetchError") return "hors_ligne";
+  let corps: any = null;
+  try {
+    corps = await error?.context?.json?.();
+  } catch {}
+  const code = corps?.error ?? corps?.erreur;
+  if (code === "reserve_premium") return "reserve";
+  if (code === "quota_epuise") return "quota";
+  if (code === "non_authentifie") return "session";
+  console.warn("Erreur fonction IA :", error?.name, error?.context?.status, code);
+  return "serveur";
 }
 
 function normaliserDocument(brut: any): ExtractedDocument {
@@ -86,12 +101,14 @@ function normaliserDocument(brut: any): ExtractedDocument {
           }))
       : [],
     notes: texteOuNull(brut?.notes),
+    imageIssue: ["none", "blurry", "dark", "cropped", "not_a_document"].includes(brut?.imageIssue) ? brut.imageIssue : "none",
   };
 }
 
 export class CloudSpeechProvider implements SpeechToTextProvider {
   async transcrire(input: { audioUri: string }): Promise<string | null> {
     const { transcrireAudio } = await import("@/lib/ai/voice");
-    return transcrireAudio(input.audioUri);
+    const r = await transcrireAudio(input.audioUri);
+    return r.ok ? r.texte : null;
   }
 }

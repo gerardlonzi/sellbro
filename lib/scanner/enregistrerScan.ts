@@ -17,7 +17,11 @@ import { DocumentType, ExtractedDocument, LigneScannee } from "./types";
 
 export type ChoixEnregistrement = {
   userId: string;
+  // Document tel que MODIFIÉ par l'utilisateur (c'est lui qui crée l'opération).
   document: ExtractedDocument;
+  // Document tel que lu par l'IA : sert à l'anti-doublon et à l'audit, pour
+  // que la clé d'idempotence ne change pas quand l'utilisateur corrige un montant.
+  documentOriginal?: ExtractedDocument;
   // Type finalement choisi par l'utilisateur (peut différer de l'IA).
   typeChoisi: DocumentType;
   lignes: LigneScannee[];
@@ -26,6 +30,8 @@ export type ChoixEnregistrement = {
   fournisseurNom?: string;
   creanceId?: string;
   scanId?: string;
+  // « scan_facture » (photo) ou « vocal » : tracé dans la vente/l'achat créé.
+  source?: string;
   langue: Langue;
 };
 
@@ -59,10 +65,11 @@ async function apprendreAlias(userId: string, lignes: LigneScannee[]): Promise<v
 
 export async function enregistrerScan(choix: ChoixEnregistrement): Promise<ResultatEnregistrement> {
   const { userId, document, typeChoisi, langue } = choix;
+  const reference = choix.documentOriginal ?? document;
   const lignesActives = choix.lignes.filter((l) => !l.ignoree);
 
   // Anti-doublon (§19) : la même facture ne doit jamais créer deux opérations.
-  if (await scanDejaEnregistre(userId, document)) return "doublon";
+  if (await scanDejaEnregistre(userId, reference)) return "doublon";
 
   const restant = document.remainingAmount ?? null;
   const aCredit = restant != null && restant > 0;
@@ -81,7 +88,7 @@ export async function enregistrerScan(choix: ChoixEnregistrement): Promise<Resul
       modePaiement: aCredit ? "credit" : "cash",
       montantRestantCredit: aCredit ? restant : null,
       date: choix.date,
-      source: "scan_facture",
+      source: choix.source ?? "scan_facture",
     });
   } else if (typeChoisi === "purchase") {
     const lignesStock = lignesActives
@@ -105,7 +112,7 @@ export async function enregistrerScan(choix: ChoixEnregistrement): Promise<Resul
       lignes: lignesStock.length > 0 ? lignesStock : undefined,
       description: document.invoiceNumber ? `Facture ${document.invoiceNumber}` : undefined,
       date: choix.date,
-      source: "scan_facture",
+      source: choix.source ?? "scan_facture",
     });
   } else if (typeChoisi === "expense") {
     // Une dépense par ligne de charge lue ; à défaut, une dépense au total.
@@ -146,7 +153,7 @@ export async function enregistrerScan(choix: ChoixEnregistrement): Promise<Resul
   await apprendreAlias(userId, lignesActives).catch(() => {});
   await enregistrerAuditScan({
     userId,
-    document,
+    document: reference,
     lignes: choix.lignes,
     statut: "validee",
     scanId: choix.scanId,
