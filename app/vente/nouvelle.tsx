@@ -1,7 +1,13 @@
+import { BarreFixe } from "@/components/BarreFixe";
+import { sauverPreference } from "@/lib/preferences/prefs";
 import { useState, useRef, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Linking, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Modal, Linking, KeyboardAvoidingView, Platform } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router } from "expo-router";
+import { ouvrirOutilIA } from "@/lib/ia/ouvrirOutilIA";
+import { IconeIA } from "@/components/IconeIA";
+import { useAccesIA } from "@/lib/ia/useAccesIA";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -35,6 +41,7 @@ type LigneVente = { produitId: string | null; nom: string; quantite: number; pri
 type Client = { nom: string; telephone: string | null };
 
 export default function NouvelleVente() {
+  const { accesScan, accesVocal } = useAccesIA();
   const { colors } = useTheme();
   const { langue } = useLangue();
   const { showToast } = useToast();
@@ -70,7 +77,7 @@ export default function NouvelleVente() {
   function basculerModeSelecteur() {
     setModeAffichageSelecteur((actuel) => {
       const prochain = actuel === "grille" ? "liste" : "grille";
-      AsyncStorage.setItem(CLE_MODE_SELECTEUR, prochain).catch(() => {});
+      sauverPreference(CLE_MODE_SELECTEUR, prochain).catch(() => {});
       return prochain;
     });
   }
@@ -279,7 +286,7 @@ export default function NouvelleVente() {
     }
 
     if (clientTelephone.trim()) {
-      const validation = validerTelephone(clientTelephone.trim(), pays);
+      const validation = validerTelephone(clientTelephone.trim(), pays, langue);
       if (!validation.valide) {
         showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
         return;
@@ -324,7 +331,7 @@ export default function NouvelleVente() {
   // Envoi du reçu : le numéro est obligatoire ici (le client doit pouvoir
   // recevoir le message). Le nom reste facultatif.
   async function envoyerRecu() {
-    const validation = validerTelephone(recuTelephone.trim(), pays);
+    const validation = validerTelephone(recuTelephone.trim(), pays, langue);
     if (!validation.valide) {
       showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
       return;
@@ -345,8 +352,8 @@ export default function NouvelleVente() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <EnteteEcran titre={t("vente_nouvelle_titre", langue)} onRetour={() => router.back()} />
 
       {panier.length === 0 && (
@@ -394,22 +401,26 @@ export default function NouvelleVente() {
         </View>
       ))}
 
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <Pressable onPress={ouvrirSelecteurProduit} style={[styles.boutonAjouterProduit, { borderColor: colors.accent, flex: 1 }]}>
-          <Feather name="plus" size={15} color={colors.accent} />
-          <Text style={{ color: colors.accent, fontSize: 13 }}>{t("vente_ajouter_produit", langue)}</Text>
-        </Pressable>
-        <Pressable onPress={ouvrirScanner} style={[styles.boutonAjouterProduit, { borderColor: colors.accent, flex: 1 }]}>
-          <MaterialCommunityIcons name="barcode-scan" size={15} color={colors.accent} />
-          <Text style={{ color: colors.accent, fontSize: 13 }}>{t("vente_scanner", langue)}</Text>
-        </Pressable>
+      {/* Quatre actions d'ajout alignées en tuiles égales : produit, code-barres, vente vocale IA, scan IA. */}
+      <View style={styles.rangeeTuiles}>
+        {[
+          { cle: "p", texte: t("vente_ajouter_produit", langue), onPress: ouvrirSelecteurProduit, icone: <Feather name="plus-circle" size={20} color={colors.accent} />, accent: true },
+          { cle: "b", texte: t("vente_scanner", langue), onPress: ouvrirScanner, icone: <MaterialCommunityIcons name="barcode-scan" size={20} color={colors.accent} />, accent: true },
+          { cle: "v", texte: t("fab_vente_vocale", langue), onPress: () => ouvrirOutilIA("/vente/vocal", accesVocal, langue), icone: <IconeIA type="vocal" taille={20} couleur={colors.textPrimary} />, accent: false },
+          { cle: "s", texte: t("fab_scanner_facture", langue), onPress: () => ouvrirOutilIA("/scan-facture", accesScan, langue), icone: <IconeIA type="scan" taille={20} couleur={colors.textPrimary} />, accent: false },
+        ].map((x) => (
+          <Pressable
+            key={x.cle}
+            onPress={x.onPress}
+            style={[styles.tuile, { backgroundColor: x.accent ? colors.accentBg : colors.surface, borderColor: x.accent ? colors.accent : colors.border }]}
+          >
+            {x.icone}
+            <Text numberOfLines={2} style={{ color: x.accent ? colors.accent : colors.textPrimary, fontSize: 11, fontWeight: "600", textAlign: "center", marginTop: 6 }}>{x.texte}</Text>
+          </Pressable>
+        ))}
       </View>
 
-      {panier.length > 0 && (
-        <View style={[styles.bandeauTotal, { backgroundColor: colors.accentBg }]}>
-          <Text style={{ color: colors.accent, fontSize: 14, fontWeight: "600" }}>{t("vente_total", langue)} : {formater(total)}</Text>
-        </View>
-      )}
+
 
       <Text style={styles.label}>{t("vente_client_facultatif", langue)}</Text>
       <View style={styles.ligneChampBouton}>
@@ -727,17 +738,25 @@ export default function NouvelleVente() {
       </Modal>
     </ScrollView>
 
-      <View style={{ flexDirection: "row", gap: 10, padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
-        <Pressable onPress={() => sauvegarder(false)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.accent, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
-          <Feather name="check" size={16} color="#fff" />
-          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_enregistrer", langue)}</Text>
-        </Pressable>
-        <Pressable onPress={() => sauvegarder(true)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.proFill, flex: 1, opacity: chargement ? 0.6 : 1 }]}>
-          <Feather name="file-text" size={16} color="#fff" />
-          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_generer_facture", langue)}</Text>
-        </Pressable>
-      </View>
-    </View>
+      <BarreFixe style={{ padding: 14, paddingBottom: 22, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+        {panier.length > 0 && (
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("vente_total", langue)}</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "800" }}>{formater(total)}</Text>
+          </View>
+        )}
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <Pressable onPress={() => sauvegarder(false)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.accent, flex: 1, marginTop: 0, opacity: chargement ? 0.6 : 1 }]}>
+            <Feather name="check" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_enregistrer", langue)}</Text>
+          </Pressable>
+          <Pressable onPress={() => sauvegarder(true)} disabled={chargement} style={[styles.boutonSauver, { backgroundColor: colors.proFill, flex: 1, marginTop: 0, opacity: chargement ? 0.6 : 1 }]}>
+            <Feather name="file-text" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("vente_generer_facture", langue)}</Text>
+          </Pressable>
+        </View>
+      </BarreFixe>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -751,6 +770,8 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: "row", alignItems: "center", justifyContent: "center", alignSelf: "center", gap: 4, marginTop: 10, borderRadius: 24, padding: 4 },
   boutonStepper: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   boutonQte: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
+  rangeeTuiles: { flexDirection: "row", gap: 8, marginTop: 16, marginBottom: 16 },
+  tuile: { flex: 1, minHeight: 74, borderWidth: 1, borderRadius: 14, paddingHorizontal: 4, paddingVertical: 10, alignItems: "center", justifyContent: "center" },
   boutonAjouterProduit: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderStyle: "dashed", borderRadius: 8, paddingVertical: 11, marginTop: 20, marginBottom: 14 },
   bandeauTotal: { padding: 12, borderRadius: 10, marginBottom: 16, alignItems: "center" },
   ligneChampBouton: { flexDirection: "row", gap: 8, marginBottom: 14 },
@@ -773,8 +794,9 @@ const styles = StyleSheet.create({
   boutonConfirmer: { paddingVertical: 13, borderRadius: 10, alignItems: "center", marginTop: 12 },
   scannerOverlay: { flex: 1, justifyContent: "space-between", padding: 16, paddingTop: 50, paddingBottom: 40 },
   scannerEntete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  scannerCadre: { width: 280, height: 160, borderWidth: 2, borderColor: "#fff", borderRadius: 8, borderStyle: "dashed", alignSelf: "center" },
-  scannerAide: { color: "#fff", fontSize: 12, marginTop: 12, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, alignSelf: "center" },
+  // Cadre très large (quasi plein écran) : le code est lu partout dans l'image.
+  scannerCadre: { flex: 1, alignSelf: "stretch", marginVertical: 18, borderWidth: 2, borderColor: "rgba(255,255,255,0.85)", borderRadius: 22 },
+  scannerAide: { color: "#fff", fontSize: 13, fontWeight: "600", marginTop: 0, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, alignSelf: "center" },
   overlayResultatScan: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", padding: 24 },
   carteResultatScan: { width: "100%", maxWidth: 340, borderRadius: 16, padding: 20, alignItems: "center" },
   boutonResultatScan: { alignSelf: "stretch", paddingVertical: 12, borderRadius: 8, alignItems: "center", justifyContent: "center", marginTop: 10 },
