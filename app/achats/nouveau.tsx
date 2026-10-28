@@ -1,5 +1,7 @@
+import { BarreFixe } from "@/components/BarreFixe";
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Modal, KeyboardAvoidingView, Platform } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -81,7 +83,7 @@ export default function NouvelAchat() {
       return;
     }
     if (nouveauFournisseurTel.trim()) {
-      const validation = validerTelephone(nouveauFournisseurTel.trim(), pays);
+      const validation = validerTelephone(nouveauFournisseurTel.trim(), pays, langue);
       if (!validation.valide) {
         showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
         return;
@@ -161,8 +163,8 @@ export default function NouvelAchat() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <EnteteEcran titre={t("achats_titre", langue)} onRetour={() => router.back()} />
 
       {/* Fournisseur : sélection dans la liste existante via un sélecteur,
@@ -304,13 +306,13 @@ export default function NouvelAchat() {
       </Modal>
     </ScrollView>
 
-      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+      <BarreFixe style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
         <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
           <Feather name="check" size={16} color="#fff" />
           <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("achats_enregistrer", langue)}</Text>
         </Pressable>
-      </View>
-    </View>
+      </BarreFixe>
+    </KeyboardAvoidingView>
   );
 }
 
