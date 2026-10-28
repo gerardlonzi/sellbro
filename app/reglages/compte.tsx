@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router } from "expo-router";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
