@@ -1,3 +1,4 @@
+import { sauverPreference } from "@/lib/preferences/prefs";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -32,7 +33,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   function setMode(nouveau: ThemeMode) {
     setModeState(nouveau);
-    AsyncStorage.setItem(CLE_THEME, nouveau).catch(() => {});
+    sauverPreference(CLE_THEME, nouveau).catch(() => {});
   }
 
   const isDark = mode === "auto" ? systemScheme === "dark" : mode === "sombre";

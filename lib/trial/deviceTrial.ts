@@ -22,6 +22,10 @@ export async function obtenirIdentifiantAppareil(): Promise<string> {
 // restants à perpétuité.
 export type EtatEssai = { actif: boolean; joursRestants: number; dateFin: string | null; connu: boolean };
 
+// Le cache appartient à UN compte. Sans ça, un compte neuf créé sur le même
+// téléphone héritait de l'état « terminé » du compte précédent.
+type CacheEssai = EtatEssai & { userId?: string | null };
+
 // Cache local : permet d'appliquer les sanctions MÊME HORS LIGNE.
 // La date de fin provient du SERVEUR (jamais de la date du téléphone),
 // donc l'utilisateur ne peut pas l'étendre en reculant sa date.
@@ -29,8 +33,12 @@ async function lireCache(): Promise<EtatEssai | null> {
   try {
     const brut = await AsyncStorage.getItem(CLE_ESSAI);
     if (!brut) return null;
+    const cache = JSON.parse(brut) as CacheEssai;
+    // Cache d'un autre compte (ou ancien cache sans propriétaire) : on l'ignore.
+    const userId = await obtenirUserId();
+    if (!userId || cache.userId !== userId) return null;
     // Un cache écrit vient toujours d'une réponse serveur : c'est une connaissance.
-    return { ...(JSON.parse(brut) as EtatEssai), connu: true };
+    return { ...cache, connu: true };
   } catch {
     return null;
   }
@@ -38,7 +46,8 @@ async function lireCache(): Promise<EtatEssai | null> {
 
 async function ecrireCache(etat: EtatEssai) {
   try {
-    await AsyncStorage.setItem(CLE_ESSAI, JSON.stringify(etat));
+    const userId = await obtenirUserId();
+    await AsyncStorage.setItem(CLE_ESSAI, JSON.stringify({ ...etat, userId }));
   } catch {}
 }
 

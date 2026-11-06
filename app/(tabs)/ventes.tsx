@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef } from "react";
-import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Apparition, PressableAnime } from "@/components/anim";
+import { ombre } from "@/components/UI";
+import { LinearGradient } from "expo-linear-gradient";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -14,6 +19,8 @@ import { BoutonFlottant } from "@/components/BoutonFlottant";
 import { AvatarNom } from "@/components/AvatarNom";
 import { creerFactureDepuisVentes } from "@/lib/factures/creerFacture";
 import { supprimerEnregistrement } from "@/lib/database/supprimer";
+import { ouvrirOutilIA } from "@/lib/ia/ouvrirOutilIA";
+import { useAccesIA } from "@/lib/ia/useAccesIA";
 import { versionDonnees } from "@/lib/dataVersion";
 
 type Vente = { id: string; quantite: number; prixUnitaire: number; produitNom: string | null; clientNom: string | null; source: string; creeLe: Date; imageUri: string | null };
@@ -23,7 +30,8 @@ export default function Ventes() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const { showToast } = useToast();
-  const { formater } = useCurrency();
+  const { formaterCompact } = useCurrency();
+  const { accesScan, accesVocal } = useAccesIA();
   const [recherche, setRecherche] = useState("");
   const [rechercheOuverte, setRechercheOuverte] = useState(false);
   const [ventes, setVentes] = useState<Vente[]>([]);
@@ -116,6 +124,27 @@ export default function Ventes() {
   );
   const total = filtrees.reduce((s, v) => s + v.quantite * v.prixUnitaire, 0);
 
+  // Regroupement par jour : « Aujourd'hui », « Hier », puis la date.
+  const groupes: { cle: string; libelle: string; total: number; items: Vente[] }[] = [];
+  {
+    const auj = new Date(); auj.setHours(0, 0, 0, 0);
+    const hier = new Date(auj); hier.setDate(hier.getDate() - 1);
+    for (const v of filtrees) {
+      const j = new Date(v.creeLe); j.setHours(0, 0, 0, 0);
+      const cle = j.toISOString().slice(0, 10);
+      let g = groupes.find((x) => x.cle === cle);
+      if (!g) {
+        const libelle = j.getTime() === auj.getTime() ? t("groupe_aujourdhui", langue)
+          : j.getTime() === hier.getTime() ? t("groupe_hier", langue)
+          : j.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US", { weekday: "long", day: "numeric", month: "long" });
+        g = { cle, libelle, total: 0, items: [] };
+        groupes.push(g);
+      }
+      g.items.push(v);
+      g.total += v.quantite * v.prixUnitaire;
+    }
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
       <View style={styles.entete}>
@@ -123,7 +152,7 @@ export default function Ventes() {
          <Pressable onPress={() => router.push("/reglages")} hitSlop={10}>
             <Feather name="menu" size={22} color={colors.textPrimary} />
           </Pressable>
-          <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("tab_ventes", langue)}</Text>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>{t("tab_ventes", langue)}</Text>
 
 
         </View>
@@ -168,6 +197,7 @@ export default function Ventes() {
               styles.recherche,
               {
                 borderColor: colors.border,
+                backgroundColor: colors.surface,
                 color: colors.textPrimary,
                 flex: 1,
                 marginBottom: 0,
@@ -196,66 +226,86 @@ export default function Ventes() {
 
 
       {!chargement && filtrees.length > 0 && !modeSelection && (
-        <View style={[styles.bandeauTotal, { backgroundColor: colors.accentBg }]}>
-          <Text style={{ color: colors.accent, fontSize: 12 }}>{t("commandes_total", langue)} : {formater(total)} ({filtrees.length})</Text>
-        </View>
+        <Apparition>
+          <LinearGradient colors={[colors.accentClair, colors.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.resume}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" }}>{t("commandes_total", langue)}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: "#fff", fontSize: 24, fontWeight: "800", marginTop: 2 }}>{formaterCompact(total)}</Text>
+            </View>
+            <View style={styles.resumeNb}>
+              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "800" }}>{filtrees.length}</Text>
+              <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 10.5 }}>{t("dash_unite_ventes", langue)}</Text>
+            </View>
+          </LinearGradient>
+        </Apparition>
       )}
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : filtrees.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="shopping-bag" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: "center" }}>{t("commandes_vide", langue)}</Text>
-        </View>
+        <EtatVide
+          icone="shopping-bag"
+          titre={t("commandes_vide", langue)}
+          texte={t("vide_ventes_texte", langue)}
+          actionLibelle={t("vide_action_vente", langue)}
+          onAction={() => router.push("/vente/nouvelle")}
+        />
       ) : (
         <ScrollView   contentContainerStyle={styles.contenu}
 >
-          {filtrees.map((v) => {
-            const selectionnee = selectionnees.has(v.id);
-            return (
-              <Pressable
-                key={v.id}
-                onPress={() => (modeSelection ? basculerSelection(v.id) : router.push(`/transaction/${v.id}`))}
-                style={[styles.ligne, { borderBottomColor: colors.border }]}
-              >
-                {modeSelection && (
-                  <View style={[styles.checkbox, { borderColor: selectionnee ? colors.accent : colors.border, backgroundColor: selectionnee ? colors.accent : "transparent" }]}>
-                    {selectionnee && <Feather name="check" size={12} color="#fff" />}
-                  </View>
-                )}
-                <View style={styles.ligneGauche}>
-                  {/* Image du produit vendu (initiales en repli). L'icône de la
-                      source (vocal/scan/manuel) reste visible en pastille. */}
-                  <AvatarNom nom={v.produitNom ?? v.clientNom ?? "?"} imageUri={v.imageUri} taille={38} />
-                  <View>
-                    <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>
-                      {v.produitNom ? `${v.produitNom} ×${v.quantite}` : v.clientNom ?? "—"}
-                    </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Feather name={ICONES_SOURCE[v.source] ?? "edit-3"} size={10} color={colors.textMuted} />
-                      <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                        {v.clientNom ? `${v.clientNom} · ` : ""}{v.creeLe.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}
+          {groupes.map((g, gi) => (
+            <View key={g.cle}>
+              <View style={styles.enteteGroupe}>
+                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700", letterSpacing: 0.6, textTransform: "uppercase", flex: 1 }}>{g.libelle}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700" }}>{formaterCompact(g.total)}</Text>
+              </View>
+              {g.items.map((v, i) => {
+                const selectionnee = selectionnees.has(v.id);
+                return (
+                  <Apparition key={v.id} delai={Math.min(gi * 3 + i, 8) * 40} depuis={10}>
+                    <PressableAnime
+                      onPress={() => (modeSelection ? basculerSelection(v.id) : router.push(`/transaction/${v.id}`))}
+                      echelle={0.98}
+                      style={[styles.carteVente, { backgroundColor: colors.surface, borderColor: selectionnee ? colors.accent : colors.border }, ombre(colors, 1)]}
+                    >
+                      {modeSelection && (
+                        <View style={[styles.checkbox, { borderColor: selectionnee ? colors.accent : colors.border, backgroundColor: selectionnee ? colors.accent : "transparent" }]}>
+                          {selectionnee && <Feather name="check" size={12} color="#fff" />}
+                        </View>
+                      )}
+                      <AvatarNom nom={v.produitNom ?? v.clientNom ?? "?"} imageUri={v.imageUri} taille={42} />
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "700" }}>
+                          {v.produitNom ? `${v.produitNom} ×${v.quantite}` : v.clientNom ?? "—"}
+                        </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 }}>
+                          <View style={[styles.pastilleSource, { backgroundColor: colors.accentBg }]}>
+                            <Feather name={ICONES_SOURCE[v.source] ?? "edit-3"} size={10} color={colors.accent} />
+                          </View>
+                          <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 11.5, flexShrink: 1 }}>
+                            {v.clientNom ? `${v.clientNom} · ` : ""}{v.creeLe.toLocaleTimeString(langue === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" })}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "800" }}>
+                        {formaterCompact(v.quantite * v.prixUnitaire)}
                       </Text>
-                    </View>
-                  </View>
-                </View>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: modeSelection ? 0 : 10 }}>
-                  {formater(v.quantite * v.prixUnitaire)}
-                </Text>
-                {!modeSelection && (
-                  <MenuContextuel actions={[{
-                    label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true,
-                    onPress: async () => {
-                      const enreg = await database.get("ventes").find(v.id);
-                      await database.write(async () => { await supprimerEnregistrement("ventes", enreg as any); });
-                      charger();
-                    },
-                  }]} />
-                )}
-              </Pressable>
-            );
-          })}
+                      {!modeSelection && (
+                        <MenuContextuel actions={[{
+                          label: t("categories_supprimer_confirmer", langue), icone: "trash-2", destructif: true,
+                          onPress: async () => {
+                            const enreg = await database.get("ventes").find(v.id);
+                            await database.write(async () => { await supprimerEnregistrement("ventes", enreg as any); });
+                            charger();
+                          },
+                        }]} />
+                      )}
+                    </PressableAnime>
+                  </Apparition>
+                );
+              })}
+            </View>
+          ))}
         </ScrollView>
       )}
 
@@ -271,7 +321,13 @@ export default function Ventes() {
           </Text>
         </Pressable>
       ) : (
-        <BoutonFlottant onPress={() => router.push("/vente/nouvelle")} />
+        <BoutonFlottant
+          actions={[
+            { icone: "edit-3", libelle: t("fab_vente_manuelle", langue), onPress: () => router.push("/vente/nouvelle") },
+            { icone: "mic", ia: "vocal", libelle: t("fab_vente_vocale", langue), verrouille: !accesVocal, onPress: () => ouvrirOutilIA("/vente/vocal", accesVocal, langue) },
+            { icone: "camera", ia: "scan", libelle: t("fab_scanner_facture", langue), verrouille: !accesScan, onPress: () => ouvrirOutilIA("/scan-facture", accesScan, langue) },
+          ]}
+        />
       )}
     </View>
   );
@@ -282,7 +338,7 @@ const styles = StyleSheet.create({
   boutonEntete: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -290,9 +346,10 @@ const styles = StyleSheet.create({
 
   recherche: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 14,
     height: "100%",
-    fontSize: 13,
+    fontSize: 14,
+    paddingLeft: 14,
   },
 
   conteneurRecherche: {
@@ -311,6 +368,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  resume: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 20, marginBottom: 6 },
+  resumeNb: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
+  enteteGroupe: { flexDirection: "row", alignItems: "center", marginTop: 16, marginBottom: 8, marginLeft: 2 },
+  carteVente: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 18, borderWidth: 1, marginBottom: 8 },
+  pastilleSource: { width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   bandeauTotal: { padding: 10, borderRadius: 10, marginBottom: 12 },
   etatVide: { alignItems: "center", paddingTop: 40 },
   ligne: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1 },

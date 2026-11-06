@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Pressable } from "react-native";
+import { Text } from "@/components/Texte";
+import { EcranAuth, ChampAuth } from "@/components/EcranAuth";
+import { BoutonPrimaire } from "@/components/UI";
 import { router } from "expo-router";
 import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -21,7 +24,7 @@ export default function Inscription() {
 
   async function creerCompte() {
     if (chargement) return;
-    const validation = validerTelephone(numero.trim(), pays);
+    const validation = validerTelephone(numero.trim(), pays, langue);
     if (!validation.valide) {
       showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
       return;
@@ -55,64 +58,28 @@ export default function Inscription() {
   
     router.replace("/(auth)/config-boutique");
   }
-    return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.icone, { backgroundColor: colors.accentBg }]}>
-        <Text style={{ fontSize: 26 }}>🏪</Text>
-      </View>
-      <Text style={[styles.titre, { color: colors.textPrimary }]}>{t("inscription_bienvenue", langue)}</Text>
-      <Text style={[styles.sousTitre, { color: colors.textSecondary }]}>
-        {t("inscription_sous_titre", langue)}
-      </Text>
-
-      <Text style={[styles.label, { color: colors.textSecondary }]}>
-        {t("inscription_numero", langue)}
-      </Text>
-      <View style={styles.ligneNumero}>
-        <View style={[styles.indicatif, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textPrimary }}>{pays.drapeau} {pays.indicatif}</Text>
+  return (
+    <EcranAuth
+      titre={t("inscription_bienvenue", langue)}
+      sousTitre={t("inscription_sous_titre", langue)}
+      retour={false}
+      pied={
+        <Pressable onPress={() => router.push("/(auth)/connexion")} hitSlop={10}>
+          <Text style={{ color: "#fff", fontSize: 13.5, fontWeight: "600" }}>{t("inscription_deja_compte", langue)}</Text>
+        </Pressable>
+      }
+    >
+      <Text style={{ color: colors.textSecondary, fontSize: 12.5, fontWeight: "600", marginBottom: 8 }}>{t("inscription_numero", langue)}</Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ paddingHorizontal: 12, justifyContent: "center", borderRadius: 16, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.background, marginBottom: 14 }}>
+          <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>{pays.drapeau} {pays.indicatif}</Text>
         </View>
-        <TextInput
-          style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]}
-          placeholder="6XX XXX XXX"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="phone-pad"
-          value={numero}
-          onChangeText={setNumero}
-        />
+        <View style={{ flex: 1 }}>
+          <ChampAuth icone="phone" valeur={numero} onChange={setNumero} placeholder="6XX XXX XXX" keyboardType="phone-pad" />
+        </View>
       </View>
-      <Text style={[styles.aide, { color: colors.textMuted }]}>
-        {t("inscription_aide", langue)}
-      </Text>
-
-      <Pressable
-        style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
-        onPress={creerCompte}
-        disabled={chargement}
-      >
-        <Text style={styles.boutonTexte}>
-          {chargement ? t("inscription_creation", langue) : t("inscription_creer", langue)}
-        </Text>
-      </Pressable>
-      <Pressable onPress={() => router.push("/(auth)/connexion")} style={{ marginTop: 16 }}>
-      <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: "center" }}>
-        {t("inscription_deja_compte", langue)}
-      </Text>
-      </Pressable>
-    </View>
+      <Text style={{ color: colors.textMuted, fontSize: 11.5, marginBottom: 18, marginTop: -4 }}>{t("inscription_aide", langue)}</Text>
+      <BoutonPrimaire texte={chargement ? t("inscription_creation", langue) : t("inscription_creer", langue)} icone="arrow-right" onPress={creerCompte} disabled={chargement} />
+    </EcranAuth>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, justifyContent: "center" },
-  icone: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 14 },
-  titre: { fontSize: 20, fontWeight: "500", textAlign: "center", marginBottom: 6 },
-  sousTitre: { fontSize: 14, textAlign: "center", marginBottom: 28 },
-  label: { fontSize: 12, marginBottom: 6 },
-  ligneNumero: { flexDirection: "row", gap: 8, marginBottom: 8 },
-  indicatif: { paddingHorizontal: 10, justifyContent: "center", borderRadius: 8, borderWidth: 1 },
-  input: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
-  aide: { fontSize: 11, marginBottom: 24 },
-  bouton: { paddingVertical: 14, borderRadius: 8, alignItems: "center" },
-  boutonTexte: { color: "#fff", fontSize: 15, fontWeight: "500" },
-});

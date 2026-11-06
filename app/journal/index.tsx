@@ -1,5 +1,7 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -70,12 +72,9 @@ export default function Journal() {
       </ScrollView>
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : filtrees.length === 0 ? (
-        <View style={{ alignItems: "center", paddingTop: 40 }}>
-          <Feather name="list" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("journal_vide", langue)}</Text>
-        </View>
+        <EtatVide icone="list" titre={t("journal_vide", langue)} texte={t("vide_journal_texte", langue)} />
       ) : (
         <ScrollView>
           {filtrees.map((e) => (

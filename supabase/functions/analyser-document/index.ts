@@ -11,9 +11,8 @@
 // Secret requis : supabase secrets set OPENAI_API_KEY=sk-...
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { planEffectifIA } from "../_shared/accesIA.ts";
-
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const MODELE = "gpt-4o-mini"; // vision + JSON, bon rapport coût/précision
+import { diagnostiquerIA } from "../_shared/diagnostic.ts";
+import { chaineIA, executerAvecBasculement } from "../_shared/ia/index.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -72,8 +71,11 @@ const SCHEMA = {
       },
     },
     notes: { type: ["string", "null"] },
+    // Qualité de la photo, jugée par le modèle : l'app n'affiche « floue » ou
+    // « sombre » QUE si c'est réellement le cas (jamais pour une panne serveur).
+    imageIssue: { type: "string", enum: ["none", "blurry", "dark", "cropped", "not_a_document"] },
   },
-  required: ["documentType", "items", "expenses"],
+  required: ["documentType", "items", "expenses", "imageIssue"],
 };
 
 const PROMPT_SYSTEME = `Tu analyses des photos de documents commerciaux (factures, tickets, reçus, justificatifs) pour une application de gestion de petits commerçants africains.
@@ -93,7 +95,11 @@ Règles d'extraction :
 - quantity : quantité de la ligne (pas la contenance du produit).
 - unit : unité telle qu'écrite (kg, sac, L, sachet…).
 - Si le document liste des produits ET une charge (ex: transport), mets la charge dans expenses.
-- Tout ce qui est illisible → null, jamais de valeur inventée.`;
+- Tout ce qui est illisible → null, jamais de valeur inventée.
+- imageIssue : "none" si la photo est exploitable ; "blurry" SEULEMENT si le texte est réellement flou ; "dark" si trop sombre/surexposée ; "cropped" si le document est coupé ; "not_a_document" si l'image n'est pas un document commercial. En cas de doute, "none".
+
+Réponds UNIQUEMENT par un objet JSON (sans texte autour, sans balises) de la forme :
+{"documentType":"sale|purchase|expense|payment|unknown","date":null,"invoiceNumber":null,"customerName":null,"supplierName":null,"currency":null,"subtotal":null,"tax":null,"discount":null,"total":null,"paidAmount":null,"remainingAmount":null,"items":[{"rawName":"","quantity":null,"unit":null,"unitPrice":null,"totalPrice":null,"sku":null,"barcode":null}],"expenses":[{"rawDescription":"","category":null,"amount":null}],"notes":null,"imageIssue":"none|blurry|dark|cropped|not_a_document"}`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -101,7 +107,7 @@ Deno.serve(async (req) => {
   try {
     // 1) Authentification : JWT obligatoire.
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "non authentifié" }, 401);
+    if (!authHeader) return json({ error: "non_authentifie" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -109,49 +115,69 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: authError } = await client.auth.getUser();
-    if (authError || !user) return json({ error: "non authentifié" }, 401);
+    if (authError || !user) return json({ error: "non_authentifie" }, 401);
 
     // 1b) Gating plan : l'IA est réservée au Premium (et à l'essai actif).
     //     Sans ce contrôle, n'importe quel compte gratuit pouvait consommer
     //     des appels OpenAI payants. Quotas lus depuis la table `plans`.
     const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { quotaScan } = await planEffectifIA(admin, user.id);
+
+    // Mode diagnostic (écran Réglages → Diagnostic) : liste les prérequis
+    // manquants au lieu d'un « erreur serveur » opaque.
+    const corpsBrut = await req.json().catch(() => null);
+    if (corpsBrut?.diagnostic === true) {
+      return json({ diagnostic: await diagnostiquerIA(admin, user.id) });
+    }
+
+    const { planId, quotaScan } = await planEffectifIA(admin, user.id);
+    // Plan sans IA (Gratuit hors essai, Starter) : message distinct d'un quota
+    // épuisé — l'app invite à passer à Premium au lieu de parler de quota.
+    if (quotaScan <= 0) return json({ error: "reserve_premium", plan: planId }, 403);
+
+    // 2) Entrée validée AVANT de consommer le quota (une requête invalide ne
+    //    doit rien coûter à l'utilisateur).
+    const corps = corpsBrut;
+    const imageBase64 = corps?.imageBase64;
+    const typeMime = typeof corps?.typeMime === "string" ? corps.typeMime : "image/jpeg";
+    if (typeof imageBase64 !== "string" || imageBase64.length < 100) {
+      return json({ error: "image_manquante" }, 400);
+    }
+    // Garde-fou coût/sécurité : on refuse les images absurdement grosses.
+    if (imageBase64.length > 6 * 1024 * 1024) {
+      return json({ error: "image_trop_volumineuse" }, 413);
+    }
+    // Chaîne de fournisseurs IA (table ia_providers) : basculement automatique.
+    const chaine = await chaineIA(admin, "vision");
+    if (chaine.length === 0) {
+      console.error("Aucun fournisseur IA vision utilisable : poser OPENAI_API_KEY / GEMINI_API_KEY / XAI_API_KEY et vérifier ia_providers");
+      return json({ error: "service_non_configure" }, 503);
+    }
+
     const debutMois = new Date();
     debutMois.setDate(1);
+    debutMois.setHours(0, 0, 0, 0);
+    // Les analyses ÉCHOUÉES (panne OpenAI, etc.) ne comptent jamais dans le quota.
     const { count: scansUtilises } = await admin
       .from("document_scans")
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id)
+      .neq("status", "echouee")
       .gte("created_at", debutMois.toISOString());
-    if (quotaScan <= 0 || (scansUtilises ?? 0) >= quotaScan) {
-      return json({ error: "quota_epuise" }, 403);
-    }
+    if ((scansUtilises ?? 0) >= quotaScan) return json({ error: "quota_epuise" }, 403);
 
-    // Consomme le quota DÈS l'analyse (pas seulement à la validation) :
-    // sinon un utilisateur pouvait appeler OpenAI en boucle sans jamais
-    // confirmer. Une ligne « analysee » est créée ; la validation la met
-    // à jour (pas de 2e consommation).
+    // Réserve le quota pour cette analyse (la validation met la ligne à jour).
     const { data: reservation, error: errReservation } = await admin
       .from("document_scans")
       .insert({ user_id: user.id, document_type: "unknown", status: "analysee" })
       .select("id")
       .single();
     if (errReservation || !reservation?.id) {
-      return json({ error: "quota_epuise" }, 403);
+      // Cause la plus fréquente : profil absent (clé étrangère) ou migration
+      // 20261004 non appliquée — visible dans le diagnostic et les logs.
+      console.error("réservation scan impossible", JSON.stringify(errReservation));
+      return json({ error: "reservation_impossible" }, 500);
     }
     const scanId = reservation.id;
-
-    // 2) Entrée : image base64 + contexte (candidats produits locaux).
-    const corps = await req.json();
-    const imageBase64 = corps?.imageBase64;
-    const typeMime = typeof corps?.typeMime === "string" ? corps.typeMime : "image/jpeg";
-    if (typeof imageBase64 !== "string" || imageBase64.length < 100) {
-      return json({ error: "image manquante" }, 400);
-    }
-    // Garde-fou coût/sécurité : on refuse les images absurdement grosses.
-    if (imageBase64.length > 6 * 1024 * 1024) {
-      return json({ error: "image trop volumineuse" }, 413);
-    }
 
     // 3) Candidats produits (présélection LOCALE côté app — §20 : on
     //    n'envoie jamais toute la base, seulement les meilleurs candidats).
@@ -162,61 +188,40 @@ Deno.serve(async (req) => {
       ? `\n\nCandidats produits du catalogue du commerçant (pour t'aider à lire les noms, PAS pour les renommer) :\n${candidats.map((c) => `- ${c.nom}`).join("\n")}`
       : "";
 
-    // 4) Appel OpenAI (vision + sortie JSON structurée).
-    const cleOpenAI = Deno.env.get("OPENAI_API_KEY");
-    if (!cleOpenAI) return json({ error: "service d'analyse non configuré" }, 503);
-
-    const reponse = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${cleOpenAI}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODELE,
-        temperature: 0,
-        response_format: { type: "json_schema", json_schema: { name: "document_commercial", schema: SCHEMA, strict: false } },
-        messages: [
-          { role: "system", content: PROMPT_SYSTEME + noteCandidats },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Analyse ce document commercial et renvoie le JSON structuré." },
-              { type: "image_url", image_url: { url: `data:${typeMime};base64,${imageBase64}` } },
-            ],
-          },
-        ],
-      }),
+    // 4) Analyse avec basculement : OpenAI → Gemini → Grok (ordre de la base).
+    //    Une réponse illisible (JSON invalide) compte comme un échec → suivant.
+    const resultat = await executerAvecBasculement(admin, user.id, "vision", chaine, async (c) => {
+      const texte = await c.fournisseur.analyserImage!({
+        imageBase64,
+        typeMime,
+        systeme: PROMPT_SYSTEME + noteCandidats,
+        consigne: "Analyse ce document commercial et renvoie le JSON structuré.",
+        schema: SCHEMA,
+      }, c.cle, c.modele, c.delaiMs);
+      // Certains modèles entourent le JSON de ```json … ``` : on nettoie.
+      const nettoye = texte.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+      const objet = JSON.parse(nettoye);
+      if (typeof objet !== "object" || objet === null) throw new Error("JSON non objet");
+      return objet;
     });
 
-    if (!reponse.ok) {
-      const detail = await reponse.text();
-      console.error("OpenAI error", reponse.status, detail.slice(0, 500));
+    if (!resultat.ok) {
       await admin.from("document_scans").update({ status: "echouee" }).eq("id", scanId);
-      return json({ error: "analyse indisponible" }, 502);
+      return json({ error: "analyse_indisponible" }, 502);
     }
-
-    const resultat = await reponse.json();
-    const contenu = resultat?.choices?.[0]?.message?.content;
-    if (typeof contenu !== "string") {
-      await admin.from("document_scans").update({ status: "echouee" }).eq("id", scanId);
-      return json({ error: "réponse vide" }, 502);
-    }
-
-    let document;
-    try {
-      document = JSON.parse(contenu);
-    } catch {
-      await admin.from("document_scans").update({ status: "echouee" }).eq("id", scanId);
-      return json({ error: "réponse illisible" }, 502);
-    }
+    const document = resultat.valeur;
 
     await admin.from("document_scans").update({
       document_type: document?.documentType ?? "unknown",
       raw_extraction: document,
       status: "analysee",
     }).eq("id", scanId);
+    // Traçabilité du fournisseur utilisé (colonne ajoutée par la migration 20261023).
+    admin.from("document_scans").update({ fournisseur_ia: resultat.fournisseur }).eq("id", scanId).then(() => {}, () => {});
 
-    return json({ document, scanId });
+    return json({ document, scanId, fournisseur: resultat.fournisseur });
   } catch (e) {
     console.error("analyser-document", e);
-    return json({ error: "erreur interne" }, 500);
+    return json({ error: "erreur_interne" }, 500);
   }
 });

@@ -69,7 +69,9 @@ export const TAUX_DEPUIS_FCFA: Record<string, number> = {
   QAR: 0.0058,
   XCD: 0.0043,
   XPF: 0.18,
-};// Devise par pays (code ISO) — uniquement les pays supportés par SasPay.
+};
+
+// Devise par pays (code ISO) — uniquement les pays supportés par SasPay.
 export const DEVISES_PAR_PAYS: Record<string, string> = {
   // Afrique
   CM: "XAF", CG: "XAF", GA: "XAF", CF: "XAF", TD: "XAF", GQ: "XAF",
@@ -92,8 +94,8 @@ export const DEVISES_PAR_PAYS: Record<string, string> = {
   TN: "TND",
   EG: "EGP", ZA: "ZAR", AO: "AOA", BI: "BIF", CV: "CVE",
   KM: "KMF", DJ: "DJF", ER: "ERN", SZ: "SZL", GM: "GMD",
-  LS: "LSL", LR: "LRD", LY: "LYD", MR: "MRO", MU: "MUR",
-  MZ: "MZN", NA: "NAD", SC: "SCR", SDG: "SDG", ST: "STN",
+  LS: "LSL", LR: "LRD", LY: "LYD", MR: "MRU", MU: "MUR",
+  MZ: "MZN", NA: "NAD", SC: "SCR", SD: "SDG", ST: "STN",
   ZW: "ZWD",
 
   // Amériques
@@ -101,7 +103,7 @@ export const DEVISES_PAR_PAYS: Record<string, string> = {
   CL: "CLP", CO: "COP", PE: "PEN", VE: "VES", UY: "UYU",
   PY: "PYG", BO: "BOB", EC: "USD", CR: "CRC", CU: "CUP",
   DO: "DOP", GT: "GTQ", HT: "HTG", HN: "HNL", NI: "NIO",
-  PA: "PAB", SV: "USD", BS: "BSD", BB: "BBD", BZD: "BZD",
+  PA: "PAB", SV: "USD", BS: "BSD", BB: "BBD", BZ: "BZD",
   DM: "XCD", GD: "XCD", GY: "GYD", JM: "JMD", KN: "XCD",
   LC: "XCD", VC: "XCD", SR: "SRD", TT: "TTD",
 
@@ -120,13 +122,13 @@ export const DEVISES_PAR_PAYS: Record<string, string> = {
   CN: "CNY", IN: "INR", JP: "JPY", KR: "KRW", ID: "IDR",
   PK: "PKR", BD: "BDT", PH: "PHP", VN: "VND", IR: "IRR",
   TR: "TRY", TH: "THB", MM: "MMK", IQ: "IQD", SA: "SAR",
-  UZ: "UZS", MY: "MYR", YE: "YER", NPR: "NPR", KP: "KPW",
+  UZ: "UZS", MY: "MYR", YE: "YER", NP: "NPR", KP: "KPW",
   LK: "LKR", KZ: "KZT", SY: "SYP", KH: "KHR", JO: "JOD",
   AZ: "AZN", AE: "AED", TJ: "TJS", IL: "ILS", LA: "LAK",
-  LB: "LBP", KG: "KGS", TMT: "TMT", SG: "SGD", PS: "ILS",
+  LB: "LBP", KG: "KGS", TM: "TMT", SG: "SGD", PS: "ILS",
   KW: "KWD", OM: "OMR", QA: "QAR", BH: "BHD", TL: "USD",
-  MN: "MNT", AM: "AMD", GE: "GEL", BND: "BND", BTN: "BTN",
-  MVR: "MVR",
+  MN: "MNT", AM: "AMD", GE: "GEL", BN: "BND", BT: "BTN",
+  MV: "MVR",
 
   // Océanie
   AU: "AUD", NZ: "NZD", PG: "PGK", FJ: "FJD", SB: "SBD",
@@ -146,9 +148,29 @@ let tauxActifs: Record<string, number> = { ...TAUX_DEPUIS_FCFA };
 // Charge les taux depuis la base (app_config), sinon depuis le cache local.
 // Appelé au démarrage (CurrencyProvider) — après l'inscription, les taux sont
 // donc récupérés en ligne puis sauvegardés localement pour le hors ligne.
-export async function chargerTauxDepuisConfig(): Promise<void> {
+const CLE_MAJ = "taux_conversion_maj";
+const INTERVALLE_MAJ_MS = 12 * 3600 * 1000; // au plus 1 rafraîchissement toutes les 12 h par appareil
+
+// Demande au serveur de rafraîchir les taux EN TEMPS RÉEL (fonction `maj-taux` :
+// API de change → app_config, au plus 1 appel d'API par heure côté serveur) et
+// applique la réponse (taux manuels inclus) sans relire la table.
+async function rafraichirTauxEnLigne(): Promise<void> {
   try {
-    // Timeout : hors ligne l'appel peut rester pendu et geler le démarrage.
+    const derniere = Number((await AsyncStorage.getItem(CLE_MAJ)) ?? 0);
+    if (Date.now() - derniere < INTERVALLE_MAJ_MS) return;
+    const { data, error } = await avecTimeout(supabase.functions.invoke("maj-taux", { body: {} }), 8000);
+    if (!error && data?.taux) {
+      tauxActifs = { ...TAUX_DEPUIS_FCFA, ...data.taux };
+      await AsyncStorage.setItem(CLE_CACHE, JSON.stringify(data.taux));
+      await AsyncStorage.setItem(CLE_MAJ, String(Date.now()));
+    }
+  } catch {
+    // Hors ligne : on garde les derniers taux connus.
+  }
+}
+
+async function lireTauxConfig(): Promise<boolean> {
+  try {
     const { data, error } = await avecTimeout(
       supabase.from("app_config").select("valeur").eq("cle", "taux_conversion").single(),
       5000
@@ -157,10 +179,20 @@ export async function chargerTauxDepuisConfig(): Promise<void> {
       const parses = JSON.parse(data.valeur);
       tauxActifs = { ...TAUX_DEPUIS_FCFA, ...parses };
       await AsyncStorage.setItem(CLE_CACHE, data.valeur);
-      return;
+      return true;
     }
-  } catch {
-    // Réseau / hors ligne → cache local.
+  } catch {}
+  return false;
+}
+
+// Charge les taux depuis la base (app_config), sinon depuis le cache local.
+// Appelé au démarrage (CurrencyProvider). En ligne, on déclenche aussi la mise
+// à jour temps réel côté serveur puis on relit la table.
+export async function chargerTauxDepuisConfig(): Promise<void> {
+  if (await lireTauxConfig()) {
+    // Rafraîchissement en arrière-plan : n'ajoute aucune attente au démarrage.
+    rafraichirTauxEnLigne().catch(() => {});
+    return;
   }
   const cache = await AsyncStorage.getItem(CLE_CACHE);
   if (cache) {
@@ -170,12 +202,19 @@ export async function chargerTauxDepuisConfig(): Promise<void> {
   }
 }
 
+// Taux connu pour une devise, ou null. On n'utilise JAMAIS 1 par défaut :
+// un taux inconnu donnerait « 1 500 MXN » pour 1 500 FCFA.
+export function tauxPour(deviseCode: string): number | null {
+  const t = tauxActifs[deviseCode] ?? TAUX_DEPUIS_FCFA[deviseCode];
+  return typeof t === "number" && Number.isFinite(t) && t > 0 ? t : null;
+}
+
 // Convertit un montant en FCFA (XAF) vers la devise cible.
-// Un montant invalide (null/NaN, ex. prix pas encore chargé hors ligne) donne
-// 0 au lieu de « NaN » — les écrans de prix testent `!= null` avant d'afficher.
+// Montant invalide ou devise sans taux : 0 (les écrans testent avant d'afficher).
 export function convertirDepuisFcfa(montantFcfa: number, deviseCode: string): number {
   if (typeof montantFcfa !== "number" || !Number.isFinite(montantFcfa)) return 0;
-  const taux = tauxActifs[deviseCode] ?? TAUX_DEPUIS_FCFA[deviseCode] ?? 1;
+  const taux = tauxPour(deviseCode);
+  if (taux == null) return 0;
   const valeur = montantFcfa * taux;
   return taux >= 1 ? Math.round(valeur) : Math.max(1, Math.round(valeur));
 }

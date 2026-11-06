@@ -1,5 +1,7 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -19,7 +21,7 @@ const BADGE_PAR_STATUT: Record<string, "succes" | "attention" | "danger" | "neut
 export default function Factures() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formaterCompact } = useCurrency();
   const [factures, setFactures] = useState<Facture[]>([]);
   const [chargement, setChargement] = useState(true);
 
@@ -43,12 +45,9 @@ export default function Factures() {
       <EnteteEcran titre={t("factures_titre", langue)} onRetour={() => router.back()} />
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : factures.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="file-text" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("factures_vide", langue)}</Text>
-        </View>
+        <EtatVide icone="file-text" titre={t("factures_vide", langue)} texte={t("vide_factures_texte", langue)} />
       ) : (
         <ScrollView>
           {factures.map((f) => (
@@ -58,7 +57,7 @@ export default function Factures() {
                 <Text style={{ color: colors.textMuted, fontSize: 11 }}>{f.clientNom ?? "—"}</Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 4 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formater(f.total)}</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formaterCompact(f.total)}</Text>
                 <Badge texte={t(`facture_statut_${f.statut}` as any, langue)} type={BADGE_PAR_STATUT[f.statut] ?? "neutre"} />
               </View>
             </View>

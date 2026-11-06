@@ -64,15 +64,13 @@ create table plans (
 alter table plans add column duree_essai_jours integer; -- null = pas d'essai, sinon nombre de jours
 alter table plans add column est_essai_gratuit boolean not null default false;
 
--- Configuration "payant avec essai" : le plan gratuit permanent est désactivé,
--- et Starter devient accessible via un essai de 14 jours avant paiement
-update plans set actif = false where id = 'gratuit';
-update plans set duree_essai_jours = 14 where id = 'starter';
-
+-- Modèle canonique (identique à lib/plan/quotas.ts) : Gratuit / Starter / Premium.
+-- Starter = sans IA ; Premium = IA. L'essai se règle dans app_config.duree_essai_jours.
+-- (La migration 20261023_ia_paiement_prefs_coherence.sql ré-applique ces valeurs.)
 insert into plans (id, nom, actif, prix, quota_vocal, quota_scan, quota_produits, quota_creances, historique_jours, rapports_max, export_comptable, sauvegarde_cloud, multi_employes, support_prioritaire, ordre_affichage) values
-  ('gratuit', 'Gratuit', true, 0, 4, 4, 30, 15, 7, 'semaine', false, false, false, false, 1),
-  ('starter', 'Starter', true, 1500, 150, 350, null, null, null, 'semestre', true, true, false, false, 2),
-  ('premium', 'Premium', true, 2000, 300, 570, null, null, null, 'annee', true, true, true, true, 3);
+  ('gratuit', 'Gratuit', true, 0,    0,   0,   20,   null, null, 'semaine', false, false, false, false, 1),
+  ('starter', 'Starter', true, 1500, 0,   0,   200,  null, null, 'mois',    true,  true,  false, false, 2),
+  ('premium', 'Premium', true, 2000, 300, 570, null, null, null, 'annee',    true,  true,  true,  true,  3);
 
 -- Exemple d'usage plus tard : désactiver le plan gratuit sans toucher au code
 -- update plans set actif = false where id = 'gratuit';

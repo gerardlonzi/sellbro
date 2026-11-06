@@ -1,0 +1,12 @@
+diff --git a/android/CMakeLists.txt b/android/CMakeLists.txt
+index 1111111..2222222 100644
+--- a/android/CMakeLists.txt
++++ b/android/CMakeLists.txt
+@@ -121,6 +121,7 @@ target_compile_options(
+ 
+ target_link_libraries(
+   ${PACKAGE_NAME}
++  c++_shared
+   CommonSettings
+   ${LOG_LIB}
+   fbjni::fbjni

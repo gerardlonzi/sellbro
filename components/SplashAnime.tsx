@@ -1,3 +1,4 @@
+import { detecterLangueSysteme, t } from "@/lib/i18n";
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -7,6 +8,7 @@ import { Text } from "@/components/Texte";
 // position) puis s'anime — le logo respire, un halo s'élargit, le nom de la
 // marque apparaît — et se dissout pour révéler l'app. Dure ~1,6 s.
 export function SplashAnime({ onTermine }: { onTermine: () => void }) {
+  const langue = detecterLangueSysteme();
   const logo = useRef(new Animated.Value(0)).current;
   const halo = useRef(new Animated.Value(0)).current;
   const texte = useRef(new Animated.Value(0)).current;
@@ -59,7 +61,7 @@ export function SplashAnime({ onTermine }: { onTermine: () => void }) {
           }}
         >
           <Text style={styles.nom}>Cikap</Text>
-          <Text style={styles.slogan}>Ton commerce, sous contrôle</Text>
+          <Text style={styles.slogan}>{t("x_slogan", langue)}</Text>
         </Animated.View>
       </View>
     </Animated.View>

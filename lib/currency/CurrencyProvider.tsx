@@ -1,24 +1,74 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { useLangue } from "@/lib/i18n";
+import { abregerMontant } from "./compact";
 import { convertirDepuisFcfa, DEVISES_PAR_PAYS, chargerTauxDepuisConfig } from "./taux";
 
 export type Devise = { code: string; symbole: string; nom: string };
 
 // Uniquement les devises des pays supportés par SasPay (Mobile Money).
 export const DEVISES: Devise[] = [
-    { code: "XAF", symbole: "FCFA", nom: "Franc CFA (Cameroun)" },
-    { code: "XOF", symbole: "FCFA", nom: "Franc CFA (Afrique de l'Ouest)" },
-    { code: "CDF", symbole: "FC", nom: "Franc congolais (RDC)" },
-    { code: "GHS", symbole: "₵", nom: "Cedi (Ghana)" },
-    { code: "GNF", symbole: "FG", nom: "Franc guinéen (Guinée)" },
-    { code: "KES", symbole: "KSh", nom: "Shilling kényan (Kenya)" },
-    { code: "MWK", symbole: "MK", nom: "Kwacha malawite (Malawi)" },
-    { code: "NGN", symbole: "₦", nom: "Naira (Nigeria)" },
-    { code: "RWF", symbole: "FRw", nom: "Franc rwandais (Rwanda)" },
-    { code: "TZS", symbole: "TSh", nom: "Shilling tanzanien (Tanzanie)" },
-    { code: "UGX", symbole: "USh", nom: "Shilling ougandais (Ouganda)" },
-    { code: "ZMW", symbole: "ZK", nom: "Kwacha zambien (Zambie)" },
+  { code: "XAF", symbole: "FCFA", nom: "Franc CFA - Afrique Centrale" },
+  { code: "XOF", symbole: "FCFA", nom: "Franc CFA - Afrique de l'Ouest" },
+  { code: "CDF", symbole: "FC", nom: "Franc congolais (RD Congo)" },
+  { code: "ETB", symbole: "Br", nom: "Birr éthiopien (Éthiopie)" },
+  { code: "GHS", symbole: "₵", nom: "Cedi (Ghana)" },
+  { code: "GNF", symbole: "FG", nom: "Franc guinéen (Guinée)" },
+  { code: "KES", symbole: "KSh", nom: "Shilling kényan (Kenya)" },
+  { code: "LSL", symbole: "L", nom: "Loti (Lesotho)" },
+  { code: "MWK", symbole: "MK", nom: "Kwacha malawite (Malawi)" },
+  { code: "MZN", symbole: "MT", nom: "Metical mozambicain (Mozambique)" },
+  { code: "NGN", symbole: "₦", nom: "Naira (Nigeria)" },
+  { code: "RWF", symbole: "FRw", nom: "Franc rwandais (Rwanda)" },
+  { code: "SLE", symbole: "Le", nom: "Leone (Sierra Leone)" },
+  { code: "SOS", symbole: "Ssh", nom: "Shilling somalien (Somalie)" },
+  { code: "TZS", symbole: "TSh", nom: "Shilling tanzanien (Tanzanie)" },
+  { code: "UGX", symbole: "USh", nom: "Shilling ougandais (Ouganda)" },
+  { code: "ZMW", symbole: "ZK", nom: "Kwacha zambien (Zambie)" },
+  { code: "ZAR", symbole: "R", nom: "Rand sud-africain (Afrique du Sud)" },
+  { code: "MAD", symbole: "DH", nom: "Dirham marocain (Maroc)" },
+  { code: "DZD", symbole: "DA", nom: "Dinar algérien (Algérie)" },
+  { code: "TND", symbole: "DT", nom: "Dinar tunisien (Tunisie)" },
+  { code: "EGP", symbole: "E£", nom: "Livre égyptienne (Égypte)" },
+  { code: "AOA", symbole: "Kz", nom: "Kwanza angolais (Angola)" },
+  { code: "BIF", symbole: "FBu", nom: "Franc burundais (Burundi)" },
+  { code: "CVE", symbole: "$", nom: "Escudo cap-verdien (Cap-Vert)" },
+  { code: "KMF", symbole: "CF", nom: "Franc comorien (Comores)" },
+  { code: "DJF", symbole: "Fdj", nom: "Franc djiboutien (Djibouti)" },
+  { code: "ERN", symbole: "Nfk", nom: "Nakfa érythréen (Érythrée)" },
+  { code: "SZL", symbole: "L", nom: "Lilangeni (Eswatini)" },
+  { code: "GMD", symbole: "D", nom: "Dalasi gambien (Gambie)" },
+  { code: "LRD", symbole: "$", nom: "Dollar libérien (Libéria)" },
+  { code: "LYD", symbole: "LD", nom: "Dinar libyen (Libye)" },
+  { code: "MGA", symbole: "Ar", nom: "Ariary malgache (Madagascar)" },
+  { code: "MUR", symbole: "₨", nom: "Roupie mauricienne (Maurice)" },
+  { code: "NAD", symbole: "$", nom: "Dollar namibien (Namibie)" },
+  { code: "STN", symbole: "Db", nom: "Dobra (Sao Tomé-et-Principe)" },
+  { code: "SCR", symbole: "₨", nom: "Roupie seychelloise (Seychelles)" },
+  { code: "SDG", symbole: "LS", nom: "Livre soudanaise (Soudan)" },
+  { code: "ZWD", symbole: "Z$", nom: "Dollar zimbabwéen (Zimbabwe)" },
+
+  // --- Pays Émergents & Asie / Amériques ---
+  { code: "BRL", symbole: "R$", nom: "Réal brésilien (Brésil)" },
+  { code: "INR", symbole: "₹", nom: "Roupie indienne (Inde)" },
+  { code: "CNY", symbole: "¥", nom: "Yuan chinois (Chine)" },
+  { code: "JPY", symbole: "¥", nom: "Yen japonais (Japon)" },
+  { code: "MXN", symbole: "$", nom: "Peso mexicain (Mexique)" },
+  { code: "ARS", symbole: "$", nom: "Peso argentin (Argentine)" },
+
+  // --- International / Majeures ---
+  { code: "USD", symbole: "$", nom: "Dollar américain (International / USA / RDC USD / Crypto)" },
+  { code: "EUR", symbole: "€", nom: "Euro (Zone Euro / Europe)" },
+  { code: "GBP", symbole: "£", nom: "Livre sterling (Royaume-Uni)" },
+  { code: "CAD", symbole: "C$", nom: "Dollar canadien (Canada)" },
+  { code: "AUD", symbole: "A$", nom: "Dollar australien (Australie)" },
+  { code: "NZD", symbole: "NZ$", nom: "Dollar néo-zélandais (Nouvelle-Zélande)" },
+  { code: "CHF", symbole: "CHF", nom: "Franc suisse (Suisse)" },
+  { code: "AED", symbole: "AED", nom: "Dirham des Émirats arabes unis" },
+  { code: "SAR", symbole: "SAR", nom: "Riyal saoudien (Arabie saoudite)" },
+  { code: "QAR", symbole: "QAR", nom: "Riyal qatari (Qatar)" }
+
 ];
 
 type CurrencyContextValue = {
@@ -35,6 +85,7 @@ const CLE_STOCKAGE = "boutika_devise";
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [devise, setDeviseState] = useState<Devise>(DEVISES[0]); // FCFA par défaut
+  const { langue: langueCourante } = useLangue();
 
   useEffect(() => {
     (async () => {
@@ -77,18 +128,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
 
   function formaterCompact(montant: number) {
     const converti = convertirDepuisFcfa(montant, devise.code);
-    const absolu = Math.abs(converti);
-    let texte: string;
-    if (absolu >= 1_000_000) {
-      // Un chiffre après la virgule, retiré s'il vaut 0 (1,5M mais 2M).
-      const m = converti / 1_000_000;
-      texte = `${m % 1 === 0 ? m : m.toFixed(1)}M`;
-    } else if (absolu >= 100_000) {
-      texte = `${Math.round(converti / 1_000)}K`;
-    } else {
-      texte = converti.toLocaleString();
-    }
-    return `${texte} ${devise.symbole}`;
+    return `${abregerMontant(converti, langueCourante)}\u00a0${devise.symbole}`;
   }
 
   return (

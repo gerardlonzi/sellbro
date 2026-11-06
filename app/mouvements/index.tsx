@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { View, ScrollView, StyleSheet } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { Q } from "@nozbe/watermelondb";
@@ -89,12 +91,7 @@ export default function Mouvements() {
           ))}
         </View>
       ) : lignes.length === 0 ? (
-        <View style={styles.vide}>
-          <Feather name="refresh-cw" size={28} color={colors.textMuted} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 10, textAlign: "center" }}>
-            {t("mouvements_aucun", langue)}
-          </Text>
-        </View>
+        <EtatVide icone="refresh-cw" titre={t("mouvements_aucun", langue)} texte={t("vide_mouvements_texte", langue)} />
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
           {lignes.map((ligne) => {

@@ -1,0 +1,13 @@
+# Le webhook SasPay est appelé par les serveurs SasPay (pas par l'app) :
+# pas de JWT Supabase — la sécurité repose sur la signature HMAC.
+[functions.saspay-webhook]
+verify_jwt = false
+
+# Pont https -> deep link pour le retour du checkout SasPay : appelée par le
+# navigateur du client (pas de JWT Supabase), elle ne fait qu'une 302.
+[functions.checkout-retour]
+verify_jwt = false
+
+# Webhook Flutterwave : appelé par leurs serveurs, sécurisé par `verif-hash`.
+[functions.flutterwave-webhook]
+verify_jwt = false

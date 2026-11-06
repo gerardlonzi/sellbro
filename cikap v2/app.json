@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "Cikap",
+    "slug": "cikap",
+    "scheme": "cikap",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "icon": "./assets/logo-icon.png",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.eyetech.cikap"
+    },
+    "android": {
+      "package": "com.eyetech.cikap",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-tuile.png",
+          "backgroundColor": "#0B3D33",
+          "dark": {
+            "image": "./assets/splash-tuile.png",
+            "backgroundColor": "#0B3D33"
+          },
+          "imageWidth": 108
+        }
+      ],
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo-sans-bg-notif.png",
+          "color": "#25af93"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Autoriser l'accès à vos photos pour ajouter des images de produits.",
+          "cameraPermission": "Autoriser l'accès à la caméra pour photographier vos produits."
+        }
+      ]
+    ],
+    "locales": {
+      "fr": "./locales/fr.json",
+      "en": "./locales/en.json"
+    }
+  }
+}

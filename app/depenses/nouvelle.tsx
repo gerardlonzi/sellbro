@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Modal, KeyboardAvoidingView, Platform } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -8,6 +9,8 @@ import { useLangue, t } from "@/lib/i18n";
 import { database } from "@/lib/database";
 import { Q } from "@nozbe/watermelondb";
 import { EnteteEcran } from "@/components/UI";
+import { SectionForm, ChampTexte, PucesChoix, BarreSauvegarde } from "@/components/Formulaire";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { creerDepense } from "@/lib/depenses/creerDepense";
 import { peutEcrire } from "@/lib/trial/gate";
@@ -36,6 +39,11 @@ export default function NouvelleDepense() {
   const [description, setDescription] = useState("");
   const [montant, setMontant] = useState("");
   const [chargement, setChargement] = useState(false);
+  const [dateDepense, setDateDepense] = useState(new Date());
+  const [afficherDate, setAfficherDate] = useState(false);
+  const [modePaiement, setModePaiement] = useState<"cash" | "momo" | "banque" | "credit" | null>("cash");
+  const [reference, setReference] = useState("");
+  const [recurrence, setRecurrence] = useState<"aucune" | "hebdo" | "mensuelle">("aucune");
 
   // Charge les catégories déjà utilisées (personnalisées), les fournisseurs et
   // les produits pour les sélecteurs — tout en local, fonctionne hors ligne.
@@ -77,8 +85,9 @@ export default function NouvelleDepense() {
       afficherPaywall(langue, () => router.push("/premium"));
       return;
     }
-    if (!montant) {
-      showToast(t("nouvelle_creance_erreur", langue), "error");
+    const valeurMontant = Number(montant.replace(/\s/g, "").replace(",", "."));
+    if (!montant || !Number.isFinite(valeurMontant) || valeurMontant <= 0) {
+      showToast(t("depense_erreur_montant", langue), "error");
       return;
     }
     setChargement(true);
@@ -94,19 +103,22 @@ export default function NouvelleDepense() {
     if (fournisseur) { donnees.fournisseur_id = fournisseur.id; donnees.fournisseur_nom = fournisseur.nom; }
     if (produit) { donnees.produit_id = produit.id; donnees.produit_nom = produit.nom; }
     else if (produitManuelTrim) { donnees.produit_nom = produitManuelTrim; }
+    if (modePaiement) donnees.mode_paiement = modePaiement;
+    if (reference.trim()) donnees.reference = reference.trim();
+    if (recurrence !== "aucune") donnees.recurrence = recurrence;
     if (champsValides.length > 0) {
       donnees.champs = Object.fromEntries(champsValides.map((c) => [c.nom.trim(), c.valeur.trim()]));
     }
 
     // Logique de création partagée (aussi utilisée par le scanner de factures).
-    await creerDepense({ userId, categorie, description, montant: Number(montant), donnees });
+    await creerDepense({ userId, categorie, description, montant: valeurMontant, donnees, date: dateDepense });
     setChargement(false);
     showToast(t("toast_enregistre", langue), "success");
     router.back();
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <EnteteEcran titre={t("depenses_ajouter", langue)} onRetour={() => router.back()} />
 
@@ -156,7 +168,45 @@ export default function NouvelleDepense() {
         </View>
       )}
 
-      <Champ label={t("depenses_montant", langue)} valeur={montant} onChange={setMontant} numerique colors={colors} />
+      <ChampTexte label={t("depenses_montant", langue)} icone="dollar-sign" valeur={montant} onChange={setMontant} clavier="numeric" placeholder="0" />
+
+      {/* Date, mode de paiement, référence et récurrence */}
+      <Text style={styles.label}>{t("depense_date", langue)}</Text>
+      <Pressable onPress={() => setAfficherDate(true)} style={[styles.selecteur, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+        <Feather name="calendar" size={16} color={colors.accent} />
+        <Text style={{ flex: 1, fontSize: 14, color: colors.textPrimary }}>{dateDepense.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US", { day: "numeric", month: "long", year: "numeric" })}</Text>
+        <Feather name="chevron-down" size={14} color={colors.textMuted} />
+      </Pressable>
+      {afficherDate && (
+        <DateTimePicker
+          value={dateDepense}
+          mode="date"
+          maximumDate={new Date()}
+          onChange={(e: any, d?: Date) => { setAfficherDate(false); if (e.type === "set" && d) setDateDepense(d); }}
+        />
+      )}
+      <PucesChoix
+        label={t("depense_mode_paiement", langue)}
+        valeur={modePaiement}
+        onChange={setModePaiement}
+        options={[
+          { id: "cash", libelle: t("vente_paiement_cash", langue), icone: "dollar-sign" },
+          { id: "momo", libelle: t("vente_paiement_momo", langue), icone: "smartphone" },
+          { id: "banque", libelle: t("depense_paiement_banque", langue), icone: "credit-card" },
+          { id: "credit", libelle: t("vente_paiement_credit", langue), icone: "clock" },
+        ]}
+      />
+      <PucesChoix
+        label={t("depense_recurrence", langue)}
+        valeur={recurrence}
+        onChange={setRecurrence}
+        options={[
+          { id: "aucune", libelle: t("depense_rec_aucune", langue) },
+          { id: "hebdo", libelle: t("depense_rec_hebdo", langue), icone: "repeat" },
+          { id: "mensuelle", libelle: t("depense_rec_mensuelle", langue), icone: "repeat" },
+        ]}
+      />
+      <ChampTexte label={t("depense_reference", langue)} icone="hash" valeur={reference} onChange={setReference} placeholder={t("depense_reference_ph", langue)} />
 
       {/* Lien fournisseur : sélection directe au lieu d'une saisie libre */}
       {fournisseurs.length > 0 && (
@@ -243,7 +293,7 @@ export default function NouvelleDepense() {
         </Pressable>
       </Modal>
 
-      <Champ label={t("depenses_description", langue)} valeur={description} onChange={setDescription} colors={colors} />
+      <ChampTexte label={t("depenses_description", langue)} icone="file-text" valeur={description} onChange={setDescription} multiligne />
 
       {/* Champs personnalisés : les champs ajoutés apparaissent AU-DESSUS des
           puces de suggestion — on voit immédiatement ce qu'on vient d'ajouter,
@@ -300,13 +350,8 @@ export default function NouvelleDepense() {
       </Pressable>
     </ScrollView>
 
-      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
-        <Pressable onPress={sauvegarder} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
-          <Feather name="check" size={16} color="#fff" />
-          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("nouvelle_creance_sauver", langue)}</Text>
-        </Pressable>
-      </View>
-    </View>
+      <BarreSauvegarde texte={t("nouvelle_creance_sauver", langue)} onPress={sauvegarder} chargement={chargement} />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -326,12 +371,12 @@ function Champ({ label, valeur, onChange, numerique, colors }: any) {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingTop: 50 },
-  label: { fontSize: 12, marginBottom: 8, color: "#888" },
+  label: { fontSize: 12, fontWeight: "600", marginBottom: 8, marginLeft: 2, color: "#888" },
   ligneCategories: { marginBottom: 16 },
-  puce: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, marginBottom: 14 },
+  puce: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20 },
+  input: { borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, marginBottom: 14 },
   boutonAjouter: { width: 44, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  selecteur: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 16 },
+  selecteur: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 16 },
   fondModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   feuilleModal: { borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: 1, paddingBottom: 30, paddingTop: 10 },
   ligneModal: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1 },

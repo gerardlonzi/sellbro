@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from "react";
-import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text, TextInput } from "@/components/Texte";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
@@ -20,7 +22,7 @@ type Client = { nom: string; total: number; nbAchats: number; aCreance: boolean 
 export default function Clients() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formater, formaterCompact } = useCurrency();
   const [recherche, setRecherche] = useState("");
   const [rechercheOuverte, setRechercheOuverte] = useState(false);
 
@@ -80,7 +82,7 @@ export default function Clients() {
          <Pressable onPress={() => router.back()} hitSlop={10}>
             <Feather name="arrow-left" size={22} color={colors.textPrimary} />
           </Pressable>
-          <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("clients_titre", langue)}</Text>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>{t("clients_titre", langue)}</Text>
 
 
         </View>
@@ -143,17 +145,13 @@ export default function Clients() {
 
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : filtrees.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="users" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500", marginBottom: 4 }}>
-            {clients.length === 0 ? t("clients_vide_titre", langue) : t("clients_aucun_resultat", langue)}
-          </Text>
-          {clients.length === 0 && (
-            <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: "center" }}>{t("clients_vide_texte", langue)}</Text>
-          )}
-        </View>
+        <EtatVide
+          icone="users"
+          titre={clients.length === 0 ? t("clients_vide_titre", langue) : t("clients_aucun_resultat", langue)}
+          texte={clients.length === 0 ? t("clients_vide_texte", langue) : undefined}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.contenu}>
           {filtrees.map((c) => (
@@ -173,7 +171,7 @@ export default function Clients() {
               </Pressable>
               {/* Colonne montant : largeur fixe + alignement à droite, stable
                   quelle que soit la longueur du nom. */}
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10, width: 90, textAlign: "right" }}>{formater(c.total)}</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10, width: 90, textAlign: "right" }}>{formaterCompact(c.total)}</Text>
               <MenuContextuel actions={[{ label: "Voir historique", icone: "list", onPress: () => router.push({ pathname: "/commandes", params: { client: c.nom } }) }]} />
             </View>
           ))}

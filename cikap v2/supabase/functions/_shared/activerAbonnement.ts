@@ -1,0 +1,100 @@
+// Logique partagée d'activation d'abonnement après paiement confirmé.
+// Utilisée par saspay-webhook (source de vérité) ET verify-payment (secours).
+//
+// IMPORTANT : `plan_utilisateur` est une VUE calculée depuis `abonnements`
+// (plan actif le plus récent, sinon 'gratuit') — on n'y écrit JAMAIS. Il
+// suffit d'avoir un abonnement 'actif' non expiré pour que l'app voie le
+// plan Premium (planStore.rafraichirPlan lit cette vue).
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// Marque la transaction comme réussie et active l'abonnement Premium de
+// l'utilisateur : +1 mois à partir de maintenant (ou prolongation si un
+// abonnement encore actif existe — on paie toujours la période entière).
+// Lève une erreur si une écriture échoue (le webhook doit renvoyer 500 pour
+// que SasPay réessaie, plutôt qu'un faux succès silencieux).
+export async function activerAbonnement(
+  supabaseAdmin: SupabaseClient,
+  params: {
+    transactionId: string; // id interne payment_transactions
+    userId: string;
+    phone: string | null;
+    network: string | null;
+    payload?: unknown;
+  }
+): Promise<void> {
+  const { transactionId, userId, phone, network, payload } = params;
+
+  // 0) Idempotence : le webhook ET verify-payment peuvent arriver pour la même
+  //    transaction. Si un abonnement référence déjà cette transaction, on ne
+  //    prolonge pas une seconde fois (sinon +2 mois pour un seul paiement).
+  const { data: dejaActive } = await supabaseAdmin
+    .from("abonnements").select("id").eq("reference_transaction", transactionId).limit(1).maybeSingle();
+  if (dejaActive) {
+    await supabaseAdmin.from("payment_transactions")
+      .update({ status: "success", updated_at: new Date().toISOString() }).eq("id", transactionId);
+    return;
+  }
+
+  // 1) Transaction → success (avec payload brut pour traçabilité). On lit le
+  //    montant ET le plan au passage : la transaction porte le plan choisi au
+  //    checkout (starter | premium) — c'est lui qu'on active, pas un plan fixe.
+  const { data: tx, error: errTx } = await supabaseAdmin
+    .from("payment_transactions")
+    .update({
+      status: "success",
+      raw_webhook_payload: payload ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", transactionId)
+    .select("amount, plan_id")
+    .single();
+  if (errTx) throw new Error(`transaction non mise à jour: ${errTx.message}`);
+
+  // Transactions créées avant l'ajout de plan_id : repli sur premium.
+  const planId = tx?.plan_id === "starter" ? "starter" : "premium";
+
+  // 2) Abonnement : prolonge la date d'expiration si elle est encore future.
+  const { data: abo, error: errLecture } = await supabaseAdmin
+    .from("abonnements")
+    .select("id, date_expiration")
+    .eq("user_id", userId)
+    .order("date_expiration", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (errLecture) throw new Error(`lecture abonnement: ${errLecture.message}`);
+
+  const maintenant = new Date();
+  const base =
+    abo?.date_expiration && new Date(abo.date_expiration) > maintenant
+      ? new Date(abo.date_expiration)
+      : maintenant;
+  const expiration = new Date(base);
+  expiration.setMonth(expiration.getMonth() + 1);
+
+  // Schéma réel : plan_id (not null), moyen_paiement, montant_paye,
+  // reference_transaction — PAS payment_phone/payment_network.
+  const champs = {
+    statut: "actif",
+    date_expiration: expiration.toISOString(),
+    moyen_paiement: network ?? null,
+    montant_paye: tx?.amount != null ? Number(tx.amount) : null,
+    reference_transaction: transactionId,
+    // Le plan suit celui payé : un passage starter → premium (ou l'inverse)
+    // au renouvellement met bien à jour le plan actif.
+    plan_id: planId,
+  };
+
+  if (abo) {
+    const { error } = await supabaseAdmin.from("abonnements").update(champs).eq("id", abo.id);
+    if (error) throw new Error(`abonnement non prolongé: ${error.message}`);
+  } else {
+    const { error } = await supabaseAdmin.from("abonnements").insert({
+      user_id: userId,
+      date_debut: maintenant.toISOString(),
+      ...champs,
+    });
+    if (error) throw new Error(`abonnement non créé: ${error.message}`);
+  }
+
+  console.log(`abonnement activé: user=${userId} plan=${planId} transaction=${transactionId} expiration=${expiration.toISOString()}`);
+}

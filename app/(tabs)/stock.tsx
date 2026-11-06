@@ -1,15 +1,10 @@
 
+import { sauverPreference } from "@/lib/preferences/prefs";
 import { useState, useCallback, useEffect, useRef } from "react";
 
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  ActivityIndicator,
-} from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text, TextInput } from "@/components/Texte";
 
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 
@@ -22,9 +17,10 @@ import { useLangue, t } from "@/lib/i18n";
 import { peutEcrire } from "@/lib/trial/gate";
 import { afficherPaywall } from "@/lib/trial/paywall";
 
-import { useCategories } from "@/lib/categories/CategoriesProvider";
+import { useCategories, CATEGORIES_PAR_DEFAUT } from "@/lib/categories/CategoriesProvider";
 
-import { Badge } from "@/components/UI";
+import { Badge, ombre } from "@/components/UI";
+import { Apparition, PressableAnime } from "@/components/anim";
 import { AvatarNom } from "@/components/AvatarNom";
 import { ImageCachee } from "@/components/ImageCachee";
 
@@ -87,7 +83,7 @@ export default function Stock() {
   const { colors } = useTheme();
   const { langue } = useLangue();
   const { plan } = usePlanActuel();
-  const { formater } = useCurrency();
+  const { formater, formaterCompact } = useCurrency();
   const { categories } = useCategories();
   const { statut } = useLocalSearchParams<{ statut?: string }>();
 
@@ -123,7 +119,7 @@ export default function Stock() {
   function basculerModeAffichage() {
     setModeAffichage((actuel) => {
       const prochain = ORDRE_MODES[(ORDRE_MODES.indexOf(actuel) + 1) % ORDRE_MODES.length];
-      AsyncStorage.setItem(CLE_MODE_AFFICHAGE, prochain).catch(() => {});
+      sauverPreference(CLE_MODE_AFFICHAGE, prochain).catch(() => {});
       return prochain;
     });
   }
@@ -272,7 +268,7 @@ export default function Stock() {
   function actionsProduit(p: Produit) {
     return [
       {
-        label: t("produit_sauver", langue) === "Save" ? "Edit" : "Modifier",
+        label: t("stock_modifier", langue),
         icone: "edit-3" as const,
         onPress: () => router.push(`/produit/${p.id}`),
       },
@@ -285,40 +281,64 @@ export default function Stock() {
     ];
   }
 
-  // Indicateur de stock partagé par les modes liste et grille.
+  // Indicateur de stock partagé par les modes liste et grille : pastille
+  // colorée (rouge = rupture, orange = stock faible, vert = ok).
   function badgeStock(p: Produit) {
-    if (p.quantite_stock === 0) return <Badge texte={`${p.quantite_stock} ${t("stock_en_stock", langue)}`} type="danger" />;
-    if (p.quantite_stock <= p.seuil_alerte) return <Badge texte={`${p.quantite_stock} ${t("stock_en_stock", langue)}`} type="attention" />;
-    return <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{p.quantite_stock} {t("stock_en_stock", langue)}</Text>;
+    const rupture = p.quantite_stock === 0;
+    const faible = !rupture && p.quantite_stock <= p.seuil_alerte;
+    const fond = rupture ? colors.dangerBg : faible ? colors.warningBg : colors.accentBg;
+    const encre = rupture ? colors.danger : faible ? colors.warning : colors.accent;
+    return (
+      <View style={[styles.pastilleStock, { backgroundColor: fond }]}>
+        <View style={[styles.pointStock, { backgroundColor: encre }]} />
+        <Text numberOfLines={1} style={{ color: encre, fontSize: 12, fontWeight: "800" }}>{p.quantite_stock}</Text>
+        <Text numberOfLines={1} style={{ color: encre, fontSize: 11, fontWeight: "600" }}>{t("stock_en_stock", langue)}</Text>
+      </View>
+    );
   }
 
-  // Mode « liste » — le rendu historique, complet.
-  function rendreLigneListe(p: Produit) {
+  // Mode « liste » — carte par produit : image, nom + catégorie, prix, puis deux
+  // colonnes ALIGNÉES côte à côte (stock | vendus), même hauteur, libellés discrets.
+  function rendreLigneListe(p: Produit, i: number) {
+    const rupture = p.quantite_stock === 0;
+    const faible = !rupture && p.quantite_stock <= p.seuil_alerte;
+    const fond = rupture ? colors.dangerBg : faible ? colors.warningBg : colors.accentBg;
+    const encre = rupture ? colors.danger : faible ? colors.warning : colors.accent;
     return (
-      <View key={p.id} style={[styles.ligneProduit, { borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => router.push(`/produit/${p.id}`)} style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-          <AvatarNom nom={p.nom} imageUri={p.image_uri} taille={36} />
-          <View style={{ flexShrink: 1 }}>
-            <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{p.nom}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{formater(p.prix_vente)}</Text>
+      <Apparition key={p.id} delai={Math.min(i, 8) * 35} depuis={10}>
+        <PressableAnime
+          onPress={() => router.push(`/produit/${p.id}`)}
+          echelle={0.98}
+          style={[styles.carteProduit, { backgroundColor: colors.surface, borderColor: colors.border }, ombre(colors, 1)]}
+        >
+          <AvatarNom nom={p.nom} imageUri={p.image_uri} taille={46} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "700" }}>{p.nom}</Text>
+            {p.categorie_nom ? (
+              <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>{p.categorie_nom}</Text>
+            ) : null}
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ color: colors.accent, fontSize: 12.5, fontWeight: "800", marginTop: 3 }}>{formaterCompact(p.prix_vente)}</Text>
           </View>
-        </Pressable>
-
-        <View style={{ width: 53, alignItems: "center", marginRight: 30, flexDirection: "row", gap: 4 }}>
-          <Text style={{ color: colors.textPrimary, fontSize: 10, fontWeight: "600" }}>{p.nb_vendus}</Text>
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "600" }}>{t("stock_vendus", langue)}</Text>
-        </View>
-
-        {badgeStock(p)}
-        <MenuContextuel actions={actionsProduit(p)} />
-      </View>
+          <View style={styles.colonneStats}>
+            <View style={[styles.celluleStat, { backgroundColor: fond }]}>
+              <Text numberOfLines={1} style={{ color: encre, fontSize: 15, fontWeight: "800" }}>{p.quantite_stock}</Text>
+              <Text numberOfLines={1} style={{ color: encre, fontSize: 10, fontWeight: "600", marginTop: 1 }}>{t("stock_en_stock", langue)}</Text>
+            </View>
+            <View style={[styles.celluleStat, { backgroundColor: colors.background }]}>
+              <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 15, fontWeight: "800" }}>{p.nb_vendus}</Text>
+              <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 10, fontWeight: "600", marginTop: 1 }}>{t("stock_vendus", langue)}</Text>
+            </View>
+          </View>
+          <MenuContextuel actions={actionsProduit(p)} />
+        </PressableAnime>
+      </Apparition>
     );
   }
 
   // Mode « grille » — grandes images, 2 colonnes, catalogue visuel.
   function rendreCarteGrille(p: Produit) {
     return (
-      <View key={p.id} style={[styles.carteGrille, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View key={p.id} style={[styles.carteGrille, { backgroundColor: colors.surface, borderColor: colors.border }, ombre(colors, 1)]}>
         <Pressable onPress={() => router.push(`/produit/${p.id}`)}>
           {p.image_uri ? (
             <ImageCachee uri={p.image_uri} style={styles.imageGrille} />
@@ -329,9 +349,9 @@ export default function Stock() {
           )}
         </Pressable>
         <View style={styles.corpsGrille}>
-          <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{p.nom}</Text>
+          <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13.5, fontWeight: "700" }}>{p.nom}</Text>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{formater(p.prix_vente)}</Text>
+            <Text style={{ color: colors.accent, fontSize: 12.5, fontWeight: "800" }}>{formaterCompact(p.prix_vente)}</Text>
             <MenuContextuel actions={actionsProduit(p)} />
           </View>
           <View style={{ marginTop: 6, alignSelf: "flex-start" }}>{badgeStock(p)}</View>
@@ -348,7 +368,7 @@ export default function Stock() {
           <AvatarNom nom={p.nom} imageUri={p.image_uri} taille={26} />
           <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, flexShrink: 1 }}>{p.nom}</Text>
         </Pressable>
-        <Text style={{ color: colors.textSecondary, fontSize: 12, marginRight: 8 }}>{formater(p.prix_vente)}</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginRight: 8 }}>{formaterCompact(p.prix_vente)}</Text>
         <Text
           style={{
             fontSize: 12,
@@ -366,6 +386,19 @@ export default function Stock() {
   // Grille en lignes de 2 explicites : flexWrap dans le contentContainer d'un
   // ScrollView n'affichait rien sur l'architecture legacy — avec des lignes
   // simples (flexDirection: "row"), le rendu est garanti.
+  // Puces de catégories : celles ENREGISTRÉES par l'utilisateur (Réglages →
+  // Catégories) + toute catégorie réellement portée par un de ses produits.
+  const comptesCategories = new Map<string, number>();
+  for (const p of produits) {
+    if (p.categorie_nom) comptesCategories.set(p.categorie_nom, (comptesCategories.get(p.categorie_nom) ?? 0) + 1);
+  }
+  // Barre de filtre : uniquement les catégories de l'UTILISATEUR (celles qu'il a
+  // créées + celles réellement utilisées par ses produits) — pas la liste par défaut.
+  const categoriesUtilisateur = Array.from(new Set([
+    ...categories.filter((c) => !CATEGORIES_PAR_DEFAUT.includes(c)),
+    ...comptesCategories.keys(),
+  ]));
+
   const pairesGrille: Produit[][] = [];
   if (modeAffichage === "grille") {
     for (let i = 0; i < produitsFiltres.length; i += 2) pairesGrille.push(produitsFiltres.slice(i, i + 2));
@@ -391,8 +424,8 @@ export default function Stock() {
           </Pressable>
           <Text
             style={{
-              fontSize: 16,
-              fontWeight: "500",
+              fontSize: 16, 
+              fontWeight: "700",
               color: colors.textPrimary,
             }}
           >
@@ -488,6 +521,7 @@ export default function Stock() {
               styles.recherche,
               {
                 borderColor: colors.border,
+                backgroundColor: colors.surface,
                 color: colors.textPrimary,
                 flex: 1,
                 marginBottom: 0,
@@ -513,73 +547,48 @@ export default function Stock() {
         </View>
       )}
 
+     
+
       {/* =========================
           FILTRE PAR CATÉGORIE
       ========================== */}
 
-      {categories.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{
-            marginBottom: 12,
-            maxHeight: 30,
-          }}
-        >
-          <Pressable
-            onPress={() => setCategorieFiltre(null)}
-            style={[
-              styles.puceCategorie,
-              {
-                borderColor: !categorieFiltre
-                  ? colors.accent
-                  : colors.border,
-                borderWidth: !categorieFiltre ? 1.5 : 1,
-              },
-            ]}
+      {categoriesUtilisateur.length > 0 && (
+        <View style={{ marginBottom: 12, height: 40 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={styles.barreCategories}
           >
-            <Text
-              style={{
-                color: !categorieFiltre
-                  ? colors.accent
-                  : colors.textSecondary,
-                fontSize: 11,
-              }}
-            >
-              {t("stock_tous", langue)}
-            </Text>
-          </Pressable>
-
-          {categories.map((c) => (
-            <Pressable
-              key={c}
-              onPress={() => setCategorieFiltre(c)}
-              style={[
-                styles.puceCategorie,
-                {
-                  borderColor:
-                    categorieFiltre === c
-                      ? colors.accent
-                      : colors.border,
-                  borderWidth:
-                    categorieFiltre === c ? 1.5 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color:
-                    categorieFiltre === c
-                      ? colors.accent
-                      : colors.textSecondary,
-                  fontSize: 11,
-                }}
-              >
-                {c}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+            {[null, ...categoriesUtilisateur].map((c) => {
+              const actif = (c ?? null) === (categorieFiltre ?? null);
+              return (
+                <Pressable
+                  key={c ?? "__tous"}
+                  onPress={() => setCategorieFiltre(c)}
+                  style={({ pressed }) => [
+                    styles.puceCategorie,
+                    {
+                      borderColor: actif ? colors.accent : colors.border,
+                      backgroundColor: actif ? colors.accent : colors.surface,
+                      opacity: pressed ? 0.8 : 1,
+                    },
+                  ]}
+                >
+                  <Text numberOfLines={1} style={{ color: actif ? "#fff" : colors.textSecondary, fontSize: 13, fontWeight: "700" }}>
+                    {c ?? t("stock_tous", langue)}
+                  </Text>
+                  {c !== null && (
+                    <View style={[styles.compteCategorie, { backgroundColor: actif ? "rgba(255,255,255,0.25)" : colors.accentBg }]}>
+                      <Text style={{ color: actif ? "#fff" : colors.accent, fontSize: 10.5, fontWeight: "800" }}>{comptesCategories.get(c) ?? 0}</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
 
       {/* =========================
@@ -587,44 +596,15 @@ export default function Stock() {
       ========================== */}
 
       {chargement ? (
-        <ActivityIndicator
-          style={{ marginTop: 40 }}
-          color={colors.accent}
-        />
+        <ListeSkeleton />
       ) : produitsFiltres.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather
-            name="package"
-            size={30}
-            color={colors.textMuted}
-            style={{ marginBottom: 10 }}
-          />
-
-          <Text
-            style={{
-              color: colors.textPrimary,
-              fontSize: 14,
-              fontWeight: "500",
-              marginBottom: 4,
-            }}
-          >
-            {produits.length === 0
-              ? t("stock_vide_titre", langue)
-              : t("stock_aucun_resultat", langue)}
-          </Text>
-
-          {produits.length === 0 && (
-            <Text
-              style={{
-                color: colors.textSecondary,
-                fontSize: 12,
-                textAlign: "center",
-              }}
-            >
-              {t("stock_vide_texte", langue)}
-            </Text>
-          )}
-        </View>
+        <EtatVide
+          icone="package"
+          titre={produits.length === 0 ? t("stock_vide_titre", langue) : t("stock_aucun_resultat", langue)}
+          texte={produits.length === 0 ? t("stock_vide_texte", langue) : undefined}
+          actionLibelle={produits.length === 0 ? t("vide_action_produit", langue) : undefined}
+          onAction={produits.length === 0 ? () => router.push("/produit/nouveau") : undefined}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.contenu}>
           {modeAffichage === "grille"
@@ -637,7 +617,7 @@ export default function Stock() {
               ))
             : modeAffichage === "minimal"
               ? produitsFiltres.map(rendreLigneMinimal)
-              : produitsFiltres.map(rendreLigneListe)}
+              : produitsFiltres.map((p, i) => rendreLigneListe(p, i))}
         </ScrollView>
       )}
 
@@ -722,7 +702,7 @@ const styles = StyleSheet.create({
   boutonEntete: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -740,9 +720,10 @@ const styles = StyleSheet.create({
 
   recherche: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 14,
     height: "100%",
-    fontSize: 13,
+    fontSize: 14,
+    paddingLeft: 14,
   },
 
   conteneurRecherche: {
@@ -768,13 +749,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 
+  barreCategories: { alignItems: "center", paddingRight: 8, gap: 8, height: 40 },
   puceCategorie: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginRight: 6,
-    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 36,
+    flexShrink: 0,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    borderWidth: 1,
   },
+  compteCategorie: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center" },
 
   etatVide: {
     alignItems: "center",
@@ -795,7 +782,7 @@ const styles = StyleSheet.create({
   carteGrille: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 20,
     overflow: "hidden",
   },
   imageGrille: { width: "100%", aspectRatio: 1, resizeMode: "cover" },
@@ -825,6 +812,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
-
+  carteProduit: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 18, borderWidth: 1, marginBottom: 8 },
+  colonneStats: { flexDirection: "row", alignItems: "stretch", gap: 6, flexShrink: 0 },
+  celluleStat: { minWidth: 50, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 12 },
+  pastilleStock: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  pointStock: { width: 6, height: 6, borderRadius: 3 },
+  ligneResume: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  tuileResume: { flex: 1, minHeight: 62, justifyContent: "center", borderRadius: 16, borderWidth: 1.5, paddingVertical: 10, paddingHorizontal: 12 },
 });
 

@@ -1,5 +1,11 @@
+import { Apparition } from "@/components/anim";
+import { ombre } from "@/components/UI";
+import { PuceIcone } from "@/components/PuceIcone";
+import { LinearGradient } from "expo-linear-gradient";
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, TextInput, Share } from "react-native";
+import { View, ScrollView, StyleSheet, ActivityIndicator, Pressable, Share } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -22,6 +28,9 @@ type Depense = {
   creeLe: Date;
   fournisseurNom: string | null;
   produitNom: string | null;
+  modePaiement: string | null;
+  reference: string | null;
+  recurrence: string | null;
   champs: Record<string, string>;
 };
 
@@ -31,7 +40,7 @@ const MOIS_EN = ["January", "February", "March", "April", "May", "June", "July",
 export default function Depenses() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formaterCompact } = useCurrency();
   const { showToast } = useToast();
   const [depenses, setDepenses] = useState<Depense[]>([]);
   const [revenusMois, setRevenusMois] = useState(0);
@@ -88,6 +97,9 @@ export default function Depenses() {
         creeLe: d.creeLe,
         fournisseurNom: supp.fournisseur_nom ?? null,
         produitNom: supp.produit_nom ?? null,
+        modePaiement: supp.mode_paiement ?? null,
+        reference: supp.reference ?? null,
+        recurrence: supp.recurrence ?? null,
         champs: supp.champs ?? {},
       };
     }));
@@ -258,46 +270,68 @@ export default function Depenses() {
       )}
 
       {!chargement && filtrees.length > 0 && (
-        <View style={[styles.bandeauTotal, { backgroundColor: colors.dangerBg }]}>
-          <Text style={{ color: colors.danger, fontSize: 12 }}>Total : {formater(total)} ({filtrees.length})</Text>
-          {/* Calcul intégré : revenus du mois − dépenses du mois (jour précis exclu) */}
-          {!jour && (
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
-              {t("depenses_revenus_mois", langue)} : {formater(revenusMois)}  •  {t("depenses_solde", langue)} : {formater(revenusMois - total)}
-            </Text>
-          )}
-        </View>
+        <Apparition>
+          <LinearGradient colors={["#F2776B", "#D64545"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.resume}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" }}>{t("commandes_total", langue)}</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: "#fff", fontSize: 26, fontWeight: "800", marginTop: 2 }}>{formaterCompact(total)}</Text>
+              </View>
+              <View style={styles.resumeNb}>
+                <Text style={{ color: "#fff", fontSize: 18, fontWeight: "800" }}>{filtrees.length}</Text>
+              </View>
+            </View>
+            {/* Calcul intégré : revenus du mois − dépenses du mois (jour précis exclu) */}
+            {!jour && (
+              <View style={styles.resumeBas}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "rgba(255,255,255,0.75)", fontSize: 11 }}>{t("depenses_revenus_mois", langue)}</Text>
+                  <Text numberOfLines={1} style={{ color: "#fff", fontSize: 14, fontWeight: "800", marginTop: 2 }}>{formaterCompact(revenusMois)}</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: "flex-end" }}>
+                  <Text style={{ color: "rgba(255,255,255,0.75)", fontSize: 11 }}>{t("depenses_solde", langue)}</Text>
+                  <Text numberOfLines={1} style={{ color: "#fff", fontSize: 14, fontWeight: "800", marginTop: 2 }}>{formaterCompact(revenusMois - total)}</Text>
+                </View>
+              </View>
+            )}
+          </LinearGradient>
+        </Apparition>
       )}
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : filtrees.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="credit-card" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("depenses_vide", langue)}</Text>
-        </View>
+        <EtatVide
+          icone="credit-card"
+          titre={t("depenses_vide", langue)}
+          texte={t("vide_depenses_texte", langue)}
+          actionLibelle={t("vide_action_depense", langue)}
+          onAction={() => router.push("/depenses/nouvelle")}
+        />
       ) : (
-        <ScrollView>
-          {filtrees.map((d) => (
-            <View key={d.id} style={[styles.ligne, { borderBottomColor: colors.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{libelleCategorieDepense(d.categorie, langue)}</Text>
-                {d.description && <Text style={{ color: colors.textMuted, fontSize: 11 }}>{d.description}</Text>}
-                {d.fournisseurNom && (
-                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                    {t("filtre_fournisseur", langue)} : {d.fournisseurNom}
-                  </Text>
-                )}
-                {d.produitNom && <Text style={{ color: colors.textMuted, fontSize: 11 }}>📦 {d.produitNom}</Text>}
-                {Object.entries(d.champs).map(([nom, valeur]) => (
-                  <Text key={nom} style={{ color: colors.textMuted, fontSize: 11 }}>{nom} : {valeur}</Text>
-                ))}
-                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
-                  {d.creeLe.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}
-                </Text>
+        <ScrollView contentContainerStyle={{ paddingBottom: 90 }}>
+          {filtrees.map((d, i) => (
+            <Apparition key={d.id} delai={Math.min(i, 8) * 40} depuis={10}>
+              <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }, ombre(colors, 1)]}>
+                <PuceIcone icone={iconeCategorie(d.categorie)} ton="rose" taille={42} />
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "700" }}>{libelleCategorieDepense(d.categorie, langue)}</Text>
+                  {d.description ? <Text numberOfLines={2} style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{d.description}</Text> : null}
+                  <View style={styles.meta}>
+                    <Text style={{ color: colors.textMuted, fontSize: 11 }}>{d.creeLe.toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}</Text>
+                    {d.modePaiement ? <View style={[styles.mini, { backgroundColor: colors.accentBg }]}><Text style={{ color: colors.accent, fontSize: 10.5, fontWeight: "700" }}>{libellePaiement(d.modePaiement, langue)}</Text></View> : null}
+                    {d.recurrence ? <View style={[styles.mini, { backgroundColor: colors.warningBg }]}><Feather name="repeat" size={9} color={colors.warning} /><Text style={{ color: colors.warning, fontSize: 10.5, fontWeight: "700" }}>{t(d.recurrence === "hebdo" ? "depense_rec_hebdo" : "depense_rec_mensuelle", langue)}</Text></View> : null}
+                  </View>
+                  {d.fournisseurNom ? <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 3 }}>{t("filtre_fournisseur", langue)} : {d.fournisseurNom}</Text> : null}
+                  {d.produitNom ? <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>{d.produitNom}</Text> : null}
+                  {d.reference ? <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>#{d.reference}</Text> : null}
+                  {Object.entries(d.champs).map(([nom, valeur]) => (
+                    <Text key={nom} style={{ color: colors.textMuted, fontSize: 11 }}>{nom} : {valeur}</Text>
+                  ))}
+                </View>
+                <Text numberOfLines={1} style={{ color: colors.danger, fontSize: 14.5, fontWeight: "800" }}>-{formaterCompact(d.montant)}</Text>
               </View>
-              <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "500" }}>{formater(d.montant)}</Text>
-            </View>
+            </Apparition>
           ))}
         </ScrollView>
       )}
@@ -305,6 +339,20 @@ export default function Depenses() {
       <BoutonFlottant onPress={() => router.push("/depenses/nouvelle")} />
     </View>
   );
+}
+
+function iconeCategorie(c: string): any {
+  const k = c.toLowerCase();
+  if (k.includes("loyer") || k.includes("rent")) return "home";
+  if (k.includes("transport")) return "truck";
+  if (k.includes("salaire") || k.includes("salary") || k.includes("wage")) return "users";
+  if (k.includes("elec") || k.includes("eau") || k.includes("water") || k.includes("util")) return "zap";
+  if (k.includes("market") || k.includes("pub")) return "volume-2";
+  return "credit-card";
+}
+
+function libellePaiement(m: string, langue: "fr" | "en") {
+  return t((m === "cash" ? "vente_paiement_cash" : m === "momo" ? "vente_paiement_momo" : m === "credit" ? "vente_paiement_credit" : "depense_paiement_banque") as any, langue) as string;
 }
 
 function PuceFiltre({ label, actif, onPress, colors }: any) {
@@ -317,9 +365,15 @@ function PuceFiltre({ label, actif, onPress, colors }: any) {
 
 const styles = StyleSheet.create({
   boutonFiltre: { width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  barreRecherche: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10 },
+  barreRecherche: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 },
   ligneFiltreMois: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 8 },
   ligneFiltres: { marginBottom: 8 },
+  resume: { padding: 16, borderRadius: 20, marginBottom: 12 },
+  resumeNb: { backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
+  resumeBas: { flexDirection: "row", marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.2)" },
+  carte: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 14, borderRadius: 20, borderWidth: 1, marginBottom: 10 },
+  meta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 5 },
+  mini: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
   bandeauTotal: { padding: 10, borderRadius: 10, marginBottom: 12 },
   etatVide: { alignItems: "center", paddingTop: 40 },
   ligne: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, gap: 10 },

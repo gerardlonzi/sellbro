@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Linking } from "react-native";
+import { View, Pressable, StyleSheet, Linking } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather , MaterialCommunityIcons} from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -196,11 +197,7 @@ const [telephone, setTelephone] = useState("");
         </Text>
       </Pressable>
 
-      {/* Lien support : tout en bas de la page, ouvre WhatsApp. */}
-      <Pressable onPress={() => Linking.openURL(`https://wa.me/${NUMERO_SUPPORT.replace("+", "")}`)} style={styles.contacter}>
-        <MaterialCommunityIcons name="whatsapp" size={15} color="#1D9E75" />
-        <Text style={{ color: "#1D9E75", fontSize: 13, fontWeight: "500" }}>{t("boutique_nous_contacter", langue)}</Text>
-      </Pressable>
+      
 
     </View>
   );

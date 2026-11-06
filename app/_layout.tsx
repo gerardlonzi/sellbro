@@ -5,6 +5,9 @@ import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useFonts } from "expo-font";
+import { POLICES_A_CHARGER } from "@/lib/theme/typography";
+import { SplashAnime } from "@/components/SplashAnime";
 
 // Tes providers
 import { ThemeProvider, useTheme } from "@/lib/theme/ThemeProvider";
@@ -19,7 +22,8 @@ import { enregistrerTokenPush } from "@/lib/notifications/push";
 import { PaywallPopup } from "@/components/PaywallPopup";
 import { SyncBanner } from "@/components/SyncBanner";
 import { supabase } from "@/lib/supabase/client";
-import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { synchroniserTout } from "@/lib/database/sync";
 import { rafraichirPlan, reinitialiserPlan } from "@/lib/plan/planStore";
 import { effacerCacheEssai } from "@/lib/trial/deviceTrial";
 
@@ -41,20 +45,26 @@ function AppContent() {
   // un nouvel appareil) — évite de devoir forcer la fermeture/réouverture.
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((evenement, session) => {
-      if (session?.user) {
-        synchroniserPourUtilisateurCourant().catch(() => {});
-        // Enregistre le token push : permet les notifications instantanées
-        // envoyées par le serveur même quand l'app est fermée.
-        enregistrerTokenPush().catch(() => {});
-        // Relit le plan APRÈS la connexion. Sans ça, le plan lu au démarrage
-        // (avant toute session, donc « gratuit ») restait figé : un abonné Pro
-        // voyait « essai gratuit » jusqu'au prochain redémarrage.
-        rafraichirPlan().catch(() => {});
+      // ⚠️ Ne JAMAIS attendre un appel Supabase directement dans ce callback :
+      // supabase-js le exécute sous le verrou d'authentification, et un
+      // getUser()/requête à l'intérieur reste bloqué (timeout) — c'était la
+      // cause de « pas de synchro après connexion » et du plan Pro perdu.
+      // On diffère donc le travail d'un tour de boucle, avec l'id de session.
+      if (session?.user && (evenement === "SIGNED_IN" || evenement === "INITIAL_SESSION")) {
+        const userId = session.user.id;
+        setTimeout(async () => {
+          // 1) Le plan d'abord (il décide si le PUSH est autorisé), 2) la synchro.
+          await rafraichirPlan().catch(() => {});
+          synchroniserTout(userId).catch(() => {});
+          // Token push : notifications instantanées même app fermée.
+          enregistrerTokenPush().catch(() => {});
+        }, 0);
       } else if (evenement === "SIGNED_OUT") {
         // Le plan et l'essai du compte précédent ne doivent pas survivre à la
         // déconnexion, sinon le compte suivant en hérite brièvement.
         reinitialiserPlan();
         effacerCacheEssai().catch(() => {});
+        AsyncStorage.multiRemove(["abonnement_cache", "config_essai_cache", "prefs_meta_v1"]).catch(() => {});
       }
     });
     return () => sub.subscription.unsubscribe();
@@ -84,6 +94,11 @@ function AppContent() {
   }, []);
 
   const [appReady, setAppReady] = useState(false);
+  // Police de l'app : le splash natif reste affiché tant qu'elle n'est pas
+  // chargée, pour qu'aucun texte n'apparaisse d'abord dans la police système.
+  const [policesPretes, erreurPolices] = useFonts(POLICES_A_CHARGER);
+  // Animation d'ouverture : joue par-dessus l'app, puis se dissout.
+  const [splashAnimeActif, setSplashAnimeActif] = useState(true);
 
   useEffect(() => {
     async function prepare() {
@@ -113,18 +128,18 @@ function AppContent() {
   // <View> principal (même type de composant), React réutilise la vue
   // native déjà mesurée et onLayout ne se re-déclenche jamais.
   useEffect(() => {
-    if (appReady) {
+    if (appReady && (policesPretes || erreurPolices)) {
       SplashScreen.hideAsync().catch((error) => {
         console.log("Erreur fermeture splash :", error);
       });
     }
-  }, [appReady]);
+  }, [appReady, policesPretes, erreurPolices]);
 
   // -------------------------------------------------------
   // Tant que l'application n'est pas prête, on ne rend pas
   // l'interface principale.
   // -------------------------------------------------------
-  if (!appReady) {
+  if (!appReady || !(policesPretes || erreurPolices)) {
     return (
       <View
         style={[
@@ -158,13 +173,23 @@ function AppContent() {
             backgroundColor: colors.background,
           },
 
-          // Supprime/limite les effets de transition visibles
-          animation: "fade",
+          // Transitions : glissement latéral fluide (au lieu d'un simple
+          // fondu), geste de retour par balayage activé.
+          animation: "slide_from_right",
+          animationDuration: 300,
+          gestureEnabled: true,
         }}
-      />
+      >
+        {/* Outils plein écran : montent du bas, comme une feuille. */}
+        <Stack.Screen name="scan-facture/index" options={{ animation: "slide_from_bottom", animationDuration: 340 }} />
+        <Stack.Screen name="vente/vocal" options={{ animation: "slide_from_bottom", animationDuration: 340 }} />
+        <Stack.Screen name="premium/index" options={{ animation: "slide_from_bottom", animationDuration: 380 }} />
+        <Stack.Screen name="(tabs)" options={{ animation: "fade", animationDuration: 260 }} />
+      </Stack>
 
       <PaywallPopup />
       <SyncBanner />
+      {splashAnimeActif && <SplashAnime onTermine={() => setSplashAnimeActif(false)} />}
     </View>
   );
 }

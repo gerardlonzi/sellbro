@@ -87,7 +87,9 @@ export function PressableAnime({
     <Animated.View style={[place, { transform: [{ scale }] }]}>
       <Pressable
         {...props}
-        style={[visuel, remplit && { flex: 1 }]}
+        // flexGrow (base auto) et non flex:1 (base 0) : avec une base à 0, le contenu
+        // d'un conteneur sans hauteur fixe s'écrasait (texte coupé dans les tuiles).
+        style={[visuel, remplit && { flexGrow: 1 }]}
         onPressIn={(e: GestureResponderEvent) => {
           vers(echelle);
           onPressIn?.(e);

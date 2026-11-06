@@ -1,6 +1,7 @@
 // app/(auth)/connexion.tsx
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Image } from "react-native";
+import { View, Pressable } from "react-native";
+import { Text } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -8,8 +9,12 @@ import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { envoyerCodeEmail, verifierCodeEmail } from "@/lib/auth/emailVerification";
+import { demarrerOuVerifierEssaiGratuit } from "@/lib/trial/deviceTrial";
+import { rafraichirPlan } from "@/lib/plan/planStore";
 import { synchroniserPourUtilisateurCourant } from "@/lib/database/sync";
 import { ActivityIndicator } from "react-native";
+import { EcranAuth, ChampAuth, ChampCode } from "@/components/EcranAuth";
+import { BoutonPrimaire } from "@/components/UI";
 
 export default function Connexion() {
   const { colors } = useTheme();
@@ -63,6 +68,12 @@ export default function Connexion() {
     // 20 s (réseau lent) — la sync continue en arrière-plan sinon.
     setSyncEnCours(true);
     try {
+      // Plan d'abord : il décide si les données locales peuvent être poussées
+      // et évite d'afficher « essai terminé » à un abonné.
+      await rafraichirPlan().catch(() => {});
+      // Essai du compte (créé côté serveur si c'est un compte neuf) : écrit le
+      // cache local de CE compte avant d'entrer dans l'app.
+      await demarrerOuVerifierEssaiGratuit().catch(() => {});
       await Promise.race([
         synchroniserPourUtilisateurCourant(),
         new Promise((resolve) => setTimeout(resolve, 20000)),
@@ -73,87 +84,40 @@ export default function Connexion() {
 
   if (syncEnCours) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background, alignItems: "center" }]}>
-        <Feather name="cloud" size={40} color={colors.accent} style={{ marginBottom: 16 }} />
-        <ActivityIndicator size="small" color={colors.accent} />
-        <Text style={{ color: colors.textPrimary, fontSize: 14, marginTop: 12, textAlign: "center" }}>
-          {t("sync_en_cours", langue)}
-        </Text>
-      </View>
+      <EcranAuth titre={t("sync_en_cours", langue)} retour={false}>
+        <View style={{ alignItems: "center", paddingVertical: 18 }}>
+          <Feather name="cloud" size={40} color={colors.accent} style={{ marginBottom: 14 }} />
+          <ActivityIndicator size="small" color={colors.accent} />
+        </View>
+      </EcranAuth>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Pressable onPress={() => router.back()} hitSlop={10} style={styles.boutonRetour}>
-        <Feather name="arrow-left" size={22} color={colors.textPrimary} />
-      </Pressable>
-      <Image
-        source={require("../../assets/splash-logo.png")}
-        style={styles.icone}
-        resizeMode="contain"
-      />
-      <Text style={[styles.titre, { color: colors.textPrimary }]}>{t("connexion_titre", langue)}</Text>
-      <Text style={[styles.sousTitre, { color: colors.textSecondary }]}>{t("connexion_sous_titre", langue)}</Text>
-
+    <EcranAuth titre={t("connexion_titre", langue)} sousTitre={t("connexion_sous_titre", langue)}>
       {etape === "email" ? (
         <>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>{t("label_email", langue)}</Text>
-          <TextInput
-            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]}
+          <ChampAuth
+            icone="mail"
+            valeur={email}
+            onChange={setEmail}
             placeholder={t("placeholder_email", langue)}
-            placeholderTextColor={colors.textMuted}
             keyboardType="email-address"
             autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
+            autoCorrect={false}
           />
-          <Pressable
-            onPress={envoyerCode}
-            disabled={chargement}
-            style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
-          >
-            <Text style={styles.boutonTexte}>{chargement ? "..." : t("connexion_recevoir_code", langue)}</Text>
-          </Pressable>
+          <BoutonPrimaire texte={chargement ? "…" : t("connexion_recevoir_code", langue)} icone="arrow-right" onPress={envoyerCode} disabled={chargement} />
         </>
       ) : (
         <>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>{t("connexion_code_recu", langue)}</Text>
-          <TextInput
-            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, textAlign: "center", fontSize: 20, letterSpacing: 8 }]}
-            placeholder="123456"
-            placeholderTextColor={colors.textMuted}
-            keyboardType="number-pad"
-            value={code}
-            onChangeText={setCode}
-          />
-          <Pressable
-            onPress={verifierCode}
-            disabled={chargement}
-            style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
-          >
-            <Text style={styles.boutonTexte}>{chargement ? "..." : t("otp_confirmer", langue)}</Text>
-          </Pressable>
-
+          <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: "center", marginBottom: 14 }}>{t("connexion_code_recu", langue)}</Text>
+          <ChampCode valeur={code} onChange={setCode} />
+          <BoutonPrimaire texte={chargement ? "…" : t("otp_confirmer", langue)} icone="check" onPress={verifierCode} disabled={chargement || code.length < 6} />
           <Pressable onPress={() => setEtape("email")} style={{ marginTop: 16, alignItems: "center" }}>
-            <Text style={{ color: colors.accent, fontSize: 13, textDecorationLine: "underline" }}>
-              {t("otp_changer_email", langue)}
-            </Text>
+            <Text style={{ color: colors.accent, fontSize: 13.5, fontWeight: "600" }}>{t("otp_changer_email", langue)}</Text>
           </Pressable>
         </>
       )}
-
-    </View>
+    </EcranAuth>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, justifyContent: "center" },
-  boutonRetour: { position: "absolute", top: 50, left: 24, zIndex: 1 },
-  icone: { width: 88, height: 88, borderRadius: 20, alignSelf: "center", marginBottom: 14 },
-  titre: { fontSize: 18, fontWeight: "500", marginBottom: 6, textAlign: "center" },
-  sousTitre: { fontSize: 13, marginBottom: 24, textAlign: "center" },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 16 },
-  bouton: { paddingVertical: 13, borderRadius: 8, alignItems: "center" },
-  boutonTexte: { color: "#fff", fontSize: 14, fontWeight: "500" },
-});

@@ -1,5 +1,7 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, Linking, TextInput } from "react-native";
+import { View, ScrollView, StyleSheet, ActivityIndicator, Pressable, Linking } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -8,7 +10,11 @@ import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { obtenirUserId } from "@/lib/auth/userCache";
 import { Q } from "@nozbe/watermelondb";
-import { EnteteEcran } from "@/components/UI";
+import { EnteteEcran, ombre } from "@/components/UI";
+import { Apparition, PressableAnime } from "@/components/anim";
+import { AvatarNom } from "@/components/AvatarNom";
+import { LinearGradient } from "expo-linear-gradient";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { BoutonFlottant } from "@/components/BoutonFlottant";
 
 type Fournisseur = {
@@ -17,6 +23,10 @@ type Fournisseur = {
   telephone: string | null;
   adresse: string | null;
   description: string | null;
+  contact: string | null;
+  email: string | null;
+  produitsFournis: string | null;
+  conditions: string | null;
   montantDu: number;
   champs: Record<string, string>;
 };
@@ -26,7 +36,7 @@ type Tri = "nom" | "dette";
 export default function Fournisseurs() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formaterCompact } = useCurrency();
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
   const [chargement, setChargement] = useState(true);
   const [recherche, setRecherche] = useState("");
@@ -54,6 +64,10 @@ export default function Fournisseurs() {
         telephone: f.telephone,
         adresse: f.adresse ?? null,
         description: supp.description ?? null,
+        contact: supp.contact ?? null,
+        email: supp.email ?? null,
+        produitsFournis: supp.produits_fournis ?? null,
+        conditions: supp.conditions_paiement ?? null,
         montantDu: f.montantDu,
         champs: supp.champs ?? {},
       };
@@ -135,46 +149,89 @@ export default function Fournisseurs() {
         </View>
       )}
 
-      {/* Total des montants dus */}
-      {!chargement && totalDu > 0 && (
-        <View style={[styles.bandeauTotal, { backgroundColor: colors.dangerBg }]}>
-          <Text style={{ color: colors.danger, fontSize: 12 }}>
-            {t("fournisseurs_du", langue)} : {formater(totalDu)} ({filtres.length})
-          </Text>
-        </View>
+      {/* Résumé : nombre de fournisseurs et total dû */}
+      {!chargement && fournisseurs.length > 0 && (
+        <Apparition>
+          <LinearGradient colors={totalDu > 0 ? ["#F2776B", "#D64545"] : [colors.accentClair, colors.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.resume}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontWeight: "600" }}>{t("fournisseurs_du", langue)}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: "#fff", fontSize: 24, fontWeight: "800", marginTop: 2 }}>{formaterCompact(totalDu)}</Text>
+            </View>
+            <View style={styles.resumeNb}>
+              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "800" }}>{fournisseurs.length}</Text>
+              <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 10.5 }}>{t("fournisseurs_titre_court", langue)}</Text>
+            </View>
+          </LinearGradient>
+        </Apparition>
       )}
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : filtres.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="truck" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("fournisseurs_vide", langue)}</Text>
-        </View>
+        <EtatVide
+          icone="truck"
+          titre={t("fournisseurs_vide", langue)}
+          texte={t("vide_fournisseurs_texte", langue)}
+          actionLibelle={t("vide_action_fournisseur", langue)}
+          onAction={() => router.push("/fournisseurs/nouveau")}
+        />
       ) : (
-        <ScrollView>
-          {filtres.map((f) => (
-            <View key={f.id} style={[styles.ligne, { borderBottomColor: colors.border }]}>
-              <View style={[styles.avatar, { backgroundColor: colors.accentBg }]}>
-                <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "500" }}>{f.nom.slice(0, 2).toUpperCase()}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{f.nom}</Text>
-                {f.description ? <Text style={{ color: colors.textMuted, fontSize: 11 }}>{f.description}</Text> : null}
-                {f.adresse ? <Text style={{ color: colors.textMuted, fontSize: 11 }}>{f.adresse}</Text> : null}
+        <ScrollView contentContainerStyle={{ paddingBottom: 90 }}>
+          {filtres.map((f, i) => (
+            <Apparition key={f.id} delai={Math.min(i, 8) * 40} depuis={10}>
+              <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }, ombre(colors, 1)]}>
+                <View style={styles.ligneHaut}>
+                  <AvatarNom nom={f.nom} taille={44} />
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 14.5, fontWeight: "700" }}>{f.nom}</Text>
+                    {f.contact ? <Text numberOfLines={1} style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{f.contact}</Text> : null}
+                    {f.produitsFournis ? <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 2 }}>{f.produitsFournis}</Text> : null}
+                  </View>
+                  {f.montantDu > 0 ? (
+                    <View style={[styles.pastille, { backgroundColor: colors.dangerBg }]}>
+                      <Text style={{ color: colors.danger, fontSize: 12, fontWeight: "800" }}>{formaterCompact(f.montantDu)}</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.pastille, { backgroundColor: colors.successBg }]}>
+                      <Feather name="check" size={12} color={colors.success} />
+                    </View>
+                  )}
+                </View>
+
+                {(f.conditions || f.adresse || f.email) && (
+                  <View style={styles.infos}>
+                    {f.conditions ? (
+                      <View style={[styles.pastille, { backgroundColor: colors.accentBg }]}>
+                        <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>{t(`conditions_${f.conditions}` as any, langue)}</Text>
+                      </View>
+                    ) : null}
+                    {f.adresse ? (
+                      <View style={styles.info}><Feather name="map-pin" size={11} color={colors.textMuted} /><Text numberOfLines={1} style={{ color: colors.textSecondary, fontSize: 11.5, flexShrink: 1 }}>{f.adresse}</Text></View>
+                    ) : null}
+                    {f.email ? (
+                      <View style={styles.info}><Feather name="mail" size={11} color={colors.textMuted} /><Text numberOfLines={1} style={{ color: colors.textSecondary, fontSize: 11.5, flexShrink: 1 }}>{f.email}</Text></View>
+                    ) : null}
+                  </View>
+                )}
+                {f.description ? <Text style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 8, lineHeight: 16 }}>{f.description}</Text> : null}
                 {Object.entries(f.champs).map(([nom, valeur]) => (
-                  <Text key={nom} style={{ color: colors.textMuted, fontSize: 11 }}>{nom} : {valeur}</Text>
+                  <Text key={nom} style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 2 }}>{nom} : {valeur}</Text>
                 ))}
+
+                {f.telephone ? (
+                  <View style={[styles.actions, { borderTopColor: colors.border }]}>
+                    <PressableAnime onPress={() => Linking.openURL(`tel:${f.telephone}`)} style={[styles.boutonAction, { backgroundColor: colors.accentBg, flex: 1 }]}>
+                      <Feather name="phone" size={14} color={colors.accent} />
+                      <Text style={{ color: colors.accent, fontSize: 12.5, fontWeight: "700" }}>{t("fournisseur_appeler", langue)}</Text>
+                    </PressableAnime>
+                    <PressableAnime onPress={() => Linking.openURL(`https://wa.me/${f.telephone!.replace("+", "")}`)} style={[styles.boutonAction, { backgroundColor: "#1D9E75", flex: 1 }]}>
+                      <MaterialCommunityIcons name="whatsapp" size={15} color="#fff" />
+                      <Text style={{ color: "#fff", fontSize: 12.5, fontWeight: "700" }}>WhatsApp</Text>
+                    </PressableAnime>
+                  </View>
+                ) : null}
               </View>
-              {f.telephone ? (
-                <Pressable onPress={() => Linking.openURL(`tel:${f.telephone}`)} hitSlop={8} style={{ padding: 6 }}>
-                  <Feather name="phone" size={15} color={colors.accent} />
-                </Pressable>
-              ) : null}
-              {f.montantDu > 0 && (
-                <Text style={{ color: colors.danger, fontSize: 12 }}>{t("fournisseurs_du", langue)} {formater(f.montantDu)}</Text>
-              )}
-            </View>
+            </Apparition>
           ))}
         </ScrollView>
       )}
@@ -194,7 +251,16 @@ function PuceFiltre({ label, actif, onPress, colors }: any) {
 
 const styles = StyleSheet.create({
   boutonFiltre: { width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  barreRecherche: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10 },
+  barreRecherche: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 },
+  resume: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, marginBottom: 12 },
+  resumeNb: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
+  carte: { borderWidth: 1, borderRadius: 20, padding: 14, marginBottom: 10 },
+  ligneHaut: { flexDirection: "row", alignItems: "center", gap: 12 },
+  pastille: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 11 },
+  infos: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 10 },
+  info: { flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 1 },
+  actions: { flexDirection: "row", gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1 },
+  boutonAction: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 12 },
   ligneFiltres: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
   bandeauTotal: { padding: 10, borderRadius: 10, marginBottom: 12 },
   etatVide: { alignItems: "center", paddingTop: 40 },

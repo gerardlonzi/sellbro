@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import { View, Text, Pressable, StyleSheet, Share } from "react-native";
+import { View, Pressable, StyleSheet, Share } from "react-native";
+import { Text } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";

@@ -1,0 +1,23 @@
+p{
+    background: #008a25;
+  surface: rgb(76, 60, 192),
+  border: "#e8e8e8",
+  textPrimary: "#181815",
+  textSecondary: "#5C5B54",
+  textMuted: "#898880",
+  accent: "#1a9a65",
+  accentBg: "#DCF2EA",
+  success: "#1a9a65",
+  successBg: "#DFF3EB",
+  warning: "#7A4A0A",
+  warningBg: "#F8EBD2",
+  danger: "#A02C2C",
+  dangerBg: "#FBE7E7",
+  info: "#2563EB",
+  infoBg: "#DBEAFE",
+  pro: "#372F80",
+  proBg: "#ECEAFD",
+  proFill: "#7F77DD",
+  onPro: "#FFFFFF",
+  borderPro: "#A9A2EA",
+}

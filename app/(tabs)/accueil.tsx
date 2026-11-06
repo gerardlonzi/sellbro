@@ -1,5 +1,9 @@
+import { ActionsRapides } from "@/components/ActionsRapides";
+import { Apparition } from "@/components/anim";
+import { CarrouselMetriques } from "@/components/CarrouselMetriques";
 import { useState, useCallback, useRef, useEffect } from "react";
-import { ScrollView, View, Text, Pressable, StyleSheet, ActivityIndicator, Share } from "react-native";
+import { ScrollView, View, Pressable, StyleSheet, ActivityIndicator, Share } from "react-native";
+import { Text } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -188,7 +192,7 @@ export default function Accueil() {
           {/* Puce « PRO » compacte à côté du nom (essai ou abonnement actif).
               Remplace le badge « Version Pro » qui prenait trop de place dans
               l'en-tête. */}
-          {(planPret && essai.verifie) && (estPremium || essai.actif) && (
+          {(planPret && essai.planVerifie) && (estPremium || essai.actif) && (
             <Pressable onPress={() => router.push("/premium")} style={[styles.pucePro, { backgroundColor: colors.proFill }]}>
               <Text style={{ color: colors.onPro, fontSize: 9, fontWeight: "800", letterSpacing: 0.5 }}>PRO</Text>
             </Pressable>
@@ -198,7 +202,7 @@ export default function Accueil() {
           {/* Le bouton « Passer Pro » n'apparaît qu'aux comptes sans accès —
               et seulement une fois le statut vérifié (sinon il clignotait
               pour un abonné au démarrage). */}
-          {planPret && essai.verifie && !estPremium && !essai.actif && (
+          {planPret && essai.planVerifie && !estPremium && !essai.actif && (
             <Pressable onPress={() => router.push("/premium")} style={{ backgroundColor: colors.proBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
               <Text style={{ color: colors.pro, fontSize: 11 }}>{t("upgrade_pro", langue)}</Text>
             </Pressable>
@@ -227,46 +231,25 @@ export default function Accueil() {
       </View>
 
       <ScrollView contentContainerStyle={styles.contenu}>
-      {/* `verifie` évite que la bannière « essai expiré » clignote pour un
-          abonné Pro le temps que son plan soit lu. */}
-      {essai.verifie && !estPremium && !essai.actif && (
-        <Pressable onPress={() => router.push("/premium")} style={[styles.banniereEssai, { backgroundColor: colors.proBg, borderColor: colors.borderPro }]}>
-          <Feather name="lock" size={16} color={colors.pro} />
-          <Text style={{ color: colors.pro, fontSize: 13, flex: 1 }}>{t("essai_expire", langue)}</Text>
-          <Feather name="chevron-right" size={16} color={colors.pro} />
-        </Pressable>
-      )}
-      {/* Quatre métriques en grille 2×2 : CA + Bénéfice sur la première ligne,
-          Produits vendus + Ventes du jour sur la seconde. Chaque pastille porte
-          sa couleur, le chiffre reste neutre. */}
-      <View style={styles.ligneDeuxCartes}>
-        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <PuceIcone icone="dollar-sign" ton="violet" taille={32} />
-          {chargementVentes ? <Skeleton width="60%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{formaterCompact(ca)}</Text>}
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("ca_aujourdhui", langue)}</Text>
-        </View>
-        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <PuceIcone icone="trending-up" ton="vert" taille={32} />
-          {chargementVentes ? <Skeleton width="50%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{formaterCompact(benefice)}</Text>}
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("benefice_estime", langue)}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.ligneDeuxCartes, { marginTop: 10 }]}>
-        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <PuceIcone icone="package" ton="ambre" taille={32} />
-          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{nbProduitsVendus}</Text>}
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("produits_vendus", langue)}</Text>
-        </View>
-        <View style={[styles.cartePetite, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <PuceIcone icone="shopping-bag" ton="bleu" taille={32} />
-          {chargementVentes ? <Skeleton width="40%" height={18} style={{ marginTop: 4 }} /> : <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 10 }}>{nbVentes}</Text>}
-          <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500", marginTop: 8 }}>{t("ventes_du_jour", langue)}</Text>
-        </View>
-      </View>
-
+      
+      <Apparition delai={80}>
+        <CarrouselMetriques
+          chargement={chargementVentes}
+          pages={[
+            [
+              { icone: "dollar-sign", libelle: t("ca_aujourdhui", langue), valeur: formaterCompact(ca) },
+              { icone: "trending-up", libelle: t("benefice_estime", langue), valeur: formaterCompact(benefice) },
+            ],
+            [
+              { icone: "package", libelle: t("produits_vendus", langue), valeur: String(nbProduitsVendus) },
+              { icone: "shopping-bag", libelle: t("ventes_du_jour", langue), valeur: String(nbVentes) },
+            ],
+          ]}
+        />
+      </Apparition>
 
       {/* Créances et dettes */}
+      <Apparition delai={160}>
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
         <Pressable onPress={() => router.push("/creances")} style={styles.enTeteCreances}>
           <View style={styles.enTeteMetrique}>
@@ -290,6 +273,10 @@ export default function Accueil() {
           {chargementVentes ? <Skeleton width="30%" height={16} /> : <Text style={{ color: colors.danger, fontSize: 14, fontWeight: "700" }}>{formaterCompact(tuDois)}</Text>}
         </Pressable>
       </View>
+
+      </Apparition>
+
+      <ActionsRapides />
 
       {/* Objectif du jour : progression du CA, modifiable d'un appui. */}
       <ObjectifJour ca={ca} />
@@ -317,7 +304,7 @@ export default function Accueil() {
                   <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, flexShrink: 1 }}>{v.nom}</Text>
                 </View>
                 {/* Colonne 2 : prix total (prix unitaire × quantité) */}
-                <Text style={{ color: colors.textSecondary, fontSize: 12, width: 90, textAlign: "right" }}>{formater(v.montant)}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, width: 90, textAlign: "right" }}>{formaterCompact(v.montant)}</Text>
                 {/* Colonne 3 : moyen de paiement en puce colorée */}
                 {v.modePaiement ? (
                   <View style={{ backgroundColor: couleursPuce.fond, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, width: 62, alignItems: "center" }}>

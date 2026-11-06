@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
 import { avecTimeout } from "@/lib/timeout";
+import { obtenirUserId } from "@/lib/auth/userCache";
 
 const CLE_ABONNEMENT = "abonnement_cache";
 
@@ -35,14 +36,14 @@ export function useAbonnement() {
 
     // 2) Rafraîchissement serveur en arrière-plan (ignoré hors ligne).
     try {
-      // Timeout : hors ligne, getUser peut rester pendu (refresh du token).
-      const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 5000);
-      if (!user) return;
+      // Id lu localement : pas d'appel réseau bloquant.
+      const userId = await obtenirUserId();
+      if (!userId) return;
       const { data } = await avecTimeout(supabase
         .from("abonnements")
         .select("date_expiration, statut")
-        .eq("user_id", user.id)
-        .order("date_debut", { ascending: false })
+        .eq("user_id", userId)
+        .order("date_expiration", { ascending: false, nullsFirst: true })
         .limit(1)
         .maybeSingle(), 5000);
       if (data?.date_expiration) {

@@ -1,4 +1,3 @@
-
 import { useRef, useState } from "react";
 import { Animated, ImageBackground, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";

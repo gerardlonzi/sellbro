@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ScrollView, Pressable, Text, View, StyleSheet } from "react-native";
+import { ScrollView, Pressable, View, StyleSheet } from "react-native";
+import { Text } from "@/components/Texte";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
