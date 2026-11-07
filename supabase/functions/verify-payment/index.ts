@@ -1,65 +1,46 @@
 // Edge Function : vérification de secours d'un paiement resté "pending".
-// Appelée par l'app (bouton « Vérifier le statut » après ~2 min d'attente,
-// ou reprise d'une transaction en attente) — interroge SasPay et applique la
-// même activation que le webhook si le paiement est confirmé.
+// Appelée par l'app (bouton « Vérifier le statut », reprise au retour du
+// navigateur) — interroge le fournisseur qui a créé la transaction et applique
+// la même activation que le webhook si le paiement est confirmé.
 //
 // Déploiement : supabase functions deploy verify-payment
-// Secret requis : SASPAY_SECRET_KEY
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { activerAbonnement } from "../_shared/activerAbonnement.ts";
+import { CORS, json } from "../_shared/pays.ts";
+import { REGISTRE } from "../_shared/providers/index.ts";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...CORS, "Content-Type": "application/json" },
-  });
-}
-
-// Répare les paiements confirmés jamais activés : si l'utilisateur a une
-// transaction success récente et AUCUN abonnement actif, on l'active.
-// `transaction` : transaction déjà chargée (cas success direct), sinon null
-// → on cherche la success la plus récente de l'utilisateur.
+// Répare les paiements confirmés jamais activés : transaction `success` récente
+// de l'utilisateur et AUCUN abonnement actif → on l'active.
 async function reparerSiNecessaire(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   userId: string,
   transaction: { id: string; user_id: string; network: string | null } | null
 ): Promise<boolean> {
-  const { data: abo } = await supabaseAdmin
-    .from("abonnements")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("statut", "actif")
+  const { data: abo } = await admin
+    .from("abonnements").select("id")
+    .eq("user_id", userId).eq("statut", "actif")
     .gt("date_expiration", new Date().toISOString())
-    .limit(1)
-    .maybeSingle();
-  if (abo) return false; // déjà actif : rien à réparer
+    .limit(1).maybeSingle();
+  if (abo) return false;
 
   let tx = transaction;
   if (!tx) {
-    const { data } = await supabaseAdmin
-      .from("payment_transactions")
-      .select("id, user_id, network")
-      .eq("user_id", userId)
-      .eq("status", "success")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data } = await admin
+      .from("payment_transactions").select("id, user_id, network")
+      .eq("user_id", userId).eq("status", "success")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
     tx = data;
   }
   if (!tx) return false;
 
-  await activerAbonnement(supabaseAdmin, {
-    transactionId: tx.id,
-    userId: tx.user_id,
-    phone: null,
-    network: tx.network,
-  });
-  console.log(`réparation: abonnement activé pour user=${userId} via transaction=${tx.id}`);
+  // Cette transaction a déjà donné lieu à un abonnement (aujourd'hui expiré) :
+  // la « réparer » offrirait un mois gratuit à chaque vérification.
+  const { data: dejaUtilisee } = await admin
+    .from("abonnements").select("id").eq("reference_transaction", tx.id).limit(1).maybeSingle();
+  if (dejaUtilisee) return false;
+
+  await activerAbonnement(admin, { transactionId: tx.id, userId: tx.user_id, phone: null, network: tx.network });
+  console.log(`réparation: abonnement activé user=${userId} transaction=${tx.id}`);
   return true;
 }
 
@@ -68,126 +49,63 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "non authentifié" }, 401);
+    if (!authHeader) return json({ error: "non authentifié", code: "non_authentifie" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const saspayKey = Deno.env.get("SASPAY_SECRET_KEY");
-    if (!saspayKey) return json({ error: "SasPay non configuré" }, 500);
-
     const clientUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: errAuth } = await clientUser.auth.getUser();
-    if (errAuth || !user) return json({ error: "session invalide" }, 401);
+    if (errAuth || !user) return json({ error: "session invalide", code: "session_invalide" }, 401);
 
     const { transaction_id } = await req.json();
     if (!transaction_id) return json({ error: "transaction_id requis" }, 400);
 
-    const supabaseAdmin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // La transaction doit appartenir à l'appelant.
-    const { data: transaction } = await supabaseAdmin
+    const { data: transaction } = await admin
       .from("payment_transactions")
-      .select("id, user_id, status, saspay_transaction_id, checkout_session_id, network")
-      .eq("id", transaction_id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!transaction) return json({ error: "transaction introuvable" }, 404);
+      .select("id, user_id, status, provider, amount, currency, saspay_transaction_id, checkout_session_id, provider_reference, network")
+      .eq("id", transaction_id).eq("user_id", user.id).maybeSingle();
+    if (!transaction) return json({ error: "transaction introuvable", code: "transaction_introuvable" }, 404);
 
-    // Auto-réparation : un paiement confirmé (success) SANS abonnement actif
-    // (ex. bug d'activation passé) → on ré-active. On cherche la transaction
-    // success la plus récente de l'utilisateur, pas seulement celle demandée :
-    // l'app appelle souvent avec une transaction pending plus récente.
     if (transaction.status !== "pending") {
       if (transaction.status === "success") {
-        const reparee = await reparerSiNecessaire(supabaseAdmin, user.id, transaction);
+        const reparee = await reparerSiNecessaire(admin, user.id, transaction);
         return json({ status: reparee ? "success" : transaction.status });
       }
       return json({ status: transaction.status });
     }
-    // Transaction demandée encore pending : avant d'aller interroger SasPay,
-    // on vérifie s'il n'existe pas une AUTRE transaction success non activée.
     {
-      const reparee = await reparerSiNecessaire(supabaseAdmin, user.id, null);
+      const reparee = await reparerSiNecessaire(admin, user.id, null);
       if (reparee) return json({ status: "success" });
     }
 
-    // Checkout hébergé sans transaction SasPay connue : on lit la session.
-    // La session porte le statut (PENDING/SUCCESS/CANCELLED) et, une fois
-    // payée, l'id de la transaction SasPay créée.
-    if (!transaction.saspay_transaction_id && transaction.checkout_session_id) {
-      const rSession = await fetch(
-        `https://api.saspay.me/api/v1/checkout-sessions/${transaction.checkout_session_id}/`,
-        { headers: { Authorization: `Bearer ${saspayKey}` } }
-      );
-      // SasPay enveloppe la réponse : { success, data: {...} }
-      const corpsSession = await rSession.json().catch(() => null);
-      const session = corpsSession?.data ?? corpsSession;
-      if (!rSession.ok || !session) return json({ status: "pending" });
+    const fournisseur = REGISTRE[transaction.provider ?? "saspay"];
+    const cle = fournisseur ? Deno.env.get(fournisseur.secretEnv) : null;
+    if (!fournisseur || !cle) return json({ status: "pending" });
 
-      if (session.transaction) {
-        await supabaseAdmin
-          .from("payment_transactions")
-          .update({ saspay_transaction_id: session.transaction, updated_at: new Date().toISOString() })
-          .eq("id", transaction.id);
-      }
+    const resultat = await fournisseur.verifier(admin, transaction, cle);
 
-      const statutSession: string = (session.status ?? "").toUpperCase();
-      if (statutSession === "SUCCESS" || statutSession === "PAID") {
-        await activerAbonnement(supabaseAdmin, {
-          transactionId: transaction.id,
-          userId: transaction.user_id,
-          phone: session.customer_phone ?? null,
-          network: "checkout",
-          payload: session,
-        });
-        return json({ status: "success" });
-      }
-      if (statutSession === "CANCELLED" || statutSession === "FAILED" || statutSession === "EXPIRED") {
-        const statut = statutSession === "CANCELLED" ? "cancelled" : "failed";
-        await supabaseAdmin
-          .from("payment_transactions")
-          .update({ status: statut, raw_webhook_payload: session, updated_at: new Date().toISOString() })
-          .eq("id", transaction.id);
-        return json({ status: statut });
-      }
-      return json({ status: "pending" });
-    }
-
-    if (!transaction.saspay_transaction_id) return json({ status: "pending" });
-
-    const reponse = await fetch(
-      `https://api.saspay.me/api/v1/payments/${transaction.saspay_transaction_id}/verify/`,
-      { headers: { Authorization: `Bearer ${saspayKey}` } }
-    );
-    const corpsSasPay = await reponse.json().catch(() => null);
-    const resultat = corpsSasPay?.data ?? corpsSasPay;
-    if (!reponse.ok) return json({ status: "pending" });
-
-    const statutSasPay: string = (resultat?.status ?? "").toUpperCase();
-
-    if (statutSasPay === "SUCCESS" || statutSasPay === "SUCCESSFUL" || statutSasPay === "COMPLETED") {
-      await activerAbonnement(supabaseAdmin, {
+    if (resultat.statut === "success") {
+      await activerAbonnement(admin, {
         transactionId: transaction.id,
         userId: transaction.user_id,
-        phone: resultat?.customer?.phone ?? null,
-        network: resultat?.network ?? transaction.network,
-        payload: resultat,
+        phone: resultat.telephone ?? null,
+        network: resultat.network ?? transaction.network,
+        payload: resultat.payload,
       });
       return json({ status: "success" });
     }
-
-    if (statutSasPay === "FAILED" || statutSasPay === "CANCELLED") {
-      const statut = statutSasPay === "FAILED" ? "failed" : "cancelled";
-      await supabaseAdmin
-        .from("payment_transactions")
-        .update({ status: statut, raw_webhook_payload: resultat, updated_at: new Date().toISOString() })
+    if (resultat.statut === "failed" || resultat.statut === "cancelled") {
+      await admin.from("payment_transactions")
+        .update({ status: resultat.statut, raw_webhook_payload: resultat.payload ?? null, updated_at: new Date().toISOString() })
         .eq("id", transaction.id);
-      return json({ status: statut });
+      return json({ status: resultat.statut });
     }
-
     return json({ status: "pending" });
   } catch (e) {
-    return json({ error: `erreur interne: ${e}` }, 500);
+    console.error("verify-payment:", e);
+    return json({ error: `erreur interne: ${e}`, code: "erreur_interne" }, 500);
   }
 });

@@ -10,22 +10,18 @@
 //        source de vérité). Au retour dans l'app, on propose une vérification
 //        manuelle (verify-payment) si le webhook n'est pas encore arrivé.
 import { useEffect, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  ActivityIndicator,
-  StyleSheet,
-} from "react-native";
+import { View, Pressable, ActivityIndicator, StyleSheet } from "react-native";
+import { Text } from "@/components/Texte";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { usePays } from "@/lib/pays/PaysProvider";
+import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { rafraichirPlan } from "@/lib/plan/planStore";
 import { avecTimeout } from "@/lib/timeout";
 
@@ -38,14 +34,21 @@ export default function Paiement() {
   const { langue } = useLangue();
   const { showToast } = useToast();
   const { pays } = usePays();
+  const { devise } = useCurrency();
+  // Plan passé en paramètre de route (fiable) ; AsyncStorage ne sert que de repli
+  // (retour depuis le deep link cikap://premium/retour, qui ne porte pas le paramètre).
+  const { plan: planParam } = useLocalSearchParams<{ plan?: string }>();
 
   const [etape, setEtape] = useState<Etape>("pret");
   // chargement démarre à true : le checkout est lancé automatiquement au
   // montage, donc pas de flash du bouton « Réessayer » avant le lancement.
   const [chargement, setChargement] = useState(true);
   const [erreurInit, setErreurInit] = useState(false);
+  const [messageErreur, setMessageErreur] = useState<string | null>(null);
   const [delaiDepasse, setDelaiDepasse] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  // Plan + montant confirmés par le serveur : affichés pendant l'attente.
+  const [recap, setRecap] = useState<{ plan: string; montant: number; devise: string } | null>(null);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,32 +173,51 @@ export default function Paiement() {
   async function payer() {
     setChargement(true);
     setErreurInit(false);
+    setMessageErreur(null);
     try {
       // Plan choisi sur l'écran précédent (starter | premium) — le serveur
       // facture le prix de CE plan et active CE plan après paiement.
-      const planChoisi = (await AsyncStorage.getItem("plan_choisi_en_attente")) === "starter" ? "starter" : "premium";
+      const brut = planParam ?? (await AsyncStorage.getItem("plan_choisi_en_attente"));
+      const planChoisi: "starter" | "premium" = brut === "starter" ? "starter" : "premium";
       const { data, error } = await avecTimeout(
-        supabase.functions.invoke("create-saspay-checkout", {
-          body: { country: pays.code, plan_id: planChoisi },
+        supabase.functions.invoke("create-checkout", {
+          body: { country: pays.code, currency: devise.code, plan_id: planChoisi },
         }),
         20000
       );
       if (error || !data?.checkout_url || !data?.transaction_id) {
-        console.warn("create-saspay-checkout a échoué :", error ?? data);
+        console.warn("create-checkout a échoué :", error ?? data);
         // Sur un non-2xx, supabase-js met le corps dans error.context : la
         // fonction renvoie la cause exacte ({ error: "SasPay non configuré"
         // | "plan introuvable" | … }) — on l'affiche pour le diagnostic.
+        // Le serveur renvoie un `code` stable : on le traduit (FR/EN) au lieu
+        // d'afficher un message serveur brut dans une seule langue.
         let message = t("paiement_erreur_initiation", langue);
         try {
-          const corps = await (error as any)?.context?.json();
-          if (corps?.error) message = String(corps.error);
-          else if (data?.error) message = String(data.error);
+          const corps = (await (error as any)?.context?.json()) ?? data;
+          if (corps?.code) {
+            const cle = `paiement_err_${corps.code}`;
+            const traduit = t(cle as any, langue);
+            if (traduit && traduit !== cle) message = traduit;
+          }
         } catch {}
         showToast(message, "error");
         setErreurInit(true);
         return;
       }
 
+      // Garde-fou : le serveur doit confirmer le plan et le montant facturés.
+      // Une réponse sans `plan_id` (ancienne fonction déployée) ou avec un
+      // autre plan ne doit JAMAIS mener au paiement : l'utilisateur paierait
+      // un montant différent de celui affiché.
+      if (data.plan_id !== planChoisi) {
+        console.warn("Plan facturé ≠ plan choisi :", { demande: planChoisi, recu: data.plan_id });
+        showToast(t("paiement_erreur_plan", langue), "error");
+        setMessageErreur(t("paiement_erreur_plan", langue));
+        setErreurInit(true);
+        return;
+      }
+      setRecap({ plan: planChoisi, montant: Number(data.amount), devise: String(data.currency ?? "") });
       setTransactionId(data.transaction_id);
       setEtape("attente");
       ecouter(data.transaction_id);
@@ -301,6 +323,14 @@ export default function Paiement() {
         <ActivityIndicator size="large" color={colors.accent} />
         <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 20 }]}>{t("paiement_redirection_titre", langue)}</Text>
         <Text style={[styles.texte, { color: colors.textSecondary }]}>{t("paiement_redirection_texte", langue)}</Text>
+        {recap && (
+          <View style={[styles.recap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("paiement_recap_plan", langue)}</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: "800", marginTop: 2 }}>
+              {recap.plan === "starter" ? "Starter" : "Premium"} · {recap.montant.toLocaleString()} {recap.devise}
+            </Text>
+          </View>
+        )}
         {delaiDepasse && (
           <Pressable
             onPress={verifier}
@@ -339,7 +369,7 @@ export default function Paiement() {
           <Feather name="alert-circle" size={48} color={colors.danger} />
           <Text style={[styles.titre, { color: colors.textPrimary, marginTop: 16 }]}>{t("paiement_redirection_titre", langue)}</Text>
           <Text style={[styles.texte, { color: colors.textSecondary, marginTop: 8 }]}>
-            {t("paiement_erreur_initiation", langue)}
+            {messageErreur ?? t("paiement_erreur_initiation", langue)}
           </Text>
           <Pressable
             onPress={payer}
@@ -358,6 +388,7 @@ const styles = StyleSheet.create({
   retour: { position: "absolute", top: 50, left: 24, zIndex: 1 },
   titre: { fontSize: 18, fontWeight: "600", textAlign: "center", marginBottom: 6 },
   texte: { fontSize: 13, textAlign: "center", lineHeight: 20, marginTop: 8 },
+  recap: { alignSelf: "stretch", borderWidth: 1, borderRadius: 14, padding: 14, marginTop: 20, alignItems: "center" },
   bouton: { paddingVertical: 14, borderRadius: 8, alignItems: "center", alignSelf: "stretch" },
   boutonTexte: { color: "#fff", fontSize: 15, fontWeight: "600" },
 });

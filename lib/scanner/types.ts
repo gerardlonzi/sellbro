@@ -5,7 +5,14 @@
 
 export type DocumentType = "sale" | "purchase" | "expense" | "payment" | "unknown";
 
-export type ErreurAnalyse = "quota" | "reseau" | "illisible";
+// quota    : quota mensuel épuisé (plan Premium)
+// reserve  : plan sans IA (Starter / Gratuit hors essai) → inviter à passer Premium
+// hors_ligne : pas de connexion
+// serveur  : panne / mauvaise configuration côté serveur (PAS un problème de photo)
+export type ErreurAnalyse = "quota" | "reserve" | "hors_ligne" | "serveur" | "session";
+
+// Qualité de l'image jugée par l'IA — n'affiche « floue » que si c'est avéré.
+export type ProblemeImage = "none" | "blurry" | "dark" | "cropped" | "not_a_document";
 
 export interface ExtractedItem {
   rawName: string;
@@ -39,6 +46,7 @@ export interface ExtractedDocument {
   items: ExtractedItem[];
   expenses: ExtractedExpense[];
   notes?: string | null;
+  imageIssue?: ProblemeImage;
 }
 
 export type ResultatAnalyse =

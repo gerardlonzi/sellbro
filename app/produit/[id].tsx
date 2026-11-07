@@ -1,5 +1,7 @@
+import { BarreFixe } from "@/components/BarreFixe";
 import { useEffect, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Modal } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -234,8 +236,8 @@ export default function DetailProduit() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.entete}>
         <Pressable onPress={() => router.back()}>
           <Feather name="x" size={20} color={colors.textSecondary} />
@@ -254,22 +256,22 @@ export default function DetailProduit() {
 
       {/* Statistiques du produit */}
       <View style={[styles.blocChamps, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>Statistiques</Text>
+        <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "600", marginBottom: 6 }}>{t("x_stats_titre", langue)}</Text>
         <View style={styles.ligneChamp}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Ventes</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("x_stats_ventes", langue)}</Text>
           <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{stats.nbVentes}</Text>
         </View>
         <View style={styles.ligneChamp}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Chiffre d'affaires</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("x_stats_ca", langue)}</Text>
           <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formater(stats.ca)}</Text>
         </View>
         <View style={styles.ligneChamp}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Bénéfice estimé</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("x_stats_benefice", langue)}</Text>
           <Text style={{ color: colors.success, fontSize: 13, fontWeight: "500" }}>{formater(stats.benefice)}</Text>
         </View>
         {stats.topClients.length > 0 && (
           <View style={{ marginTop: 6 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>Meilleurs clients</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>{t("x_stats_clients", langue)}</Text>
             {stats.topClients.map((c) => (
               <View key={c.nom} style={styles.ligneChamp}>
                 <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{c.nom}</Text>
@@ -353,11 +355,11 @@ export default function DetailProduit() {
 
     </ScrollView>
 
-      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+      <BarreFixe style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
         <Pressable onPress={sauvegarder} disabled={enregistrement} style={{ backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 10, alignItems: "center", opacity: enregistrement ? 0.6 : 1 }}>
           <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{enregistrement ? "..." : t("produit_sauver", langue)}</Text>
         </Pressable>
-      </View>
+      </BarreFixe>
 
       <Modal visible={cameraOuverte} animationType="slide" onRequestClose={() => setCameraOuverte(false)}>
         <View style={{ flex: 1, backgroundColor: "#000" }}>
@@ -373,7 +375,7 @@ export default function DetailProduit() {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

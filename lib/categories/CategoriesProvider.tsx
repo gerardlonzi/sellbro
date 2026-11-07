@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase/client";
 import { obtenirUserId } from "@/lib/auth/userCache";
 
 const CLE_STOCKAGE = "boutika_categories";
-const CATEGORIES_PAR_DEFAUT = ["Hygiène", "Alimentation", "Boissons", "Autre"];
+export const CATEGORIES_PAR_DEFAUT = ["Hygiène", "Alimentation", "Boissons", "Autre"];
 
 // Les catégories vivent en local (AsyncStorage, lecture instantanée et dispo
 // hors ligne) ET dans la table Supabase `categories` (persistance serveur,

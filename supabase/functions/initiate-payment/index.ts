@@ -18,22 +18,72 @@ const SASPAY_URL = "https://api.saspay.me/api/v1/payments/softpay/";
 const PAYS: Record<string, { devise: string; reseaux: string[] }> = {
   BF: { devise: "XOF", reseaux: ["moov_bf", "orange_bf"] },
   BJ: { devise: "XOF", reseaux: ["celtiis_bj", "moov_bj", "mtn_bj"] },
-  CD: { devise: "CDF", reseaux: ["airtel_cd", "orange_cd", "vodacom_cd"] },
   CI: { devise: "XOF", reseaux: ["moov_ci", "mtn_ci", "orange_ci", "wave_ci"] },
-  CM: { devise: "XAF", reseaux: ["mtn_cm", "orange_cm"] },
-  GH: { devise: "GHS", reseaux: ["mtn_gh", "tigo_gh", "vodafone_gh"] },
-  GN: { devise: "GNF", reseaux: ["mtn_gn"] },
-  KE: { devise: "KES", reseaux: ["mpesa_ke"] },
   ML: { devise: "XOF", reseaux: ["mobi_cash_ml", "moov_ml", "orange_ml"] },
-  MW: { devise: "MWK", reseaux: ["airtel_mw", "tnm_mw"] },
   NE: { devise: "XOF", reseaux: ["airtel_ne"] },
-  NG: { devise: "NGN", reseaux: ["airtel_ng", "mtn_ng"] },
-  RW: { devise: "RWF", reseaux: ["airtel_rw", "mtn_rw"] },
   SN: { devise: "XOF", reseaux: ["freemoney_sn", "orange_sn", "wave_sn", "wizall_sn"] },
   TG: { devise: "XOF", reseaux: ["moov_tg", "togocel"] },
-  TZ: { devise: "TZS", reseaux: ["airtel_tz", "halopesa_tz", "mpesa_tz", "tigo_tz"] },
-  UG: { devise: "UGX", reseaux: ["airtel_ug", "mtn_ug"] },
+  GH: { devise: "GHS", reseaux: ["mtn_gh", "tigo_gh", "telecel_gh"] },
+  GN: { devise: "GNF", reseaux: ["mtn_gn", "orange_gn"] },
+  NG: { devise: "NGN", reseaux: ["airtel_ng", "mtn_ng", "card"] },
+  SL: { devise: "SLE", reseaux: ["orange_sl", "card"] },
+  GM: { devise: "GMD", reseaux: ["africell_gm", "qmoney_gm"] },
+
+  // --- Afrique Centrale (Zone CFA XAF & CDF) ---
+  CM: { devise: "XAF", reseaux: ["mtn_cm", "orange_cm", "card"] },
+  CG: { devise: "XAF", reseaux: ["airtel_cg", "mtn_cg", "card"] },
+  GA: { devise: "XAF", reseaux: ["airtel_ga", "moov_ga", "card"] },
+  CF: { devise: "XAF", reseaux: ["orange_cf", "telecel_cf"] },
+  TD: { devise: "XAF", reseaux: ["airtel_td", "moov_td"] },
+  CD: { devise: "CDF", reseaux: ["airtel_cd", "orange_cd", "vodacom_cd"] },
+  XC: { devise: "USD", reseaux: ["airtel_cd_usd", "orange_cd_usd", "vodacom_cd_usd", "card"] }, // RDC en USD
+
+  // --- Afrique de l'Est, Corne de l'Afrique & Australe ---
+  KE: { devise: "KES", reseaux: ["mpesa_ke", "card"] },
+  UG: { devise: "UGX", reseaux: ["airtel_ug", "mtn_ug", "card"] },
+  TZ: { devise: "TZS", reseaux: ["airtel_tz", "halopesa_tz", "mpesa_tz", "tigo_tz", "card"] },
+  RW: { devise: "RWF", reseaux: ["airtel_rw", "mtn_rw", "card"] },
+  MW: { devise: "MWK", reseaux: ["airtel_mw", "tnm_mw", "card"] },
+  MZ: { devise: "MZN", reseaux: ["movitel_mz", "mpesa_mz", "card"] },
   ZM: { devise: "ZMW", reseaux: ["airtel_zm", "mtn_zm", "zamtel_zm"] },
+  LS: { devise: "LSL", reseaux: ["mpesa_ls", "card"] },
+  ET: { devise: "ETB", reseaux: ["mpesa_et", "telebirr_et", "card"] },
+  SO: { devise: "SOS", reseaux: ["waafi_so", "evc_so", "card"] },
+  BI: { devise: "BIF", reseaux: ["lumicash_bi", "ecocash_bi"] },
+  MG: { devise: "MGA", reseaux: ["mvola_mg", "orange_mg", "airtel_mg"] },
+  ZA: { devise: "ZAR", reseaux: ["card"] },
+
+  // --- Afrique du Nord & Moyen-Orient ---
+  MA: { devise: "MAD", reseaux: ["card"] },
+  DZ: { devise: "DZD", reseaux: ["card"] },
+  TN: { devise: "TND", reseaux: ["card"] },
+  EG: { devise: "EGP", reseaux: ["vodafone_eg", "card"] },
+  AE: { devise: "AED", reseaux: ["card"] },
+  SA: { devise: "SAR", reseaux: ["card"] },
+  QA: { devise: "QAR", reseaux: ["card"] },
+
+  // --- Amériques & Europe (Paiement Carte bancaire / SWIFT) ---
+  US: { devise: "USD", reseaux: ["card"] },
+  CA: { devise: "CAD", reseaux: ["card"] },
+  FR: { devise: "EUR", reseaux: ["card"] },
+  GB: { devise: "GBP", reseaux: ["card"] },
+  BE: { devise: "EUR", reseaux: ["card"] },
+  CH: { devise: "CHF", reseaux: ["card"] },
+  DE: { devise: "EUR", reseaux: ["card"] },
+  ES: { devise: "EUR", reseaux: ["card"] },
+  IT: { devise: "EUR", reseaux: ["card"] },
+  BR: { devise: "BRL", reseaux: ["card"] },
+  MX: { devise: "MXN", reseaux: ["card"] },
+
+  // --- Asie & Océanie ---
+  IN: { devise: "INR", reseaux: ["card"] },
+  CN: { devise: "CNY", reseaux: ["card"] },
+  JP: { devise: "JPY", reseaux: ["card"] },
+  AU: { devise: "AUD", reseaux: ["card"] },
+  NZ: { devise: "NZD", reseaux: ["card"] },
+
+  // --- Option Crypto / Global (USDT, USDC, BTC, etc.) ---
+  XY: { devise: "USD", reseaux: ["crypto", "card"] },
 };
 
 const CORS = {

@@ -1,5 +1,7 @@
+import { BarreFixe } from "@/components/BarreFixe";
 import { useState,useEffect,useRef } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform, Modal, Alert } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Image, KeyboardAvoidingView, Platform, Modal, Alert } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -444,11 +446,11 @@ async function prendrePhoto() {
 
     </ScrollView>
 
-      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+      <BarreFixe style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
         <Pressable onPress={() => sauvegarder()} disabled={chargement} style={{ backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 10, alignItems: "center", opacity: chargement ? 0.6 : 1 }}>
           <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{chargement ? "..." : t("produit_sauver", langue)}</Text>
         </Pressable>
-      </View>
+      </BarreFixe>
     </View>
 
       <Modal visible={cameraOuverte} animationType="slide" onRequestClose={() => setCameraOuverte(false)}>

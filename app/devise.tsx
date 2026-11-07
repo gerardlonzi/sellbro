@@ -1,5 +1,7 @@
+import { useLangue, t } from "@/lib/i18n";
 import { useState } from "react";
-import { ScrollView, TextInput, Pressable, Text, StyleSheet } from "react-native";
+import { ScrollView, Pressable, StyleSheet } from "react-native";
+import { TextInput, Text } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -7,6 +9,7 @@ import { useCurrency, DEVISES } from "@/lib/currency/CurrencyProvider";
 import { EnteteEcran } from "@/components/UI";
 
 export default function SelectionDevise() {
+  const { langue } = useLangue();
   const { colors } = useTheme();
   const { devise, setDevise } = useCurrency();
   const [recherche, setRecherche] = useState("");
@@ -22,10 +25,10 @@ export default function SelectionDevise() {
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={{ padding: 14, paddingTop: 50 }}
     >
-      <EnteteEcran titre="Devise" onRetour={() => router.back()} />
+      <EnteteEcran titre={t("x_devise_titre", langue)} onRetour={() => router.back()} />
 
       <TextInput
-        placeholder="Rechercher une devise ou un pays"
+        placeholder={t("x_devise_recherche", langue)}
         placeholderTextColor={colors.textMuted}
         value={recherche}
         onChangeText={setRecherche}

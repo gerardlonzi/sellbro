@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useRef, useState, useCallback } from "react";
-import { Animated, View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Animated, View, StyleSheet, TouchableOpacity } from "react-native";
+import { Text } from "@/components/Texte";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";

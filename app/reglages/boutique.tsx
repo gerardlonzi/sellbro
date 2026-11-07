@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
@@ -170,7 +171,7 @@ export default function InfosBoutique() {
       </Pressable>
 
       <Text style={[styles.label, { color: colors.textSecondary }]}>{t("boutique_nom_label", langue)}</Text>
-      <TextInput value={nom} onChangeText={setNom} placeholder="Ex: Boutique Awa" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} />
+      <TextInput value={nom} onChangeText={setNom} placeholder={t("x_config_nom_ph", langue)} placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} />
 
       <Text style={[styles.label, { color: colors.textSecondary }]}>{t("label_email", langue)}</Text>
       <TextInput value={email} editable={false} style={[styles.input, { borderColor: colors.border, color: colors.textMuted }]} />
@@ -192,7 +193,7 @@ export default function InfosBoutique() {
       </View>
 
       <Text style={[styles.label, { color: colors.textSecondary }]}>{t("boutique_secteur_label", langue)}</Text>
-      <TextInput value={secteur} onChangeText={setSecteur} placeholder="Ex: Alimentation" placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} />
+      <TextInput value={secteur} onChangeText={setSecteur} placeholder={t("boutique_secteur_ph", langue)} placeholderTextColor={colors.textMuted} style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} />
 
       <View style={{ marginTop: 20 }}>
         <BoutonPrimaire texte={t("produit_sauver", langue)} onPress={sauvegarder} disabled={chargement} />

@@ -1,6 +1,7 @@
 import { Plan, PlanId, chargerPlans, PLANS_PAR_DEFAUT } from "./quotas";
 import { supabase } from "@/lib/supabase/client";
 import { avecTimeout } from "@/lib/timeout";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const CLE_OVERRIDE = "plan_test_override";
@@ -57,10 +58,21 @@ export function reinitialiserPlan() {
 // d'empiler deux requêtes réseau identiques.
 let rafraichissementEnCours: Promise<void> | null = null;
 
+let tentativesRelance = 0;
+
 export function rafraichirPlan(): Promise<void> {
   if (!rafraichissementEnCours) {
     rafraichissementEnCours = executerRafraichissement().finally(() => {
       rafraichissementEnCours = null;
+      // Réponse serveur non obtenue (réseau instable juste après la connexion) :
+      // on réessaie quelques fois au lieu de rester « inconnu » pour toujours —
+      // c'est ce qui faisait parfois disparaître le badge / bouton Pro.
+      if (etat.verifie) {
+        tentativesRelance = 0;
+      } else if (tentativesRelance < 6) {
+        tentativesRelance += 1;
+        setTimeout(() => { rafraichirPlan().catch(() => {}); }, 4000 * tentativesRelance);
+      }
     });
   }
   return rafraichissementEnCours;
@@ -106,21 +118,33 @@ async function executerRafraichissement(): Promise<void> {
       notifier();
     }
 
-    const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 6000);
-    if (!user) {
+    // Identifiant lu LOCALEMENT (token stocké) : getUser() fait un appel réseau
+    // et, appelé pendant un changement d'état d'authentification, restait
+    // bloqué par le verrou d'auth — le plan ne se rafraîchissait jamais après
+    // la connexion (d'où « essai terminé » affiché à un abonné Pro).
+    const userId = await obtenirUserId();
+    if (!userId) {
       // Pas de session : l'absence de plan est une réponse ferme, pas une
       // incertitude — l'utilisateur est bien en gratuit.
       etat = { ...etat, pret: true, verifie: true };
       notifier();
       return;
     }
-    // maybeSingle et non single : un compte SANS ligne de plan (nouveau compte,
-    // essai gratuit) ferait échouer `.single()` (erreur PGRST116 « 0 lignes »)
-    // et serait traité comme une erreur réseau → jamais vérifié, le pop-up de
-    // bienvenue ne s'affichait plus.
-    const { data, error } = await avecTimeout(supabase.from("plan_utilisateur").select("plan_id").eq("user_id", user.id).maybeSingle(), 6000);
-    // « starter » est un vrai plan à part entière (200 produits, sans IA) :
-    // plus de normalisation vers « premium ».
+    // RPC `mon_plan` : une seule requête, TOUJOURS une ligne (plan + date de fin),
+    // indépendante de l'existence d'une ligne `profiles`. Repli sur la vue
+    // historique si la fonction n'est pas encore déployée.
+    let data: { plan_id?: string; date_expiration?: string | null } | null = null;
+    let error: any = null;
+    {
+      const rpc = await avecTimeout(supabase.rpc("mon_plan"), 6000);
+      if (!rpc.error && Array.isArray(rpc.data) && rpc.data.length > 0) {
+        data = rpc.data[0];
+      } else {
+        const vue = await avecTimeout(supabase.from("plan_utilisateur").select("plan_id").eq("user_id", userId).maybeSingle(), 6000);
+        data = vue.data;
+        error = vue.error;
+      }
+    }
     const planIdNormalise = data?.plan_id;
 
     if (error) {
@@ -140,11 +164,13 @@ async function executerRafraichissement(): Promise<void> {
       // donnait l'accès indéfiniment sans réseau).
       if (planIdNormalise === "gratuit") {
         await AsyncStorage.removeItem(CLE_EXPIRATION);
+      } else if (data?.date_expiration) {
+        await AsyncStorage.setItem(CLE_EXPIRATION, data.date_expiration);
       } else {
         const { data: abo } = await avecTimeout(supabase
           .from("abonnements")
           .select("date_expiration")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .eq("statut", "actif")
           .order("date_expiration", { ascending: false })
           .limit(1)

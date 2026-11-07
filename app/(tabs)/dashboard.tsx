@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { Text } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -19,6 +20,8 @@ import { analyserBaissesVentes, analyserRelancesClients, analyserPrevisionsStock
 import { Linking } from "react-native";
 import { SelecteurPeriode } from "@/components/SelecteurPeriode";
 import { Carte, Skeleton, Badge } from "@/components/UI";
+import { Apparition, PressableAnime } from "@/components/anim";
+import { CarteSection, TitreSection, TuileKpi, HeroStats, LigneClassement, Pastille } from "@/components/dash";
 import { BoutonRapport } from "@/components/BoutonRapport";
 import { useToast } from "@/lib/toast/ToastProvider";
 import { genererRapportPdf, SectionRapport } from "@/lib/export/genererPdf";
@@ -56,17 +59,42 @@ function Fleche({ actuel, precedent }: { actuel: number; precedent: number }) {
   return <Feather name="minus" size={13} color={colors.textMuted} />;
 }
 
-const MEDAILLES = ["🥇", "🥈", "🥉"];
+// Variation en % entre deux périodes (null si pas de base de comparaison).
+function variationPct(actuel: number, precedent: number): { pct: number | null; hausse: boolean | null } {
+  if (actuel === precedent) return { pct: 0, hausse: null };
+  if (precedent <= 0) return { pct: null, hausse: actuel > 0 };
+  return { pct: Math.round(((actuel - precedent) / precedent) * 100), hausse: actuel > precedent };
+}
 
-function Medaille({ rang }: { rang: number }) {
-  if (rang < 3) return <Text style={{ fontSize: 14, marginRight: 6 }}>{MEDAILLES[rang]}</Text>;
-  return null;
+function LigneBrief({ icone, couleur, fond, texte }: { icone: keyof typeof Feather.glyphMap; couleur: string; fond: string; texte: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+      <View style={{ width: 28, height: 28, borderRadius: 10, backgroundColor: fond, alignItems: "center", justifyContent: "center" }}>
+        <Feather name={icone} size={14} color={couleur} />
+      </View>
+      <Text style={{ color: colors.textPrimary, fontSize: 12.5, flex: 1, lineHeight: 18 }}>{texte}</Text>
+    </View>
+  );
+}
+
+// État vide à l'intérieur d'une carte : icône douce + message.
+function VideCarte({ icone, texte }: { icone: keyof typeof Feather.glyphMap; texte: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ alignItems: "center", paddingVertical: 14, gap: 8 }}>
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentBg, alignItems: "center", justifyContent: "center" }}>
+        <Feather name={icone} size={18} color={colors.accent} />
+      </View>
+      <Text style={{ color: colors.textMuted, fontSize: 12.5, textAlign: "center", lineHeight: 18 }}>{texte}</Text>
+    </View>
+  );
 }
 
 export default function Dashboard() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formaterCompact } = useCurrency();
   const { plan, planId } = usePlanActuel();
   const essai = useEssai();
   // Plan « effectif » : pendant l'essai (TRIAL) ou en PRO, l'utilisateur a un
@@ -297,12 +325,12 @@ export default function Dashboard() {
         : (t(`periode_${periode}` as any, langue) as string);
 
       const indicateurs: (string | number)[][] = [
-        [t("dashboard_ca", langue), formater(stats.ca)],
-        [t("dashboard_benefice", langue), formater(stats.benefice)],
+        [t("dashboard_ca", langue), formaterCompact(stats.ca)],
+        [t("dashboard_benefice", langue), formaterCompact(stats.benefice)],
         [t("dashboard_ventes", langue), stats.ventes],
         [t("dashboard_produits_vendus", langue), stats.produitsVendus],
-        [t("depenses_titre", langue), formater(stats.depenses)],
-        [t("plus_achats", langue), formater(stats.achats)],
+        [t("depenses_titre", langue), formaterCompact(stats.depenses)],
+        [t("plus_achats", langue), formaterCompact(stats.achats)],
         [t("dashboard_ruptures", langue), ruptures],
         [t("dashboard_stock_faible", langue), alertes],
       ];
@@ -317,11 +345,11 @@ export default function Dashboard() {
 
       const sections: SectionRapport[] = [
         { titre: t("rapport_indicateurs", langue), colonnes: [{ libelle: t("rapport_col_indicateur", langue) }, { libelle: t("rapport_col_valeur", langue), aligneDroite: true }], lignes: indicateurs },
-        { titre: t("dashboard_par_categorie", langue), colonnes: [{ libelle: t("produit_categorie_label", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.parCategorie.map((c) => [c.nom, formater(c.montant)]) },
-        { titre: t("dashboard_top_produits", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("dashboard_ventes", langue), aligneDroite: true }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topProduits.map((p) => [p.nom, p.ventes, formater(p.montant)]) },
-        { titre: t("dashboard_top_revenus", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topRevenus.map((p) => [p.nom, formater(p.montant)]) },
-        { titre: t("dashboard_top_clients", langue), colonnes: [{ libelle: t("rapport_col_client", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topClients.map((c) => [c.nom, formater(c.montant)]) },
-        { titre: t("dashboard_par_paiement", langue), colonnes: [{ libelle: t("rapport_col_paiement", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: Object.entries(stats.parPaiement).map(([mode, montant]) => [mode, formater(montant)]) },
+        { titre: t("dashboard_par_categorie", langue), colonnes: [{ libelle: t("produit_categorie_label", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.parCategorie.map((c) => [c.nom, formaterCompact(c.montant)]) },
+        { titre: t("dashboard_top_produits", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("dashboard_ventes", langue), aligneDroite: true }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topProduits.map((p) => [p.nom, p.ventes, formaterCompact(p.montant)]) },
+        { titre: t("dashboard_top_revenus", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topRevenus.map((p) => [p.nom, formaterCompact(p.montant)]) },
+        { titre: t("dashboard_top_clients", langue), colonnes: [{ libelle: t("rapport_col_client", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: stats.topClients.map((c) => [c.nom, formaterCompact(c.montant)]) },
+        { titre: t("dashboard_par_paiement", langue), colonnes: [{ libelle: t("rapport_col_paiement", langue) }, { libelle: t("rapport_col_montant", langue), aligneDroite: true }], lignes: Object.entries(stats.parPaiement).map(([mode, montant]) => [mode, formaterCompact(montant)]) },
         { titre: t("dashboard_mouvements", langue), colonnes: [{ libelle: t("rapport_col_produit", langue) }, { libelle: t("rapport_col_quantite", langue), aligneDroite: true }], lignes: mouvements.map((m) => [m.nomProduit, `${m.quantite >= 0 ? "+" : ""}${m.quantite}`]) },
         {
           titre: t("rapport_detail_ventes", langue),
@@ -333,7 +361,7 @@ export default function Dashboard() {
             { libelle: t("rapport_col_montant", langue), aligneDroite: true },
             { libelle: t("rapport_col_paiement", langue), aligneDroite: true },
           ],
-          lignes: stats.ventesListe.map((v) => [formaterDate(v.date, langue), v.produit, v.client, v.quantite, formater(v.montant), v.paiement]),
+          lignes: stats.ventesListe.map((v) => [formaterDate(v.date, langue), v.produit, v.client, v.quantite, formaterCompact(v.montant), v.paiement]),
         },
       ];
 
@@ -359,10 +387,10 @@ export default function Dashboard() {
          <Pressable onPress={() => router.push("/reglages")} hitSlop={10}>
             <Feather name="menu" size={22} color={colors.textPrimary} />
           </Pressable>
-          <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>{t("dashboard_titre", langue)}</Text>
         </View>
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-        {!planPret || !essai.verifie ? (
+        {!planPret || !essai.planVerifie ? (
             // Tant que le statut n'est pas vérifié, on n'affiche ni le badge
             // Pro ni le bouton « Passer Pro » — sinon ce dernier clignotait à
             // tort pour un abonné au démarrage.
@@ -391,7 +419,7 @@ export default function Dashboard() {
             onPress={() => setOnglet(o)}
             style={[styles.onglet, onglet === o && { backgroundColor: colors.accent }]}
           >
-            <Text style={{ color: onglet === o ? "#fff" : colors.textSecondary, fontSize: 12, fontWeight: onglet === o ? "600" : "400" }}>
+            <Text style={{ color: onglet === o ? "#fff" : colors.textSecondary, fontSize: 13, fontWeight: onglet === o ? "700" : "500" }}>
               {t(o === "apercu" ? "dashboard_onglet_apercu" : "dashboard_onglet_previsions", langue)}
             </Text>
           </Pressable>
@@ -457,312 +485,229 @@ export default function Dashboard() {
               </Carte>
             </View>
           ) : (
-            <View style={{ marginTop: 4 }}>
-              {/* Brief du matin : le résumé automatique en tête d'onglet. */}
+            <View style={{ marginTop: 4, paddingBottom: 24 }}>
+              {/* Brief du matin : résumé automatique, ligne par ligne avec icône. */}
               {brief && (
-                <Carte style={{ marginTop: 8 }}>
-                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "600" }}>{t("brief_titre", langue)}</Text>
+                <CarteSection icone="sun" ton="ambre" titre={t("brief_titre", langue)} style={{ marginTop: 8 }}>
                   {brief.nbRisquesRupture > 0 && (
-                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8 }}>
-                      {t("brief_risques", langue)(brief.nbRisquesRupture, brief.nomsRisques.join(", "))}
-                    </Text>
+                    <LigneBrief icone="alert-triangle" couleur={colors.danger} fond={colors.dangerBg}
+                      texte={t("brief_risques", langue)(brief.nbRisquesRupture, brief.nomsRisques.join(", "))} />
                   )}
                   {brief.creancesEcheance.length > 0 && (
-                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
-                      {t("brief_creances", langue)(brief.creancesEcheance.length)}
-                    </Text>
+                    <LigneBrief icone="clock" couleur={colors.warning} fond={colors.warningBg}
+                      texte={t("brief_creances", langue)(brief.creancesEcheance.length)} />
                   )}
-                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
-                    {t("brief_ca_hier", langue)(brief.variationHierPct !== null ? `${brief.variationHierPct > 0 ? "+" : ""}${brief.variationHierPct} %` : null)}
-                  </Text>
-                  <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "600", marginTop: 10 }}>
-                    {brief.priorite.type === "stock"
-                      ? t("brief_priorite_stock", langue)(brief.priorite.libelle)
-                      : brief.priorite.type === "creance"
-                        ? t("brief_priorite_creance", langue)(brief.priorite.libelle)
-                        : brief.priorite.type === "ventes"
-                          ? t("brief_priorite_ventes", langue)
-                          : t("brief_priorite_calme", langue)}
-                  </Text>
-                </Carte>
+                  <LigneBrief icone="bar-chart-2" couleur={colors.accent} fond={colors.accentBg}
+                    texte={t("brief_ca_hier", langue)(brief.variationHierPct !== null ? `${brief.variationHierPct > 0 ? "+" : ""}${brief.variationHierPct} %` : null)} />
+                  <View style={[styles.prioriteBloc, { backgroundColor: colors.accentBg }]}>
+                    <Feather name="flag" size={14} color={colors.accent} />
+                    <Text style={{ color: colors.accent, fontSize: 12.5, fontWeight: "700", flex: 1 }}>
+                      {brief.priorite.type === "stock"
+                        ? t("brief_priorite_stock", langue)(brief.priorite.libelle)
+                        : brief.priorite.type === "creance"
+                          ? t("brief_priorite_creance", langue)(brief.priorite.libelle)
+                          : brief.priorite.type === "ventes"
+                            ? t("brief_priorite_ventes", langue)
+                            : t("brief_priorite_calme", langue)}
+                    </Text>
+                  </View>
+                </CarteSection>
               )}
 
-              {/* Analyse des baisses de ventes */}
-              <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("prev_baisses_titre", langue)}</Text>
-              <Carte>
+              {/* Baisses de ventes */}
+              <CarteSection icone="trending-down" ton="rose" titre={t("prev_baisses_titre", langue)} delai={70}>
                 {baisses.length === 0 ? (
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("prev_vide_baisses", langue)}</Text>
+                  <VideCarte icone="check-circle" texte={t("prev_vide_baisses", langue)} />
                 ) : (
                   baisses.map((b, i) => (
-                    <View key={b.produitId ?? b.nom} style={[i > 0 && { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 }]}>
-                      <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>
-                        {t("prev_baisse_ligne", langue)(b.nom, b.variationPct, b.quantitePrecedente, b.quantiteSemaine)}
-                      </Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 3 }}>
-                        {b.cause === "rupture"
-                          ? t("prev_cause_rupture", langue)
-                          : b.cause === "stock_faible"
-                            ? t("prev_cause_stock_faible", langue)
-                            : b.cause === "clients_absents"
-                              ? t("prev_cause_clients", langue)(b.clientsAbsents.join(", "))
-                              : t("prev_cause_inconnue", langue)}
-                      </Text>
+                    <View key={b.produitId ?? b.nom} style={[styles.ligneAnalyse, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13.5, fontWeight: "700" }}>{b.nom}</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 2 }}>{b.quantitePrecedente} → {b.quantiteSemaine}</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                          {b.cause === "rupture"
+                            ? t("prev_cause_rupture", langue)
+                            : b.cause === "stock_faible"
+                              ? t("prev_cause_stock_faible", langue)
+                              : b.cause === "clients_absents"
+                                ? t("prev_cause_clients", langue)(b.clientsAbsents.join(", "))
+                                : t("prev_cause_inconnue", langue)}
+                        </Text>
+                      </View>
+                      <Pastille texte={`${b.variationPct > 0 ? "+" : ""}${b.variationPct} %`} ton="danger" />
                     </View>
                   ))
                 )}
-              </Carte>
+              </CarteSection>
 
-              {/* Smart Follow-up : relance des clients en retard de cycle */}
-              <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("prev_relances_titre", langue)}</Text>
-              <Carte>
+              {/* Relances clients (WhatsApp) */}
+              <CarteSection icone="message-circle" ton="vert" titre={t("prev_relances_titre", langue)} delai={140}>
                 {relances.length === 0 ? (
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("prev_vide_relances", langue)}</Text>
+                  <VideCarte icone="users" texte={t("prev_vide_relances", langue)} />
                 ) : (
                   relances.map((r, i) => (
-                    <View key={r.nom} style={[{ flexDirection: "row", alignItems: "center", gap: 10 }, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 }]}>
+                    <View key={r.nom} style={[styles.ligneAnalyse, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                      <View style={[styles.avatarRelance, { backgroundColor: colors.accentBg }]}>
+                        <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "800" }}>{r.nom.slice(0, 2).toUpperCase()}</Text>
+                      </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{t("prev_relance_ligne", langue)(r.nom, r.cycleJours, r.joursDepuisDernier)}</Text>
+                        <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13.5, fontWeight: "700" }}>{r.nom}</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{t("prev_relance_ligne", langue)(r.nom, r.cycleJours, r.joursDepuisDernier)}</Text>
                       </View>
                       {r.telephone && (
-                        <Pressable
+                        <PressableAnime
                           onPress={() => Linking.openURL(`https://wa.me/${r.telephone!.replace("+", "")}?text=${encodeURIComponent(t("prev_relance_message", langue)(r.nom))}`).catch(() => {})}
-                          style={{ backgroundColor: colors.accent, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+                          style={[styles.boutonRelance, { backgroundColor: colors.accent }]}
                         >
-                          <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{t("prev_relance_bouton", langue)}</Text>
-                        </Pressable>
+                          <Feather name="send" size={13} color="#fff" />
+                          <Text style={{ color: "#fff", fontSize: 11.5, fontWeight: "700" }}>{t("prev_relance_bouton", langue)}</Text>
+                        </PressableAnime>
                       )}
                     </View>
                   ))
                 )}
-              </Carte>
+              </CarteSection>
 
-              {/* Prévision de stock : demande en hausse + stock en baisse */}
-              <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("prev_stock_titre", langue)}</Text>
-              <Carte>
+              {/* Prévision de stock */}
+              <CarteSection icone="package" ton="ambre" titre={t("prev_stock_titre", langue)} delai={210}>
                 {previsionsStock.length === 0 ? (
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("prev_vide_stock", langue)}</Text>
+                  <VideCarte icone="check-circle" texte={t("prev_vide_stock", langue)} />
                 ) : (
                   previsionsStock.map((p, i) => (
-                    <View key={p.produitId} style={[i > 0 && { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 }]}>
-                      <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{t("prev_stock_ligne", langue)(p.nom, p.joursRestants)}</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 3 }}>{t("prev_stock_recommande", langue)(p.quantiteRecommandee)}</Text>
+                    <View key={p.produitId} style={[styles.ligneAnalyse, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13.5, fontWeight: "700" }}>{p.nom}</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 3 }}>{t("prev_stock_recommande", langue)(p.quantiteRecommandee)}</Text>
+                      </View>
+                      <Pastille texte={`${p.joursRestants} ${t("dash_jours_abrev", langue)}`} ton={p.joursRestants <= 3 ? "danger" : "warning"} />
                     </View>
                   ))
                 )}
-              </Carte>
+              </CarteSection>
             </View>
           )
         ) : chargement ? (
           <View style={{ marginTop: 12, gap: 12 }}>
+            <Skeleton width="100%" height={170} style={{ borderRadius: 24 }} />
             <View style={styles.ligneDeuxCartes}>
-              <Carte style={{ flex: 1, gap: 8 }}>
-                <Skeleton width="55%" height={11} />
-                <Skeleton width="70%" height={20} />
-              </Carte>
-              <Carte style={{ flex: 1, gap: 8 }}>
-                <Skeleton width="55%" height={11} />
-                <Skeleton width="70%" height={20} />
-              </Carte>
+              <Skeleton width="48%" height={110} style={{ borderRadius: 20 }} />
+              <Skeleton width="48%" height={110} style={{ borderRadius: 20 }} />
             </View>
-            <Carte style={{ gap: 8 }}>
-              <Skeleton width="45%" height={12} />
-              <Skeleton width="30%" height={24} />
-            </Carte>
             <Carte style={{ gap: 10 }}>
               <Skeleton width="40%" height={13} />
               <Skeleton width="100%" height={12} />
               <Skeleton width="88%" height={12} />
-              <Skeleton width="94%" height={12} />
             </Carte>
           </View>
         ) : (
-          <>
-            <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("dashboard_section_ventes", langue)}</Text>
-            <View style={styles.ligneDeuxCartes}>
-              <Carte style={{ flex: 1 }}>
-                <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("dashboard_ca", langue)}</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                  <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: "500" }}>{formater(stats.ca)}</Text>
-                  <Fleche actuel={stats.ca} precedent={precedente.ca} />
-                </View>
-              </Carte>
-              <Carte style={{ flex: 1 }}>
-                <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("dashboard_benefice", langue)}</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                  <Text style={{ color: colors.success, fontSize: 17, fontWeight: "500" }}>{formater(stats.benefice)}</Text>
-                  <Fleche actuel={stats.benefice} precedent={precedente.benefice} />
-                </View>
-              </Carte>
-            </View>
+          <View style={{ paddingBottom: 24 }}>
+            <Apparition style={{ marginTop: 6 }}>
+              <HeroStats
+                libelle={t("dashboard_ca", langue)}
+                valeur={formaterCompact(stats.ca)}
+                variation={variationPct(stats.ca, precedente.ca)}
+                sous={[
+                  { icone: "trending-up", libelle: t("dashboard_benefice", langue), valeur: formaterCompact(stats.benefice) },
+                  { icone: "shopping-bag", libelle: t("dashboard_ventes", langue), valeur: String(stats.ventes) },
+                  { icone: "package", libelle: t("produits_vendus", langue), valeur: String(stats.produitsVendus) },
+                ]}
+              />
+            </Apparition>
 
-            <Carte style={{ marginTop: 12 }}>
-              <View style={{ flexDirection: "row" }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("dashboard_ventes", langue)}</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                    <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: "500" }}>{stats.ventes}</Text>
-                    <Fleche actuel={stats.ventes} precedent={precedente.ventes} />
-                  </View>
-                </View>
-                <View style={{ flex: 1, borderLeftWidth: 1, borderLeftColor: colors.border, paddingLeft: 14 }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t("produits_vendus", langue)}</Text>
-                  <Text style={{ color: colors.accent, fontSize: 20, fontWeight: "500", marginTop: 4 }}>{stats.produitsVendus}</Text>
-                </View>
+            <Apparition delai={80}>
+              <View style={styles.ligneDeuxCartes}>
+                <PressableAnime onPress={() => router.push({ pathname: "/stock", params: { statut: "rupture" } })} style={{ flex: 1 }}>
+                  <TuileKpi icone="alert-triangle" ton="rose" valeur={String(ruptures)} libelle={t("stock_statut_rupture", langue)}
+                    couleurValeur={ruptures > 0 ? colors.danger : colors.textPrimary} style={ruptures > 0 ? { backgroundColor: colors.dangerBg } : undefined} />
+                </PressableAnime>
+                <PressableAnime onPress={() => router.push({ pathname: "/stock", params: { statut: "faible" } })} style={{ flex: 1 }}>
+                  <TuileKpi icone="trending-down" ton="ambre" valeur={String(alertes)} libelle={t("stock_statut_faible", langue)}
+                    couleurValeur={alertes > 0 ? colors.warning : colors.textPrimary} style={alertes > 0 ? { backgroundColor: colors.warningBg } : undefined} />
+                </PressableAnime>
               </View>
-            </Carte>
+            </Apparition>
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-              <Pressable onPress={() => router.push({ pathname: "/stock", params: { statut: "rupture" } })} style={{ flex: 1 }}>
-                <Carte style={{ backgroundColor: ruptures > 0 ? colors.dangerBg : colors.surface }}>
-                  <View style={{ alignItems: "center", gap: 4 }}>
-                    <Text style={{ color: ruptures > 0 ? colors.danger : colors.textSecondary, fontSize: 11 }}>
-                      {t("stock_statut_rupture", langue)}
-                    </Text>
-                    <View style={{ flexDirection:"row", alignItems:"center", gap:10}}>
-                    <Text style={{ color: ruptures > 0 ? colors.danger : colors.textSecondary, fontSize: 22, fontWeight: "700" }}>{ruptures}</Text>
-                    <Feather name="alert-triangle" size={16} color={ruptures > 0 ? colors.danger : colors.textMuted} />
+            <TitreSection texte={t("dashboard_section_sorties", langue)} delai={120} />
+            <Apparition delai={140}>
+              <View style={styles.ligneDeuxCartes}>
+                <PressableAnime onPress={() => router.push("/depenses")} style={{ flex: 1 }}>
+                  <TuileKpi icone="credit-card" ton="rose" valeur={formaterCompact(stats.depenses)} libelle={t("depenses_titre", langue)} />
+                </PressableAnime>
+                <PressableAnime onPress={() => router.push("/achats")} style={{ flex: 1 }}>
+                  <TuileKpi icone="truck" ton="ambre" valeur={formaterCompact(stats.achats)} libelle={t("plus_achats", langue)} />
+                </PressableAnime>
+              </View>
+            </Apparition>
 
-                    </View>
-                  </View>
-                </Carte>
-              </Pressable>
-              <Pressable onPress={() => router.push({ pathname: "/stock", params: { statut: "faible" } })} style={{ flex: 1 }}>
-                <Carte style={{ backgroundColor: alertes > 0 ? colors.warningBg : colors.surface }}>
-                  <View style={{  gap: 4, }}>
-                        <Text style={{ color: alertes > 0 ? colors.warning : colors.textSecondary, fontSize: 11,  }}>
-                          {t("stock_statut_faible", langue)}
-                        </Text>
-                      <View style={{ flexDirection:"row", alignItems:"center", gap:10}}>
-                        <Text style={{ color: alertes > 0 ? colors.warning : colors.textSecondary, fontSize: 22, fontWeight: "700" }}>{alertes}</Text>
-                        <Feather name="trending-down" size={16} color={alertes > 0 ? colors.warning : colors.textMuted} />
-                      </View>
-                  </View>
-                </Carte>
-              </Pressable>
-            </View>
-
-            {/* Section sorties : dépenses et achats de la période */}
-            <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("dashboard_section_sorties", langue)}</Text>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Pressable onPress={() => router.push("/depenses")} style={{ flex: 1 }}>
-                <Carte>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Feather name="credit-card" size={13} color={colors.danger} />
-                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("depenses_titre", langue)}</Text>
-                  </View>
-                  <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: "500", marginTop: 4 }}>{formater(stats.depenses)}</Text>
-                </Carte>
-              </Pressable>
-              <Pressable onPress={() => router.push("/achats")} style={{ flex: 1 }}>
-                <Carte>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Feather name="truck" size={13} color={colors.puceAmbre} />
-                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{t("plus_achats", langue)}</Text>
-                  </View>
-                  <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: "500", marginTop: 4 }}>{formater(stats.achats)}</Text>
-                </Carte>
-              </Pressable>
-            </View>
-
-            {/* Répartition par catégorie */}
-            <Text style={[styles.titreSection, { color: colors.textMuted }]}>{t("dashboard_section_analyse", langue)}</Text>
+            <TitreSection texte={t("dashboard_section_analyse", langue)} delai={180} />
             {stats.parCategorie.length > 0 && (
-              <Carte style={{ marginTop: 12 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 12 }}>{t("dashboard_par_categorie", langue)}</Text>
-                {stats.parCategorie.map((c) => (
-                  <View key={c.nom} style={{ marginBottom: 10 }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                      <Text style={{ fontSize: 12, color: colors.textPrimary }}>{c.nom}</Text>
-                      <Text style={{ fontSize: 12, color: colors.textSecondary }}>{formater(c.montant)}</Text>
-                    </View>
-                    <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.surface, overflow: "hidden" }}>
-                      <View style={{ width: `${(c.montant / maxCategorie) * 100}%`, height: "100%", backgroundColor: colors.accent }} />
-                    </View>
-                  </View>
+              <CarteSection icone="pie-chart" ton="violet" titre={t("dashboard_par_categorie", langue)} delai={200}>
+                {stats.parCategorie.map((c, i) => (
+                  <LigneClassement key={c.nom} rang={i} nom={c.nom} valeur={formaterCompact(c.montant)} part={c.montant / (maxCategorie || 1)} dernier={i === stats.parCategorie.length - 1} />
                 ))}
-              </Carte>
+              </CarteSection>
             )}
 
-            {/* Top produits */}
-            <Carte style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_top_produits", langue)}</Text>
+            <CarteSection icone="award" ton="ambre" titre={t("dashboard_top_produits", langue)} delai={230}>
               {stats.topProduits.length === 0 ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
+                <VideCarte icone="inbox" texte={t("dashboard_vide", langue)} />
               ) : (
                 stats.topProduits.map((p, i) => (
-                  <View key={p.nom} style={[styles.ligneTop, i < stats.topProduits.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                    <Medaille rang={i} />
-                    <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{p.nom}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted, marginRight: 10 }}>{p.ventes} ventes</Text>
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: colors.textPrimary }}>{formater(p.montant)}</Text>
-                  </View>
+                  <LigneClassement key={p.nom} rang={i} nom={p.nom} detail={`${p.ventes} ${t("dash_unite_ventes", langue)}`} valeur={formaterCompact(p.montant)}
+                    part={p.montant / (stats.topProduits[0]?.montant || 1)} dernier={i === stats.topProduits.length - 1} />
                 ))
               )}
-            </Carte>
+            </CarteSection>
 
-            {/* Produits générant le plus de revenus */}
-            <Carte style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_top_revenus", langue)}</Text>
+            <CarteSection icone="dollar-sign" ton="vert" titre={t("dashboard_top_revenus", langue)} delai={260}>
               {stats.topRevenus.length === 0 ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
+                <VideCarte icone="inbox" texte={t("dashboard_vide", langue)} />
               ) : (
                 stats.topRevenus.map((p, i) => (
-                  <View key={p.nom} style={[styles.ligneTop, i < stats.topRevenus.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                    <Medaille rang={i} />
-                    <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{p.nom}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.accent }}>{formater(p.montant)}</Text>
-                  </View>
+                  <LigneClassement key={p.nom} rang={i} nom={p.nom} valeur={formaterCompact(p.montant)}
+                    part={p.montant / (stats.topRevenus[0]?.montant || 1)} dernier={i === stats.topRevenus.length - 1} />
                 ))
               )}
-            </Carte>
+            </CarteSection>
 
-            {/* Top clients */}
-            <Carte style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_top_clients", langue)}</Text>
+            <CarteSection icone="users" ton="bleu" titre={t("dashboard_top_clients", langue)} delai={290}>
               {stats.topClients.length === 0 ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("dashboard_vide", langue)}</Text>
+                <VideCarte icone="users" texte={t("dashboard_vide", langue)} />
               ) : (
                 stats.topClients.map((c, i) => (
-                  <View key={c.nom} style={[styles.ligneTop, i < stats.topClients.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                    <View style={[styles.avatar, { backgroundColor: i === 0 ? colors.accent : colors.accentBg }]}>
-                      <Text style={{ color: i === 0 ? "#fff" : colors.accent, fontSize: 11, fontWeight: "600" }}>{c.nom.slice(0, 2).toUpperCase()}</Text>
-                    </View>
-                    <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{c.nom}</Text>
-                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.accent }}>{formater(c.montant)}</Text>
-                  </View>
+                  <LigneClassement key={c.nom} rang={i} nom={c.nom} valeur={formaterCompact(c.montant)}
+                    part={c.montant / (stats.topClients[0]?.montant || 1)} dernier={i === stats.topClients.length - 1} />
                 ))
               )}
-            </Carte>
+            </CarteSection>
 
-            {/* Par mode de paiement */}
             {Object.keys(stats.parPaiement).length > 0 && (
-              <Carte style={{ marginTop: 12 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_par_paiement", langue)}</Text>
-                {Object.entries(stats.parPaiement).map(([mode, montant]) => (
-                  <View key={mode} style={styles.lignePaiement}>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{mode}</Text>
-                    <Text style={{ color: colors.textPrimary, fontSize: 12, fontWeight: "500" }}>{formater(montant)}</Text>
+              <CarteSection icone="credit-card" ton="lilas" titre={t("dashboard_par_paiement", langue)} delai={320}>
+                {Object.entries(stats.parPaiement).map(([mode, montant], i, tab) => (
+                  <View key={mode} style={[styles.lignePaiement, i < tab.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 13, textTransform: "capitalize" }}>{mode}</Text>
+                    <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "800" }}>{formaterCompact(montant)}</Text>
                   </View>
                 ))}
-              </Carte>
+              </CarteSection>
             )}
 
-            {/* Mouvements de stock */}
-            <Carte style={{ marginTop: 12, marginBottom: 20 }}>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginBottom: 10 }}>{t("dashboard_mouvements", langue)}</Text>
+            <CarteSection icone="repeat" ton="bleu" titre={t("dashboard_mouvements", langue)} delai={350}>
               {mouvements.length === 0 ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t("mouvements_aucun", langue)}</Text>
+                <VideCarte icone="inbox" texte={t("mouvements_aucun", langue)} />
               ) : (
                 mouvements.map((m, i) => (
-                  <View key={m.id} style={[styles.ligneTop, i < mouvements.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                    <Text style={{ fontSize: 12, color: colors.textPrimary, flex: 1 }}>{m.nomProduit}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted, marginRight: 10 }}>{t(`mouvement_type_${m.type}` as any, langue) as string} {m.quantite > 0 ? "+" : ""}{m.quantite}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>{m.stockAvant} → {m.stockApres}</Text>
+                  <View key={m.id} style={[styles.ligneAnalyse, i < mouvements.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "600" }}>{m.nomProduit}</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 2 }}>{t(`mouvement_type_${m.type}` as any, langue) as string} · {m.stockAvant} → {m.stockApres}</Text>
+                    </View>
+                    <Pastille texte={`${m.quantite > 0 ? "+" : ""}${m.quantite}`} ton={m.quantite > 0 ? "success" : "warning"} />
                   </View>
                 ))
               )}
-            </Carte>
-          </>
+            </CarteSection>
+          </View>
         )}
       </ScrollView>
     </View>
@@ -772,8 +717,8 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: { paddingTop: 15 },
   titreSection: { fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 18, marginBottom: 8, marginLeft: 2 },
-  onglets: { flexDirection: "row", borderWidth: 1, borderRadius: 10, padding: 3, marginBottom: 4 },
-  onglet: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: "center" },
+  onglets: { flexDirection: "row", borderWidth: 1, borderRadius: 14, padding: 4, marginBottom: 4 },
+  onglet: { flex: 1, paddingVertical: 9, borderRadius: 11, alignItems: "center" },
   entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 },
   boutonPersonnalise: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-end", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 5 },
   blocPersonnalise: { flexDirection: "row", gap: 10, marginTop: 2, marginBottom: 8 },
@@ -782,6 +727,10 @@ const styles = StyleSheet.create({
   etatVide: { alignItems: "center", paddingTop: 40 },
   ligneTop: { flexDirection: "row", alignItems: "center", paddingVertical: 8 },
   avatar: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", marginRight: 10 },
+  prioriteBloc: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 14, marginTop: 4 },
+  ligneAnalyse: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 },
+  avatarRelance: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  boutonRelance: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   lignePaiement: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5 },
   enteteGauche: { flexDirection: "row", alignItems: "center", gap: 10 },
 

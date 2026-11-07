@@ -1,5 +1,7 @@
+import { sauverPreference } from "@/lib/preferences/prefs";
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, Modal, TextInput, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Pressable, Modal, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -23,7 +25,7 @@ async function cleObjectif(): Promise<string> {
 export function ObjectifJour({ ca }: { ca: number }) {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater, formaterCompact } = useCurrency();
+  const { formaterCompact } = useCurrency();
   const [objectif, setObjectif] = useState<number | null>(null);
   const [modalOuvert, setModalOuvert] = useState(false);
   const [saisie, setSaisie] = useState("");
@@ -43,7 +45,7 @@ export function ObjectifJour({ ca }: { ca: number }) {
       return;
     }
     setObjectif(valeur);
-    await AsyncStorage.setItem(await cleObjectif(), String(valeur)).catch(() => {});
+    await sauverPreference(await cleObjectif(), String(valeur)).catch(() => {});
     setModalOuvert(false);
   }
 
@@ -78,7 +80,7 @@ export function ObjectifJour({ ca }: { ca: number }) {
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "500" }}>{t("objectif_titre", langue)}</Text>
           <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "700", marginTop: 2 }}>
-            {formaterCompact(ca)} <Text style={{ color: colors.textMuted, fontWeight: "400", fontSize: 12 }}>/ {formater(objectif)}</Text>
+            {formaterCompact(ca)} <Text style={{ color: colors.textMuted, fontWeight: "400", fontSize: 12 }}>/ {formaterCompact(objectif)}</Text>
           </Text>
         </View>
         {atteint && <Feather name="check-circle" size={18} color={colors.success} />}

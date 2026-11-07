@@ -1,5 +1,7 @@
+import { sauverPreference } from "@/lib/preferences/prefs";
 import { useEffect, useState } from "react";
-import { View, Text, Switch, Pressable, StyleSheet } from "react-native";
+import { View, Switch, Pressable, StyleSheet } from "react-native";
+import { Text } from "@/components/Texte";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -45,13 +47,13 @@ export default function ReglagesNotifications() {
   async function basculerBrief() {
     const nouvelleValeur = !briefActif;
     setBriefActif(nouvelleValeur);
-    await AsyncStorage.setItem(CLE_BRIEF_ACTIF, String(nouvelleValeur));
+    await sauverPreference(CLE_BRIEF_ACTIF, String(nouvelleValeur));
     replanifier();
   }
 
   async function choisirHeureBrief(minutes: number) {
     setBriefHeure(minutes);
-    await AsyncStorage.setItem(CLE_BRIEF_HEURE, String(minutes));
+    await sauverPreference(CLE_BRIEF_HEURE, String(minutes));
     replanifier();
   }
 
@@ -63,7 +65,7 @@ export default function ReglagesNotifications() {
   async function basculer(cle: string) {
     const nouvelleValeur = !etats[cle];
     setEtats((prev) => ({ ...prev, [cle]: nouvelleValeur }));
-    await AsyncStorage.setItem(cle, String(nouvelleValeur));
+    await sauverPreference(cle, String(nouvelleValeur));
     replanifier();
   }
 
@@ -74,7 +76,7 @@ export default function ReglagesNotifications() {
     // Au moins une heure doit rester active, sinon plus aucun rappel.
     if (actives.length === 0) return;
     setHeures(actives);
-    await AsyncStorage.setItem(CLE_HEURES_NOTIF, JSON.stringify(actives));
+    await sauverPreference(CLE_HEURES_NOTIF, JSON.stringify(actives));
     replanifier();
   }
 

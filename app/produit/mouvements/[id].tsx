@@ -1,5 +1,7 @@
+import { useLangue, t } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { Text } from "@/components/Texte";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -16,6 +18,7 @@ const ICONES: Record<string, keyof typeof Feather.glyphMap> = {
 };
 
 export default function MouvementsProduit() {
+  const { langue } = useLangue();
   const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [mouvements, setMouvements] = useState<any[]>([]);
@@ -30,7 +33,7 @@ export default function MouvementsProduit() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
-      <EnteteEcran titre="Mouvements de stock" onRetour={() => router.back()} />
+      <EnteteEcran titre={t("x_mouvements_titre", langue)} onRetour={() => router.back()} />
 
       {chargement ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />

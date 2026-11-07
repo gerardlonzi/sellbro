@@ -9,5 +9,5 @@
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["lib/supabase/functions"]
+  "exclude": ["supabase", "node_modules"]
 }

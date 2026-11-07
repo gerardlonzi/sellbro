@@ -1,3 +1,4 @@
+import { sauverPreference } from "@/lib/preferences/prefs";
 import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -13,7 +14,7 @@ export function useTourGuide() {
   }, []);
 
   async function terminerTour() {
-    await AsyncStorage.setItem(CLE_TOUR, "true");
+    await sauverPreference(CLE_TOUR, "true");
     setAfficherTour(false);
   }
 

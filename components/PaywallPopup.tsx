@@ -1,80 +1,98 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, Modal, StyleSheet } from "react-native";
-import { Feather } from "@expo/vector-icons";
-import { useTheme } from "@/lib/theme/ThemeProvider";
+import { ModalePremium, OffrePopup } from "@/components/ModalePremium";
 import { sAbonnerPaywall, fermerPaywall, EtatPaywall } from "@/lib/trial/paywall";
 import { useAbonnement } from "@/lib/plan/useAbonnement";
+import { usePlanActuel } from "@/lib/plan/usePlanActuel";
 import { useEssai } from "@/lib/trial/useEssai";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
+import { chargerPlans } from "@/lib/plan/quotas";
 import { useLangue, t } from "@/lib/i18n";
 
-
-
-// Modale paywall personnalisée (couleurs de l'app), affichée quand l'utilisateur
-// tente une action restreinte après expiration (essai gratuit OU abonnement payant).
+// Modale paywall unique, deux usages :
+//  • essai / abonnement terminé  → on montre Starter ET Premium avec leurs prix
+//    (lus depuis la table `plans`, jamais en dur) ;
+//  • fonction IA (scan / vocal)   → « réservé à Premium », y compris pour un
+//    abonné Starter, avec le prix Premium.
 export function PaywallPopup() {
-  const { colors } = useTheme();
   const { expire: abonnementExpire } = useAbonnement();
   const essai = useEssai();
+  const { planId } = usePlanActuel();
   const { langue } = useLangue();
-
   const { formater } = useCurrency();
   const [etat, setEtat] = useState<EtatPaywall>({ visible: false, langue: "fr", onUpgrade: () => {} });
+  const [prix, setPrix] = useState<{ starter: number | null; premium: number | null }>({ starter: null, premium: null });
 
   useEffect(() => sAbonnerPaywall(setEtat), []);
+  useEffect(() => {
+    chargerPlans()
+      .then((p) => setPrix({ starter: p.starter?.prix ?? null, premium: p.premium?.prix ?? null }))
+      .catch(() => {});
+  }, []);
 
-  function allerPro() {
+  function allerPlans() {
     const cb = etat.onUpgrade;
     fermerPaywall();
     cb();
   }
 
-  // La paywall ne doit jamais s'afficher pour un abonné payant (starter/premium).
-  // Sans cette garde, l'app affichait « essai gratuit terminé » aux abonnés payant.
-  const estPayant = essai.estPremium;
-  if (estPayant) return null;
+  const estIA = etat.raison === "ia";
+  const estStarter = planId === "starter";
+  const estPremium = planId === "premium";
 
-  const titre = abonnementExpire ? t("abonnement_termine_statut", etat.langue) : t("essai_termine_titre", etat.langue);
-  const message = abonnementExpire ? t("paywall_message_abonnement", etat.langue) : t("paywall_message", etat.langue);
-  const boutonPro = abonnementExpire ? t("abonnement_termine_renew", etat.langue) : t("essai_termine_pro", etat.langue);
+  // Un Premium n'a jamais de paywall. Un Starter n'en voit que pour l'IA.
+  // (Un abonné payant ne doit jamais lire « essai gratuit terminé ».)
+  if (estPremium) return null;
+  if (!estIA && essai.estPremium) return null;
+
+  const suffixe = t("par_mois", langue);
+  const offreStarter: OffrePopup | null = prix.starter != null
+    ? { id: "starter", nom: "Starter", prix: formater(prix.starter), suffixe }
+    : null;
+  const offrePremium: OffrePopup | null = prix.premium != null
+    ? { id: "premium", nom: "Premium", prix: formater(prix.premium), suffixe, surligne: true, badge: t("offre_recommande", langue) }
+    : null;
+
+  let titre: string;
+  let message: string;
+  let bouton: string;
+  let offres: OffrePopup[];
+  let avantages: { icone: any; texte: string }[];
+
+  if (estIA) {
+    titre = t("paywall_ia_titre", langue);
+    message = estStarter ? t("paywall_ia_texte_starter", langue) : t("paywall_ia_texte_gratuit", langue);
+    bouton = t("paywall_ia_bouton", langue);
+    offres = offrePremium ? [offrePremium] : [];
+    avantages = [
+      { icone: "camera", texte: t("popup_avantage_scan", langue) },
+      { icone: "mic", texte: t("popup_avantage_vocal", langue) },
+    ];
+  } else {
+    titre = abonnementExpire ? t("abonnement_termine_statut", langue) : t("essai_termine_titre", langue);
+    message = t("paywall_choisir_offre", langue);
+    bouton = t("paywall_voir_offres", langue);
+    offres = [offreStarter, offrePremium].filter(Boolean) as OffrePopup[];
+    avantages = [
+      { icone: "shield", texte: t("paywall_donnees_gardees", langue) },
+      { icone: "camera", texte: t("popup_avantage_scan", langue) },
+      { icone: "mic", texte: t("popup_avantage_vocal", langue) },
+    ];
+  }
 
   return (
-    <Modal visible={etat.visible} transparent animationType="fade">
-      <View style={styles.fond}>
-        <View style={[styles.carte, { backgroundColor: colors.surface }]}>
-          <View style={[styles.icone, { backgroundColor: colors.proBg }]}>
-            <Feather name="lock" size={24} color={colors.pro} />
-          </View>
-          <Text style={[styles.titre, { color: colors.textPrimary }]}>{titre}</Text>
-          <Text style={[styles.texte, { color: colors.textSecondary }]}>{message}</Text>
-          {essai.prix != null && (
-            <Text style={[styles.prix, { color: colors.textPrimary }]}>
-              {t("paywall_prix_label", etat.langue)} : {formater(essai.prix)}/{t("mois_title",langue)} (≈ {formater(Math.round(essai.prix / 30))}/{t("jour_title",langue)})
-            </Text>
-          )}
-
-          <View style={styles.ligneBoutons}>
-            <Pressable onPress={fermerPaywall} style={[styles.boutonSecondaire, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500" }}>{t("rappel_essai_plus_tard", etat.langue)}</Text>
-            </Pressable>
-            <Pressable onPress={allerPro} style={[styles.boutonPro, { backgroundColor: colors.proFill }]}>
-              <Text numberOfLines={1} style={{ color: colors.onPro, fontSize: 14, fontWeight: "600" }}>{boutonPro}</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    <ModalePremium
+      visible={etat.visible}
+      fond="paywall"
+      icone={estIA ? "zap" : "lock"}
+      teinte="pro"
+      titre={titre}
+      texte={message}
+      offres={offres}
+      avantages={avantages}
+      libellePrincipal={bouton}
+      libelleSecondaire={t("rappel_essai_plus_tard", langue)}
+      onPrincipal={allerPlans}
+      onSecondaire={fermerPaywall}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  fond: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: 24 },
-  carte: { width: "100%", maxWidth: 340, borderRadius: 16, padding: 24, alignItems: "center" },
-  icone: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 14 },
-  titre: { fontSize: 17, fontWeight: "600", marginBottom: 10, textAlign: "center" },
-  texte: { fontSize: 13, textAlign: "center", lineHeight: 19 },
-  prix: { fontSize: 13, fontWeight: "600", marginTop: 10, textAlign: "center" },
-  ligneBoutons: { flexDirection: "row", gap: 10, marginTop: 20, alignSelf: "stretch" },
-  boutonSecondaire: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center", borderWidth: 1 },
-  boutonPro: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center" },
-});

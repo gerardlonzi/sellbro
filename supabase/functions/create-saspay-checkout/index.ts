@@ -22,10 +22,70 @@ const RETURN_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/checkout-retour
 // Pays supportés par SasPay → devise de facturation. Miroir de
 // lib/currency/taux.ts (DEVISES_PAR_PAYS) — à garder synchronisé.
 const DEVISE_PAR_PAYS: Record<string, string> = {
-  BF: "XOF", BJ: "XOF", CD: "CDF", CI: "XOF", CM: "XAF", GH: "GHS",
-  GN: "GNF", KE: "KES", ML: "XOF", MW: "MWK", NE: "XOF", NG: "NGN",
-  RW: "RWF", SN: "XOF", TG: "XOF", TZ: "TZS", UG: "UGX", ZM: "ZMW",
-};
+  CM: "XAF", CG: "XAF", GA: "XAF", CF: "XAF", TD: "XAF", GQ: "XAF",
+  BF: "XOF", BJ: "XOF", CI: "XOF", ML: "XOF", NE: "XOF", SN: "XOF", TG: "XOF", GW: "XOF",
+  CD: "CDF", 
+  GH: "GHS",
+  GN: "GNF", 
+  KE: "KES", 
+  MW: "MWK", 
+  NG: "NGN",
+  RW: "RWF", 
+  TZ: "TZS", 
+  UG: "UGX", 
+  ZM: "ZMW",
+  SO: "SOS", // Somalie
+  ET: "ETB", 
+  SL: "SLE", 
+  MA: "MAD", 
+  DZ: "DZD", 
+  TN: "TND",
+  EG: "EGP", ZA: "ZAR", AO: "AOA", BI: "BIF", CV: "CVE",
+  KM: "KMF", DJ: "DJF", ER: "ERN", SZ: "SZL", GM: "GMD",
+  LS: "LSL", LR: "LRD", LY: "LYD", MR: "MRO", MU: "MUR",
+  MZ: "MZN", NA: "NAD", SC: "SCR", SDG: "SDG", ST: "STN",
+  ZW: "ZWD",
+
+  // Amériques
+  US: "USD", CA: "CAD", BR: "BRL", MX: "MXN", AR: "ARS",
+  CL: "CLP", CO: "COP", PE: "PEN", VE: "VES", UY: "UYU",
+  PY: "PYG", BO: "BOB", EC: "USD", CR: "CRC", CU: "CUP",
+  DO: "DOP", GT: "GTQ", HT: "HTG", HN: "HNL", NI: "NIO",
+  PA: "PAB", SV: "USD", BS: "BSD", BB: "BBD", BZD: "BZD",
+  DM: "XCD", GD: "XCD", GY: "GYD", JM: "JMD", KN: "XCD",
+  LC: "XCD", VC: "XCD", SR: "SRD", TT: "TTD",
+
+  // Europe
+  FR: "EUR", DE: "EUR", ES: "EUR", IT: "EUR", PT: "EUR",
+  BE: "EUR", NL: "EUR", AT: "EUR", FI: "EUR", IE: "EUR",
+  GR: "EUR", CY: "EUR", EE: "EUR", LV: "EUR", LT: "EUR",
+  LU: "EUR", MT: "EUR", SK: "EUR", SI: "EUR", HR: "EUR",
+  GB: "GBP", CH: "CHF", NO: "NOK", DK: "DKK", SE: "SEK",
+  PL: "PLN", RO: "RON", CZ: "CZK", HU: "HUF", UA: "UAH",
+  RU: "RUB", BY: "BYN", MD: "MDL", BA: "BAM", RS: "RSD",
+  ME: "EUR", AL: "ALL", MK: "MKD", BG: "BGN", IS: "ISK",
+  MC: "EUR", SM: "EUR", VA: "EUR", AD: "EUR", LI: "CHF",
+
+  // Asie & Moyen-Orient
+  CN: "CNY", IN: "INR", JP: "JPY", KR: "KRW", ID: "IDR",
+  PK: "PKR", BD: "BDT", PH: "PHP", VN: "VND", IR: "IRR",
+  TR: "TRY", TH: "THB", MM: "MMK", IQ: "IQD", SA: "SAR",
+  UZ: "UZS", MY: "MYR", YE: "YER", NPR: "NPR", KP: "KPW",
+  LK: "LKR", KZ: "KZT", SY: "SYP", KH: "KHR", JO: "JOD",
+  AZ: "AZN", AE: "AED", TJ: "TJS", IL: "ILS", LA: "LAK",
+  LB: "LBP", KG: "KGS", TMT: "TMT", SG: "SGD", PS: "ILS",
+  KW: "KWD", OM: "OMR", QA: "QAR", BH: "BHD", TL: "USD",
+  MN: "MNT", AM: "AMD", GE: "GEL", BND: "BND", BTN: "BTN",
+  MVR: "MVR",
+
+  // Océanie
+  AU: "AUD", NZ: "NZD", PG: "PGK", FJ: "FJD", SB: "SBD",
+  VU: "VUV", WS: "WST", KI: "AUD", FM: "USD", MH: "USD",
+  NR: "AUD", PW: "USD", TO: "TOP", TV: "AUD",
+  
+  // Cas spéciaux UI (Somalie/Crypto)
+  XC: "USD",
+  XY: "USD"};
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -148,7 +208,15 @@ Deno.serve(async (req) => {
 
     console.log(`checkout créé: transaction=${transaction.id} session=${session.id} pays=${country} devise=${devise} montant=${montant}`);
 
-    return json({ transaction_id: transaction.id, checkout_url: session.checkout_url });
+    // On renvoie le plan et le montant RÉELLEMENT facturés : l'app vérifie qu'ils
+    // correspondent au plan choisi avant d'ouvrir la page de paiement.
+    return json({
+      transaction_id: transaction.id,
+      checkout_url: session.checkout_url,
+      plan_id: planId,
+      amount: Number(montant),
+      currency: devise,
+    });
   } catch (e) {
     return json({ error: `erreur interne: ${e}` }, 500);
   }

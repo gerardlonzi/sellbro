@@ -1,9 +1,11 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
+import { Text } from "@/components/Texte";
 import { router, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
-import { useLangue } from "@/lib/i18n";
+import { useLangue, t } from "@/lib/i18n";
 import { useCurrency } from "@/lib/currency/CurrencyProvider";
 import { database } from "@/lib/database";
 import { obtenirUserId } from "@/lib/auth/userCache";
@@ -16,7 +18,7 @@ type Achat = { id: string; fournisseur_nom: string | null; description: string |
 export default function Achats() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formater, formaterCompact } = useCurrency();
   const [achats, setAchats] = useState<Achat[]>([]);
   const [chargement, setChargement] = useState(true);
 
@@ -39,21 +41,24 @@ export default function Achats() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: 14, paddingTop: 50 }}>
-      <EnteteEcran titre="Achats fournisseurs" onRetour={() => router.back()} />
+      <EnteteEcran titre={t("achats_liste_titre", langue)} onRetour={() => router.back()} />
 
       {!chargement && achats.length > 0 && (
         <View style={[styles.bandeauTotal, { backgroundColor: colors.accentBg }]}>
-          <Text style={{ color: colors.accent, fontSize: 12 }}>Total : {formater(total)} ({achats.length})</Text>
+          <Text style={{ color: colors.accent, fontSize: 12 }}>{t("commandes_total", langue)} : {formaterCompact(total)} ({achats.length})</Text>
         </View>
       )}
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : achats.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="truck" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: "center" }}>Aucun achat enregistré pour l'instant</Text>
-        </View>
+        <EtatVide
+          icone="shopping-cart"
+          titre={t("vide_achats_titre", langue)}
+          texte={t("vide_achats_texte", langue)}
+          actionLibelle={t("vide_action_achat", langue)}
+          onAction={() => router.push("/achats/nouveau")}
+        />
       ) : (
         <ScrollView>
           {achats.map((a) => (
@@ -62,7 +67,7 @@ export default function Achats() {
                 <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{a.fournisseur_nom ?? "Fournisseur"}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: 11 }}>{new Date(a.cree_le).toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}</Text>
               </View>
-              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formater(a.montant)}</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500" }}>{formaterCompact(a.montant)}</Text>
             </View>
           ))}
         </ScrollView>

@@ -1,4 +1,5 @@
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Linking } from "react-native";
+import { Text } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";

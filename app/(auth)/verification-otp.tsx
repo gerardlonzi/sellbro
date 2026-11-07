@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Image } from "react-native";
+import { Pressable } from "react-native";
+import { Text } from "@/components/Texte";
+import { EcranAuth, ChampAuth, ChampCode } from "@/components/EcranAuth";
+import { BoutonPrimaire } from "@/components/UI";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useToast } from "@/lib/toast/ToastProvider";
@@ -86,78 +89,48 @@ export default function VerificationOtp() {
     showToast(t("otp_email_modifie", langue), "success");
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Image
-        source={require("../../assets/splash-logo.png")}
-        style={styles.icone}
-        resizeMode="contain"
-      />
-      <Text style={{ fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: 8, textAlign: "center" }}>
-        {t("otp_titre", langue)}
-      </Text>
-      <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 24, textAlign: "center" }}>
-        {t("otp_sous_titre", langue)(email)}
-      </Text>
+  const [secondes, setSecondes] = useState(30);
+  useEffect(() => {
+    if (secondes <= 0) return;
+    const id = setTimeout(() => setSecondes((x) => x - 1), 1000);
+    return () => clearTimeout(id);
+  }, [secondes]);
 
+  return (
+    <EcranAuth titre={t("otp_titre", langue)} sousTitre={t("otp_sous_titre", langue)(email)}>
       {modeModification ? (
         <>
-          <TextInput
-            value={nouvelEmail}
-            onChangeText={setNouvelEmail}
+          <ChampAuth
+            icone="mail"
+            valeur={nouvelEmail}
+            onChange={setNouvelEmail}
             placeholder={t("placeholder_email", langue)}
-            placeholderTextColor={colors.textMuted}
             keyboardType="email-address"
             autoCapitalize="none"
             autoFocus
-            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, textAlign: "center" }]}
           />
-          <Pressable
-            onPress={confirmerChangementEmail}
-            disabled={chargement}
-            style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
-          >
-            <Text style={styles.boutonTexte}>{t("otp_changer_email_confirmer", langue)}</Text>
-          </Pressable>
+          <BoutonPrimaire texte={chargement ? "…" : t("otp_changer_email_confirmer", langue)} icone="check" onPress={confirmerChangementEmail} disabled={chargement} />
           <Pressable onPress={() => setModeModification(false)} style={{ marginTop: 14, alignItems: "center" }}>
-            <Text style={{ color: colors.textMuted, fontSize: 13 }}>{t("otp_changer_email_annuler", langue)}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 13.5 }}>{t("otp_changer_email_annuler", langue)}</Text>
           </Pressable>
         </>
       ) : (
         <>
-          <TextInput
-            value={code}
-            onChangeText={setCode}
-            placeholder={t("otp_placeholder", langue)}
-            placeholderTextColor={colors.textMuted}
-            keyboardType="number-pad"
-            maxLength={10}
-            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, textAlign: "center", fontSize: 22, letterSpacing: 8 }]}
-          />
-
-          <Pressable onPress={confirmer} disabled={chargement} style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}>
-            <Text style={styles.boutonTexte}>{chargement ? "..." : t("otp_confirmer", langue)}</Text>
-          </Pressable>
-
-          <Pressable onPress={renvoyer} style={{ marginTop: 16, alignItems: "center" }}>
-            <Text style={{ color: colors.textMuted, fontSize: 13 }}>{t("otp_renvoyer", langue)}</Text>
-          </Pressable>
-
-          <Pressable onPress={() => setModeModification(true)} style={{ marginTop: 20, alignItems: "center" }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, textDecorationLine: "underline" }}>
-              {t("otp_changer_email", langue)}
+          <ChampCode valeur={code} onChange={setCode} />
+          <BoutonPrimaire texte={chargement ? "…" : t("otp_confirmer", langue)} icone="check" onPress={confirmer} disabled={chargement || code.length < 6} />
+          <Pressable
+            onPress={() => { if (secondes > 0) return; setSecondes(30); renvoyer(); }}
+            style={{ marginTop: 16, alignItems: "center", opacity: secondes > 0 ? 0.55 : 1 }}
+          >
+            <Text style={{ color: colors.accent, fontSize: 13.5, fontWeight: "600" }}>
+              {t("otp_renvoyer", langue)}{secondes > 0 ? `  ·  ${secondes}s` : ""}
             </Text>
+          </Pressable>
+          <Pressable onPress={() => setModeModification(true)} style={{ marginTop: 14, alignItems: "center" }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, textDecorationLine: "underline" }}>{t("otp_changer_email", langue)}</Text>
           </Pressable>
         </>
       )}
-    </View>
+    </EcranAuth>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, justifyContent: "center" },
-  icone: { width: 88, height: 88, borderRadius: 20, alignSelf: "center", marginBottom: 14 },
-  input: { borderWidth: 1, borderRadius: 8, paddingVertical: 14, marginBottom: 20, paddingHorizontal: 2, fontSize: 15 },
-  bouton: { paddingVertical: 14, borderRadius: 8, alignItems: "center" },
-  boutonTexte: { color: "#fff", fontSize: 15, fontWeight: "500" },
-});

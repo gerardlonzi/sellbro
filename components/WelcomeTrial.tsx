@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, Modal, StyleSheet } from "react-native";
+import { Text } from "@/components/Texte";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { Feather } from "@expo/vector-icons";
-import { useTheme } from "@/lib/theme/ThemeProvider";
+import { ModalePremium } from "@/components/ModalePremium";
 import { useLangue, t } from "@/lib/i18n";
 import { useEssai } from "@/lib/trial/useEssai";
 import { useAbonnement } from "@/lib/plan/useAbonnement";
@@ -34,7 +33,6 @@ type EtatPopup =
 // Pop-ups d'essai : bienvenue (une fois), rappels (répartis sur la durée),
 // expiration. Non intrusifs : un seul pop-up par ouverture, jamais quotidien.
 export function WelcomeTrial() {
-  const { colors } = useTheme();
   const { langue } = useLangue();
   const essai = useEssai();
   const { expire: abonnementExpire } = useAbonnement();
@@ -128,42 +126,28 @@ export function WelcomeTrial() {
     ? essai.prix != null ? t("bienvenue_essai_ligne2", langue)(essai.prix) : ""
     : estExpiration ? "" : t("rappel_essai_ligne2", langue);
 
-  return (
-    <Modal visible transparent animationType="fade">
-      <View style={styles.fond}>
-        <View style={[styles.carte, { backgroundColor: colors.surface }]}>
-          <View style={[styles.icone, { backgroundColor: estExpiration ? colors.dangerBg : colors.proBg }]}>
-            <Feather name={estExpiration ? "alert-circle" : "gift"} size={24} color={estExpiration ? colors.danger : colors.pro} />
-          </View>
-          <Text style={[styles.titre, { color: colors.textPrimary }]}>{titre}</Text>
-          <Text style={[styles.texte, { color: colors.textSecondary }]}>{corps}</Text>
-          {sousCorps ? <Text style={[styles.texte, { color: colors.textSecondary, marginTop: 6 }]}>{sousCorps}</Text> : null}
+  const avantages = estBienvenue
+    ? [
+        { icone: "camera" as const, texte: t("popup_avantage_scan", langue) },
+        { icone: "mic" as const, texte: t("popup_avantage_vocal", langue) },
+        { icone: "wifi-off" as const, texte: t("popup_avantage_hors_ligne", langue) },
+      ]
+    : undefined;
 
-          <View style={styles.ligneBoutons}>
-            <Pressable onPress={fermer} style={[styles.boutonSecondaire, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: "500" }}>
-                {estExpiration ? "OK" : estBienvenue ? t("bienvenue_essai_ok", langue) : t("rappel_essai_plus_tard", langue)}
-              </Text>
-            </Pressable>
-            <Pressable onPress={allerPro} style={[styles.boutonPro, { backgroundColor: colors.proFill }]}>
-              <Text style={{ color: colors.onPro, fontSize: 14, fontWeight: "600" }}>
-                {estExpiration ? t("essai_termine_pro", langue) : t("bienvenue_essai_pro", langue)}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+  return (
+    <ModalePremium
+      visible
+      fond={estExpiration ? "paywall" : "welcome"}
+      icone={estExpiration ? "lock" : estBienvenue ? "gift" : "clock"}
+      teinte={estExpiration ? "danger" : "accent"}
+      titre={titre}
+      texte={corps}
+      sousTexte={sousCorps || undefined}
+      avantages={avantages}
+      libellePrincipal={estExpiration ? t("essai_termine_pro", langue) : t("bienvenue_essai_pro", langue)}
+      libelleSecondaire={estExpiration ? "OK" : estBienvenue ? t("bienvenue_essai_ok", langue) : t("rappel_essai_plus_tard", langue)}
+      onPrincipal={allerPro}
+      onSecondaire={fermer}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  fond: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 24 },
-  carte: { width: "100%", maxWidth: 340, borderRadius: 16, padding: 24, alignItems: "center" },
-  icone: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 14 },
-  titre: { fontSize: 17, fontWeight: "600", marginBottom: 10, textAlign: "center" },
-  texte: { fontSize: 13, textAlign: "center", lineHeight: 19 },
-  ligneBoutons: { flexDirection: "row", gap: 10, marginTop: 20, alignSelf: "stretch" },
-  boutonSecondaire: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center", borderWidth: 1 },
-  boutonPro: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center" },
-});

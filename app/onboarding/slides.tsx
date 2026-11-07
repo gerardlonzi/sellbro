@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, Dimensions, NativeSyntheticEvent, NativeScrollEvent, ActivityIndicator } from "react-native";
+import { View, Pressable, StyleSheet, ScrollView, Dimensions, NativeSyntheticEvent, NativeScrollEvent, ActivityIndicator } from "react-native";
+import { Text } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -167,7 +168,7 @@ function AperçuStock({ colors, langue }: any) {
       </View>
       <View style={[styles.blocApercuLigne, { backgroundColor: colors.background, marginTop: 4 }]}>
         <Feather name="package" size={13} color={colors.textMuted} />
-        <Text style={{ fontSize: 10, color: colors.textSecondary }}>2 produits suivis</Text>
+        <Text style={{ fontSize: 10, color: colors.textSecondary }}>{t("x_apercu_suivis", langue)}</Text>
       </View>
     </CarteTelephone>
   );
@@ -186,7 +187,7 @@ function AperçuCreances({ colors, langue }: any) {
         </View>
         <View style={[styles.blocApercuLigne, { backgroundColor: colors.background, marginTop: 10 }]}>
           <Feather name="bar-chart-2" size={13} color={colors.textMuted} />
-          <Text style={{ fontSize: 10, color: colors.textSecondary }}>Rapport mensuel disponible</Text>
+          <Text style={{ fontSize: 10, color: colors.textSecondary }}>{t("x_apercu_rapport", langue)}</Text>
         </View>
       </CarteTelephone>
       <View style={[styles.badgeFlottant, { backgroundColor: colors.pro }]}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { Text } from "@/components/Texte";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -135,15 +136,15 @@ export default function DetailTransaction() {
       </View>
 
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Ligne label="Produit" valeur={vente.produit_nom ?? "—"} colors={colors} />
+        <Ligne label={t("x_produit", langue)} valeur={vente.produit_nom ?? "—"} colors={colors} />
         <Ligne label={t("nouvelle_creance_montant", langue)} valeur={`${vente.quantite} × ${formater(vente.prix_unitaire)}`} colors={colors} />
         <Ligne label={t("nouvelle_creance_personne", langue)} valeur={vente.client_nom ?? "—"} colors={colors} dernier />
       </View>
 
       <View style={[styles.carte, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
-        <Ligne label={t("commandes_paiement_tous", langue) && "Paiement"} valeur={vente.mode_paiement ?? "—"} colors={colors} />
+        <Ligne label={t("x_paiement", langue)} valeur={vente.mode_paiement ?? "—"} colors={colors} />
         <Ligne
-          label="Source"
+          label={t("x_source", langue)}
           valeur=""
           colors={colors}
           icone={vente.source === "vocal" ? "mic" : vente.source === "scan" ? "camera" : "edit-3"}

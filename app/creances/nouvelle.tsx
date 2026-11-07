@@ -1,5 +1,7 @@
+import { BarreFixe } from "@/components/BarreFixe";
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Modal, KeyboardAvoidingView, Platform } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -77,7 +79,7 @@ export default function NouvelleCreance() {
 
     // Téléphone facultatif, mais si renseigné il doit être valide pour le pays.
     if (telephone.trim()) {
-      const validation = validerTelephone(telephone.trim(), pays);
+      const validation = validerTelephone(telephone.trim(), pays, langue);
       if (!validation.valide) {
         showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
         return;
@@ -130,8 +132,8 @@ export default function NouvelleCreance() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <EnteteEcran
         titre={type === "creance" ? t("nouvelle_creance_titre", langue) : t("nouvelle_dette_titre", langue)}
         onRetour={() => router.back()}
@@ -271,7 +273,7 @@ export default function NouvelleCreance() {
       </Modal>
     </ScrollView>
 
-      <View style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
+      <BarreFixe style={{ padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background }}>
         <Pressable
           onPress={sauvegarder}
           disabled={chargement}
@@ -281,8 +283,8 @@ export default function NouvelleCreance() {
             {chargement ? "..." : t("nouvelle_creance_sauver", langue)}
           </Text>
         </Pressable>
-      </View>
-    </View>
+      </BarreFixe>
+    </KeyboardAvoidingView>
   );
 }
 

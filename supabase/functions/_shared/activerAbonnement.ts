@@ -24,6 +24,17 @@ export async function activerAbonnement(
 ): Promise<void> {
   const { transactionId, userId, phone, network, payload } = params;
 
+  // 0) Idempotence : le webhook ET verify-payment peuvent arriver pour la même
+  //    transaction. Si un abonnement référence déjà cette transaction, on ne
+  //    prolonge pas une seconde fois (sinon +2 mois pour un seul paiement).
+  const { data: dejaActive } = await supabaseAdmin
+    .from("abonnements").select("id").eq("reference_transaction", transactionId).limit(1).maybeSingle();
+  if (dejaActive) {
+    await supabaseAdmin.from("payment_transactions")
+      .update({ status: "success", updated_at: new Date().toISOString() }).eq("id", transactionId);
+    return;
+  }
+
   // 1) Transaction → success (avec payload brut pour traçabilité). On lit le
   //    montant ET le plan au passage : la transaction porte le plan choisi au
   //    checkout (starter | premium) — c'est lui qu'on active, pas un plan fixe.
@@ -79,7 +90,6 @@ export async function activerAbonnement(
   } else {
     const { error } = await supabaseAdmin.from("abonnements").insert({
       user_id: userId,
-      plan_id: planId,
       date_debut: maintenant.toISOString(),
       ...champs,
     });

@@ -1,7 +1,10 @@
 import { useState, useCallback } from "react";
-import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
+import { EtatVide } from "@/components/EtatVide";
+import { ListeSkeleton } from "@/components/EtatVide";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { peutEcrire } from "@/lib/trial/gate";
@@ -30,7 +33,7 @@ const ICONES_SOURCE: Record<string, any> = { vocal: "mic", scan: "camera", manue
 export default function Commandes() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formaterCompact } = useCurrency();
   const [recherche, setRecherche] = useState("");
   const [ventes, setVentes] = useState<Vente[]>([]);
   const [chargement, setChargement] = useState(true);
@@ -93,9 +96,9 @@ export default function Commandes() {
 </View>
       {client && (
         <View style={[styles.bandeauTotal, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Total : {formater(total)} · Bénéfice estimé : {formater(Math.round(total * 0.3))}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Total : {formaterCompact(total)} · Bénéfice estimé : {formaterCompact(Math.round(total * 0.3))}</Text>
           {montantCreance > 0 && (
-            <Text style={{ color: colors.danger, fontSize: 12, marginTop: 4 }}>Crédit en cours : {formater(montantCreance)}</Text>
+            <Text style={{ color: colors.danger, fontSize: 12, marginTop: 4 }}>Crédit en cours : {formaterCompact(montantCreance)}</Text>
           )}
         </View>
       )}
@@ -114,17 +117,14 @@ export default function Commandes() {
 
       {!chargement && filtrees.length > 0 && (
         <View style={[styles.bandeauTotal, { backgroundColor: colors.accentBg }]}>
-          <Text style={{ color: colors.accent, fontSize: 12 }}>{t("commandes_total", langue)} : {formater(total)} ({filtrees.length})</Text>
+          <Text style={{ color: colors.accent, fontSize: 12 }}>{t("commandes_total", langue)} : {formaterCompact(total)} ({filtrees.length})</Text>
         </View>
       )}
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton />
       ) : filtrees.length === 0 ? (
-        <View style={styles.etatVide}>
-          <Feather name="shopping-bag" size={30} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: "center" }}>{t("commandes_vide", langue)}</Text>
-        </View>
+        <EtatVide icone="shopping-bag" titre={t("commandes_vide", langue)} />
       ) : (
         <ScrollView>
           {filtrees.map((v) => (
@@ -136,7 +136,7 @@ export default function Commandes() {
                 <Text style={{ color: colors.textMuted, fontSize: 11 }}>{new Date(v.created_at).toLocaleDateString(langue === "fr" ? "fr-FR" : "en-US")}</Text>
               </View>
             </Pressable>
-            <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10 }}>{formater(v.quantite * v.prix_unitaire)}</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "500", marginRight: 10 }}>{formaterCompact(v.quantite * v.prix_unitaire)}</Text>
             <MenuContextuel
               actions={[
                 { label: "Voir détail", icone: "eye", onPress: () => router.push(`/transaction/${v.id}`) },

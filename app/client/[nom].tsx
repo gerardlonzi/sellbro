@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Pressable, Modal, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { View, ScrollView, StyleSheet, ActivityIndicator, Pressable, Modal, KeyboardAvoidingView, Platform } from "react-native";
+import { Text, TextInput } from "@/components/Texte";
 import { router, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -27,7 +28,7 @@ type StatsClient = {
 export default function FicheClient() {
   const { colors } = useTheme();
   const { langue } = useLangue();
-  const { formater } = useCurrency();
+  const { formaterCompact } = useCurrency();
   const { showToast } = useToast();
   const { pays } = usePays();
   const { nom } = useLocalSearchParams<{ nom: string }>();
@@ -84,7 +85,7 @@ export default function FicheClient() {
   // Enregistre le numéro saisi sur TOUTES les ventes du client (il est stocké
   // sur les ventes, il n'existe pas de table « clients »), puis envoie.
   async function enregistrerNumeroEtEnvoyer() {
-    const validation = validerTelephone(numeroSaisi.trim(), pays);
+    const validation = validerTelephone(numeroSaisi.trim(), pays, langue);
     if (!validation.valide) {
       showToast(validation.message ?? t("inscription_verifie_numero", langue), "error");
       return;
@@ -167,7 +168,7 @@ export default function FicheClient() {
       <Carte style={{ marginTop: 16, gap: 12 }}>
         <Ligne label={t("client_telephone", langue)} valeur={stats?.telephone ?? "—"} colors={colors} />
         <Ligne label={t("client_nb_achats", langue)} valeur={`${stats?.nbAchats ?? 0}`} colors={colors} />
-        <Ligne label={t("client_total", langue)} valeur={formater(stats?.total ?? 0)} colors={colors} />
+        <Ligne label={t("client_total", langue)} valeur={formaterCompact(stats?.total ?? 0)} colors={colors} />
         <Ligne
           label={t("client_produit_prefere", langue)}
           valeur={stats?.produitPrefere ? `${stats.produitPrefere.nom} (×${stats.produitPrefere.quantite})` : "—"}

@@ -1,5 +1,7 @@
+import { useLangue, t } from "@/lib/i18n";
 import { useState } from "react";
-import { ScrollView, TextInput, Pressable, Text, StyleSheet } from "react-native";
+import { ScrollView, Pressable, StyleSheet } from "react-native";
+import { TextInput, Text } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -8,6 +10,7 @@ import { PAYS } from "@/lib/pays/pays";
 import { EnteteEcran } from "@/components/UI";
 
 export default function SelectionPays() {
+  const { langue } = useLangue();
   const { colors } = useTheme();
   const { pays, setPays } = usePays();
   const [recherche, setRecherche] = useState("");
@@ -20,9 +23,9 @@ export default function SelectionPays() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: 14, paddingTop: 50 }}>
-      <EnteteEcran titre="Pays" onRetour={() => router.back()} />
+      <EnteteEcran titre={t("x_pays_titre", langue)} onRetour={() => router.back()} />
       <TextInput
-        placeholder="Rechercher un pays ou un indicatif"
+        placeholder={t("x_pays_recherche", langue)}
         placeholderTextColor={colors.textMuted}
         value={recherche}
         onChangeText={setRecherche}

@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Easing, View, Pressable, StyleSheet, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { Text } from "@/components/Texte";
 import { router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -16,6 +19,24 @@ export default function ScannerProduit() {
   const { langue } = useLangue();
   const [permission, demanderPermission] = useCameraPermissions();
   const [verrouille, setVerrouille] = useState(false);
+  const [lampe, setLampe] = useState(false);
+  const insets = useSafeAreaInsets();
+  const { width: largeurEcran, height: hauteurEcran } = useWindowDimensions();
+  // Le code-barres est lu sur TOUT l'écran : le cadre n'est qu'un repère,
+  // très large, pas une zone étroite où il faudrait viser.
+  const CADRE_L = largeurEcran - 28;
+  const CADRE_H = Math.round((hauteurEcran - insets.top - insets.bottom) * 0.55);
+  const balayage = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const boucle = Animated.loop(
+      Animated.sequence([
+        Animated.timing(balayage, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(balayage, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    boucle.start();
+    return () => boucle.stop();
+  }, [balayage]);
   const [resultat, setResultat] = useState<{ type: "trouve"; produitId: string; nom: string; reference: string } | { type: "introuvable"; reference: string } | null>(null);
 
   if (!permission) return <View style={{ flex: 1, backgroundColor: "#000" }} />;
@@ -65,24 +86,36 @@ export default function ScannerProduit() {
       <CameraView
         style={StyleSheet.absoluteFill}
         facing="back"
+        enableTorch={lampe}
         onBarcodeScanned={surBarcodeScanne}
         barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "code93", "qr"] }}
       />
-      <View style={styles.overlay}>
-        <View style={styles.entete}>
-          <Pressable onPress={() => router.back()} hitSlop={10}>
-            <Feather name="arrow-left" size={24} color="#fff" />
-          </Pressable>
-          <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{t("scan_titre", langue)}</Text>
-          <View style={{ width: 24 }} />
-        </View>
+      <LinearGradient colors={["rgba(0,0,0,0.55)", "transparent"]} style={styles.degradeHaut} pointerEvents="none" />
+      <LinearGradient colors={["transparent", "rgba(0,0,0,0.6)"]} style={styles.degradeBas} pointerEvents="none" />
 
-        <View style={styles.zoneCadre}>
-          <View style={styles.cadre} />
-          <Text style={styles.texteAide}>{t("scan_aide", langue)}</Text>
-        </View>
+      <View style={[styles.entete, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.rond}>
+          <Feather name="arrow-left" size={20} color="#fff" />
+        </Pressable>
+        <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{t("scan_titre", langue)}</Text>
+        <Pressable onPress={() => setLampe((v) => !v)} hitSlop={10} style={[styles.rond, lampe && { backgroundColor: "#F5B942" }]}>
+          <Feather name={lampe ? "zap" : "zap-off"} size={18} color={lampe ? "#2A1D00" : "#fff"} />
+        </Pressable>
+      </View>
 
-        <View />
+      <View style={styles.zoneCadre} pointerEvents="none">
+        <View style={{ width: CADRE_L, height: CADRE_H }}>
+          <View style={[styles.coin, { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 20 }]} />
+          <View style={[styles.coin, { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 20 }]} />
+          <View style={[styles.coin, { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 20 }]} />
+          <View style={[styles.coin, { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 20 }]} />
+          <Animated.View
+            style={[styles.ligneScan, { transform: [{ translateY: balayage.interpolate({ inputRange: [0, 1], outputRange: [10, CADRE_H - 14] }) }] }]}
+          >
+            <LinearGradient colors={["transparent", "#2FD0AE", "transparent"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1 }} />
+          </Animated.View>
+        </View>
+        <Text style={styles.texteAide}>{t("scan_aide", langue)}</Text>
       </View>
 
       {resultat && (
@@ -122,11 +155,14 @@ export default function ScannerProduit() {
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: "space-between", padding: 16, paddingTop: 50, paddingBottom: 40 },
-  entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  zoneCadre: { alignItems: "center", justifyContent: "center" },
-  cadre: { width: 280, height: 160, borderWidth: 2, borderColor: "#fff", borderRadius: 8, borderStyle: "dashed" },
-  texteAide: { color: "#fff", fontSize: 12, marginTop: 12, backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
+  degradeHaut: { position: "absolute", top: 0, left: 0, right: 0, height: 140 },
+  degradeBas: { position: "absolute", bottom: 0, left: 0, right: 0, height: 220 },
+  entete: { position: "absolute", top: 0, left: 0, right: 0, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16 },
+  rond: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+  zoneCadre: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  coin: { position: "absolute", width: 44, height: 44, borderColor: "#2FD0AE" },
+  ligneScan: { position: "absolute", left: 10, right: 10, height: 3 },
+  texteAide: { color: "#fff", fontSize: 13, fontWeight: "600", marginTop: 18, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   permissionContainer: { flex: 1, paddingTop: 50 },
   boutonRetour: { paddingHorizontal: 16, marginBottom: 8, alignSelf: "flex-start" },
   boutonPermission: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },

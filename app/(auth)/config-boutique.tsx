@@ -1,5 +1,9 @@
+import { useLangue, t } from "@/lib/i18n";
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { Pressable } from "react-native";
+import { Text } from "@/components/Texte";
+import { EcranAuth, ChampAuth } from "@/components/EcranAuth";
+import { BoutonPrimaire } from "@/components/UI";
 import { router } from "expo-router";
 import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/lib/theme/ThemeProvider";
@@ -10,6 +14,7 @@ import { rafraichirPlan } from "@/lib/plan/planStore";
 // à l'accueil, et le nom de boutique peut être renseigné plus tard
 // dans Réglages.
 export default function ConfigBoutique() {
+  const { langue } = useLangue();
   const { colors } = useTheme();
   const [nomBoutique, setNomBoutique] = useState("");
   const [chargement, setChargement] = useState(false);
@@ -39,44 +44,19 @@ export default function ConfigBoutique() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.entete}>
-        <Text style={[styles.titre, { color: colors.textPrimary }]}>Configure ta boutique</Text>
-        <Pressable onPress={() => continuer(false)}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Passer</Text>
+    <EcranAuth
+      titre={t("x_config_titre", langue)}
+      sousTitre={t("x_config_sous", langue)}
+      retour={false}
+      pied={
+        <Pressable onPress={() => continuer(false)} hitSlop={10}>
+          <Text style={{ color: "#fff", fontSize: 13.5, fontWeight: "600" }}>{t("x_passer", langue)}</Text>
         </Pressable>
-      </View>
-      <Text style={[styles.sousTitre, { color: colors.textMuted }]}>
-        Facultatif — tu peux le faire plus tard dans Réglages
-      </Text>
-
-      <Text style={[styles.label, { color: colors.textSecondary }]}>Nom de la boutique</Text>
-      <TextInput
-        style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]}
-        placeholder="Ex: Boutique Awa"
-        placeholderTextColor={colors.textMuted}
-        value={nomBoutique}
-        onChangeText={setNomBoutique}
-      />
-
-      <Pressable
-        style={[styles.bouton, { backgroundColor: colors.accent, opacity: chargement ? 0.6 : 1 }]}
-        onPress={() => continuer(true)}
-        disabled={chargement}
-      >
-        <Text style={styles.boutonTexte}>{chargement ? "..." : "Continuer"}</Text>
-      </Pressable>
-    </View>
+      }
+    >
+      <Text style={{ color: colors.textSecondary, fontSize: 12.5, fontWeight: "600", marginBottom: 8 }}>{t("x_config_nom", langue)}</Text>
+      <ChampAuth icone="shopping-bag" valeur={nomBoutique} onChange={setNomBoutique} placeholder={t("x_config_nom_ph", langue)} />
+      <BoutonPrimaire texte={chargement ? "…" : t("x_continuer", langue)} icone="arrow-right" onPress={() => continuer(true)} disabled={chargement} />
+    </EcranAuth>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, paddingTop: 60 },
-  entete: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
-  titre: { fontSize: 17, fontWeight: "500" },
-  sousTitre: { fontSize: 12, marginBottom: 24 },
-  label: { fontSize: 12, marginBottom: 6 },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, marginBottom: 24 },
-  bouton: { paddingVertical: 14, borderRadius: 8, alignItems: "center" },
-  boutonTexte: { color: "#fff", fontSize: 15, fontWeight: "500" },
-});

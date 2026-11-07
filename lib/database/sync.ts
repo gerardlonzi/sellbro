@@ -2,6 +2,8 @@ import { Q } from "@nozbe/watermelondb";
 import { database } from "./index";
 import { supabase } from "@/lib/supabase/client";
 import { etatPlanActuel, rafraichirPlan } from "@/lib/plan/planStore";
+import { synchroniserPreferences } from "@/lib/preferences/prefs";
+import { obtenirUserId } from "@/lib/auth/userCache";
 import { estEssaiActifLocal } from "@/lib/trial/deviceTrial";
 import { signalerModificationDonnees } from "@/lib/dataVersion";
 import { lireSuppressions, effacerSuppression } from "@/lib/sync/tombstones";
@@ -67,7 +69,10 @@ async function prechargerToutesLesImages(userId: string) {
 // pour tous, car l'authentification par email l'exige.)
 async function peutSynchroniser(): Promise<boolean> {
   let etat = etatPlanActuel();
-  if (!etat.pret) {
+  // `verifie` et non `pret` : tant qu'on ne SAIT pas si le compte est payant,
+  // on interroge le serveur (sinon un Pro fraîchement connecté était traité en
+  // gratuit et son PUSH refusé).
+  if (!etat.verifie) {
     await rafraichirPlan();
     etat = etatPlanActuel();
   }
@@ -647,11 +652,20 @@ async function tirerJournal(lignes: any[]) {
 // Verrou anti-concurrence : empêche deux synchronisations simultanées de
 // s'entrelacer (ce qui causait des doublons de produits et l'erreur
 // « Record not found »). Une seule sync à la fois.
-let syncEnCours = false;
+let syncEnCours: Promise<void> | null = null;
 
-export async function synchroniserTout(userId: string) {
-  if (syncEnCours) return;
-  syncEnCours = true;
+// Si une synchro tourne déjà, on RENVOIE sa promesse au lieu de rendre la main
+// tout de suite : l'écran de connexion attend ainsi vraiment la fin du pull
+// avant d'afficher l'accueil (avant, il entrait sur un accueil vide).
+export function synchroniserTout(userId: string): Promise<void> {
+  if (syncEnCours) return syncEnCours;
+  syncEnCours = executerSynchro(userId).finally(() => {
+    syncEnCours = null;
+  });
+  return syncEnCours;
+}
+
+async function executerSynchro(userId: string) {
   setEtatSync("syncing");
   try {
     // Le PUSH reste soumis au plan payant / essai actif ; le PULL ne l'est
@@ -666,6 +680,8 @@ export async function synchroniserTout(userId: string) {
     // empêchait le pull de s'exécuter — l'app affichait 0 et il fallait
     // fermer/rouvrir 4 fois pour que les données apparaissent.
     await avecTimeout(tirerDonneesDistantes(userId), 30000);
+    // Préférences (notifications, thème…) : fusion local ↔ serveur, sans bloquer la synchro.
+    synchroniserPreferences(userId).catch(() => {});
     if (pushAutorise) await avecTimeout(pousserDonneesLocales(), 30000);
     signalerModificationDonnees();
     // Pré-télécharge les images (produits + logo) dans le cache disque : elles
@@ -675,8 +691,6 @@ export async function synchroniserTout(userId: string) {
   } catch (err) {
     setEtatSync("error");
     console.warn("Sync échouée", err);
-  } finally {
-    syncEnCours = false;
   }
 }
 
@@ -685,10 +699,9 @@ export async function synchroniserTout(userId: string) {
 // clients, créances…) voient immédiatement les nouvelles données.
 export async function synchroniserPourUtilisateurCourant() {
   try {
-    // Timeout : hors ligne, getUser peut rester pendu (refresh du token) et
-    // bloquerait l'écran de connexion.
-    const { data: { user } } = await avecTimeout(supabase.auth.getUser(), 5000);
-    if (user) await synchroniserTout(user.id);
+    // Id lu localement (aucun appel réseau bloquant, pas de verrou d'auth).
+    const userId = await obtenirUserId();
+    if (userId) await synchroniserTout(userId);
   } catch {
     // Hors ligne : rien à synchroniser.
   }

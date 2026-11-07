@@ -1,10 +1,14 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from "react-native";
+import { View, ScrollView, StyleSheet } from "react-native";
+import { Text } from "@/components/Texte";
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useTheme } from "@/lib/theme/ThemeProvider";
 import { useLangue, t } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
+import { EnteteEcran, ombre } from "@/components/UI";
+import { Apparition, PressableAnime } from "@/components/anim";
+import { EtatVide, ListeSkeleton } from "@/components/EtatVide";
 import { chargerNotifications, marquerLueLocale, NotificationItem } from "@/lib/notifications/notifications";
 
 type Notification = NotificationItem;
@@ -66,49 +70,84 @@ export default function Notifications() {
   }
 
   const vide = liste.length === 0;
+  const nonLues = liste.filter((n) => !n.lu).length;
+
+  async function toutMarquerLu() {
+    const ids = liste.filter((n) => !n.lu).map((n) => n.id);
+    await Promise.all(ids.map((id) => marquerLue(id)));
+  }
+
+  // Regroupe par jour (aujourd'hui / hier / plus ancien) pour une lecture rapide.
+  const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
+  const debutHier = new Date(debutJour.getTime() - 86400000);
+  const groupes: { cle: string; items: Notification[] }[] = [
+    { cle: "notif_groupe_aujourdhui", items: liste.filter((n) => new Date(n.created_at) >= debutJour) },
+    { cle: "notif_groupe_hier", items: liste.filter((n) => new Date(n.created_at) >= debutHier && new Date(n.created_at) < debutJour) },
+    { cle: "notif_groupe_avant", items: liste.filter((n) => new Date(n.created_at) < debutHier) },
+  ].filter((g) => g.items.length > 0);
+
+  function teinte(n: Notification): { fond: string; icone: string } {
+    if (n.lu) return { fond: colors.border, icone: colors.textMuted };
+    if (n.type === "rupture_stock" || n.type === "creance_retard" || n.type === "sync_echec") return { fond: colors.dangerBg, icone: colors.danger };
+    if (n.type === "stock_faible" || n.type === "echeance_proche") return { fond: colors.warningBg ?? colors.accentBg, icone: colors.warning };
+    return { fond: colors.accentBg, icone: colors.accent };
+  }
+
+  function heure(n: Notification) {
+    return new Date(n.created_at).toLocaleTimeString(langue === "fr" ? "fr-FR" : "en-US", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  let compteur = 0;
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <View style={styles.entete}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.boutonRetour}>
-          <Feather name="arrow-left" size={22} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={{ fontSize: 16, fontWeight: "500", color: colors.textPrimary }}>
-          {t("notifications_page_titre", langue)}
-        </Text>
-      </View>
+    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <EnteteEcran
+        titre={t("notifications_page_titre", langue)}
+        onRetour={() => router.back()}
+        action={
+          nonLues > 0 ? (
+            <PressableAnime onPress={toutMarquerLu} hitSlop={8}>
+              <Text style={{ color: colors.accent, fontSize: 12.5, fontWeight: "700" }}>{t("notif_tout_lu", langue)}</Text>
+            </PressableAnime>
+          ) : undefined
+        }
+      />
 
       {chargement ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
+        <ListeSkeleton lignes={5} />
       ) : vide ? (
-        <View style={styles.vide}>
-          <Feather name="bell-off" size={28} color={colors.textMuted} style={{ marginBottom: 10 }} />
-          <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{t("notifications_vide", langue)}</Text>
-        </View>
+        <EtatVide icone="bell-off" titre={t("vide_notifications_titre", langue)} texte={t("vide_notifications_texte", langue)} />
       ) : (
-        liste.map((n) => (
-          <Pressable
-            key={n.id}
-            onPress={() => {
-              if (!n.lu) marquerLue(n.id);
-              if (n.lien) router.push(n.lien as any);
-            }}
-            style={[styles.ligne, { borderBottomColor: colors.border, backgroundColor: n.lu ? colors.background : colors.surface }]}
-          >
-            <Feather name={ICONES[n.type] ?? "bell"} size={17} color={couleurIcone(n)} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: n.lu ? colors.textSecondary : colors.textPrimary, fontSize: 13 }}>{libelle(n)}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                {new Date(n.created_at).toLocaleString(langue === "fr" ? "fr-FR" : "en-US")}
-              </Text>
-            </View>
-            <View style={[styles.badgeLu, { backgroundColor: n.lu ? colors.border : colors.accentBg }]}>
-              <Text style={{ color: n.lu ? colors.textSecondary : colors.accent, fontSize: 10 }}>
-                {n.lu ? t("notif_lu", langue) : t("notif_non_lu", langue)}
-              </Text>
-            </View>
-            {n.lien ? <Feather name="chevron-right" size={16} color={colors.textMuted} /> : null}
-          </Pressable>
+        groupes.map((g) => (
+          <View key={g.cle} style={{ marginBottom: 14 }}>
+            <Text style={[styles.groupe, { color: colors.textMuted }]}>{t(g.cle as any, langue)}</Text>
+            {g.items.map((n) => {
+              const c = teinte(n);
+              return (
+                <Apparition key={n.id} delai={Math.min(compteur++, 8) * 45} depuis={12}>
+                  <PressableAnime
+                    echelle={0.98}
+                    onPress={() => {
+                      if (!n.lu) marquerLue(n.id);
+                      if (n.lien) router.push(n.lien as any);
+                    }}
+                  >
+                    <View style={[styles.ligne, { backgroundColor: n.lu ? colors.background : colors.surface, borderColor: n.lu ? colors.border : "transparent", ...(n.lu ? {} : ombre(colors, 1)) }]}>
+                      <View style={[styles.pastille, { backgroundColor: c.fond }]}>
+                        <Feather name={ICONES[n.type] ?? "bell"} size={18} color={c.icone} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={2} style={{ color: n.lu ? colors.textSecondary : colors.textPrimary, fontSize: 13.5, fontWeight: n.lu ? "400" : "600", lineHeight: 19 }}>{libelle(n)}</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 3 }}>{heure(n)}</Text>
+                      </View>
+                      {!n.lu ? <View style={[styles.pointNonLu, { backgroundColor: colors.accent }]} /> : null}
+                      {n.lien ? <Feather name="chevron-right" size={16} color={colors.textMuted} /> : null}
+                    </View>
+                  </PressableAnime>
+                </Apparition>
+              );
+            })}
+          </View>
         ))
       )}
     </ScrollView>
@@ -116,10 +155,9 @@ export default function Notifications() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 14, paddingTop: 50 },
-  entete: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
-  boutonRetour: { paddingVertical: 2 },
-  vide: { alignItems: "center", paddingTop: 40 },
-  ligne: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, borderBottomWidth: 1, paddingHorizontal: 10 },
-  badgeLu: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  container: { padding: 14, paddingTop: 50, paddingBottom: 40 },
+  groupe: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8, marginLeft: 4 },
+  ligne: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 18, borderWidth: 1, marginBottom: 8 },
+  pastille: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  pointNonLu: { width: 9, height: 9, borderRadius: 5 },
 });

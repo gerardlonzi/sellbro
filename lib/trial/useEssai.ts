@@ -76,6 +76,9 @@ export type EssaiInfo = {
   // installation neuve. Toute UI qui affiche un statut (ou un pop-up d'essai)
   // doit attendre `verifie`, sinon elle affiche « essai gratuit » à un Pro.
   verifie: boolean;
+  // Le PLAN est connu (indépendamment de l'essai) : suffit pour afficher le badge
+  // PRO ou le bouton « Passer Pro », qui ne dépendent pas de l'état de l'essai.
+  planVerifie: boolean;
   recharger: () => Promise<void>;
 };
 
@@ -156,5 +159,6 @@ export function useEssai(): EssaiInfo {
     // Prêt quand le plan ET l'essai ET la config sont chargés (évite le flash).
     pret: planPret && pret,
     verifie,
+    planVerifie,
   };
 }

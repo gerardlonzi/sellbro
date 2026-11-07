@@ -8,12 +8,10 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "icon": "./assets/logo-icon.png",
-
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.eyetech.cikap"
     },
-
     "android": {
       "package": "com.eyetech.cikap",
       "adaptiveIcon": {
@@ -21,19 +19,18 @@
         "backgroundColor": "#FFFFFF"
       }
     },
-
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-logo.png",
-          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-tuile.png",
+          "backgroundColor": "#0B3D33",
           "dark": {
-            "image": "./assets/splash-logo.png",
-            "backgroundColor": "#121212"
+            "image": "./assets/splash-tuile.png",
+            "backgroundColor": "#0B3D33"
           },
-          "imageWidth": 200
+          "imageWidth": 108
         }
       ],
       "expo-audio",
@@ -52,7 +49,6 @@
         }
       ]
     ],
-
     "locales": {
       "fr": "./locales/fr.json",
       "en": "./locales/en.json"
