@@ -15,7 +15,7 @@ async function generer(modele: string, cle: string, corps: unknown, delaiMs: num
   const texte = Array.isArray(parties) ? parties.map((p: any) => p?.text ?? "").join("") : "";
   if (!texte) {
     const raison = json?.promptFeedback?.blockReason ?? json?.candidates?.[0]?.finishReason ?? "réponse vide";
-    throw new ErreurFournisseur("gemini", null, String(raison));
+    throw new ErreurFournisseur("gemini", null, String(raison));.01
   }
   return texte;
 }
@@ -25,7 +25,7 @@ export const gemini: FournisseurIA = {
   secretEnv: "GEMINI_API_KEY",
   modeleVisionDefaut: "gemini-3.5-flash-lite",
   modeleAudioDefaut: "gemini-3.5-flash-lite",
-  
+
   analyserImage(e: EntreeImage, cle, modele, delaiMs) {
     return generer(modele, cle, {
       systemInstruction: { parts: [{ text: e.systeme }] },
